@@ -47,7 +47,6 @@ const PayoutSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-PayoutSchema.index({ payoutNumber: 1 });
 PayoutSchema.index({ chitGroupId: 1, cycleId: 1 });
 
 export const Payout = mongoose.model<IPayout>('Payout', PayoutSchema);

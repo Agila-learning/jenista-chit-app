@@ -51,7 +51,6 @@ const PaymentSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-PaymentSchema.index({ paymentNumber: 1 });
 PaymentSchema.index({ transactionReference: 1 });
 PaymentSchema.index({ customerId: 1 });
 PaymentSchema.index({ chitGroupId: 1 });

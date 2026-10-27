@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "Jenista Chits",
+    "slug": "jenista-chits",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.jenista.chits"
+    },
+    "android": {
+      "package": "com.jenista.chits",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#0f172a",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app accesses your photos to allow uploading KYC documents and payment receipts.",
+          "cameraPermission": "The app accesses your camera to capture KYC photos."
+        }
+      ],
+      [
+        "expo-document-picker",
+        {
+          "iCloudContainerEnvironment": "Production"
+        }
+      ],
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "9551141c-5d6c-4f19-9796-22ebd0f9c9c2"
+      }
+    }
+  }
+}

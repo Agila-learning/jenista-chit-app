@@ -31,7 +31,6 @@ const ReceiptSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-ReceiptSchema.index({ receiptNumber: 1 });
 ReceiptSchema.index({ paymentId: 1 });
 ReceiptSchema.index({ customerId: 1 });
 

@@ -45,7 +45,6 @@ const ChitPlanSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-ChitPlanSchema.index({ planCode: 1 });
 ChitPlanSchema.index({ planType: 1 });
 ChitPlanSchema.index({ status: 1 });
 

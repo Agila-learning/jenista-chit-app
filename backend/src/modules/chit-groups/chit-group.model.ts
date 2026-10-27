@@ -45,7 +45,6 @@ const ChitGroupSchema: Schema = new Schema(
   { timestamps: true }
 );
 
-ChitGroupSchema.index({ groupCode: 1 });
 ChitGroupSchema.index({ planId: 1 });
 ChitGroupSchema.index({ branchId: 1 });
 ChitGroupSchema.index({ status: 1 });
