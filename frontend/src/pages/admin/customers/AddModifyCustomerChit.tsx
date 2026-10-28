@@ -45,41 +45,60 @@ export const AddModifyCustomerChit = () => {
     loadPendingCustomers();
   }, []);
 
-  const handleApprove = async (id: string, mongoId?: string) => {
-    if (window.confirm('Are you sure you want to approve this customer registration?')) {
-      try {
-        await fetchClient(`/customers/${mongoId || id}/status`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status: 'ACTIVE' }),
-        });
-      } catch (e) {
-        console.warn('Failed to update status on server:', e);
-      }
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-      // Update in local cache
+  const handleApprove = async (id: string, mongoId?: string) => {
+    try {
+      // 1. Update in local cache first so UI reacts immediately
       const customers = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
-      const updated = customers.map((c: any) => (c.id === id || c.mongoId === mongoId) ? { ...c, status: 'ACTIVE' } : c);
+      const updated = customers.map((c: any) => 
+        (c.id === id || c.mongoId === mongoId || c.customerCode === id) 
+          ? { ...c, status: 'ACTIVE', kycStatus: 'VERIFIED' } 
+          : c
+      );
       localStorage.setItem('mockCustomers', JSON.stringify(updated));
-      await loadPendingCustomers();
+      setPendingCustomers(prev => prev.filter(c => c.id !== id && c.mongoId !== mongoId));
+
+      // 2. Broadcast storage event so Topbar and Sidebar badges decrement immediately
+      window.dispatchEvent(new Event('storage'));
+
+      // 3. Post to backend
+      const targetId = mongoId || id;
+      await fetchClient(`/customers/${targetId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'ACTIVE', kycStatus: 'VERIFIED' }),
+      });
+    } catch (e) {
+      console.warn('Failed to update status on server:', e);
     }
+
+    setToastMsg(`Customer approved and activated successfully!`);
+    setTimeout(() => setToastMsg(null), 4000);
   };
 
   const handleReject = async (id: string, mongoId?: string) => {
-    if (window.confirm('Are you sure you want to reject this registration? The customer will not be able to log in.')) {
-      try {
-        await fetchClient(`/customers/${mongoId || id}/status`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status: 'REJECTED' }),
-        });
-      } catch (e) {
-        console.warn('Failed to update status on server:', e);
-      }
-
+    try {
       const customers = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
-      const updated = customers.map((c: any) => (c.id === id || c.mongoId === mongoId) ? { ...c, status: 'REJECTED' } : c);
+      const updated = customers.map((c: any) => 
+        (c.id === id || c.mongoId === mongoId || c.customerCode === id) 
+          ? { ...c, status: 'REJECTED' } 
+          : c
+      );
       localStorage.setItem('mockCustomers', JSON.stringify(updated));
-      await loadPendingCustomers();
+      setPendingCustomers(prev => prev.filter(c => c.id !== id && c.mongoId !== mongoId));
+      window.dispatchEvent(new Event('storage'));
+
+      const targetId = mongoId || id;
+      await fetchClient(`/customers/${targetId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'REJECTED' }),
+      });
+    } catch (e) {
+      console.warn('Failed to update status on server:', e);
     }
+
+    setToastMsg(`Customer registration marked as Rejected.`);
+    setTimeout(() => setToastMsg(null), 4000);
   };
 
   const filtered = pendingCustomers.filter(c => 
@@ -107,6 +126,22 @@ export const AddModifyCustomerChit = () => {
           </div>
         </div>
       </div>
+
+      {/* Toast Alert */}
+      {toastMsg && (
+        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-semibold flex items-center justify-between shadow-sm animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>{toastMsg}</span>
+          </div>
+          <button 
+            onClick={() => setToastMsg(null)}
+            className="text-xs text-emerald-700 hover:text-emerald-900 font-bold"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
         {isLoading ? (

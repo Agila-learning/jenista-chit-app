@@ -2,27 +2,39 @@ import React, { useState } from 'react';
 import { MapPin, Phone, Mail, Clock, CheckCircle2, ArrowRight } from 'lucide-react';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
+import { saveWebsiteLead } from '../../utils/notificationsData';
 
 export const ContactSection = () => {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [interestedPlan, setInterestedPlan] = useState('Auction Chit Plan');
   const [message, setMessage] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!firstName || !phone) return;
+    if (!firstName.trim() || !phone.trim()) return;
+
+    // Save lead into Admin system
+    saveWebsiteLead({
+      fullName: `${firstName.trim()} ${lastName.trim()}`.trim(),
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      phone: phone.trim(),
+      email: email.trim() || undefined,
+      message: message.trim() || undefined,
+      interestedPlan: interestedPlan
+    });
+
     setIsSubmitted(true);
-    // Reset after delay
-    setTimeout(() => {
-      setFirstName('');
-      setLastName('');
-      setEmail('');
-      setPhone('');
-      setMessage('');
-    }, 500);
+    // Reset inputs
+    setFirstName('');
+    setLastName('');
+    setEmail('');
+    setPhone('');
+    setMessage('');
   };
 
   return (
@@ -162,15 +174,30 @@ export const ContactSection = () => {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-neutral-700">Phone Number *</label>
-                  <Input 
-                    type="tel" 
-                    placeholder="+91 98765 43210" 
-                    value={phone} 
-                    onChange={(e) => setPhone(e.target.value)} 
-                    required 
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-neutral-700">Phone Number *</label>
+                    <Input 
+                      type="tel" 
+                      placeholder="+91 98765 43210" 
+                      value={phone} 
+                      onChange={(e) => setPhone(e.target.value)} 
+                      required 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-neutral-700">Interested Chit Scheme</label>
+                    <select
+                      value={interestedPlan}
+                      onChange={(e) => setInterestedPlan(e.target.value)}
+                      className="w-full h-10 px-3 border border-neutral-300 rounded-md bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium"
+                    >
+                      <option value="Auction Chit Plan (Monthly Bidding)">Auction Chit Plan (Monthly Bidding)</option>
+                      <option value="Fixed Chit Plan (Guaranteed Draw)">Fixed Chit Plan (Guaranteed Draw)</option>
+                      <option value="Regular Chit Plan (Milestone Seniority)">Regular Chit Plan (Milestone Seniority)</option>
+                      <option value="Custom High Value Chit (10L - 25L)">Custom High Value Chit (10L - 25L)</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="space-y-2">

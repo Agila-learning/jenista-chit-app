@@ -94,9 +94,18 @@ export class CustomerController {
       const customerId = Array.isArray(id) ? id[0] : id;
       const isObjectId = typeof customerId === 'string' && /^[0-9a-fA-F]{24}$/.test(customerId);
 
-      const customer = await Customer.findOne({
-        $or: [{ ...(isObjectId ? { _id: customerId } : {}) }, { customerCode: customerId }].filter(Boolean)
-      });
+      const orConditions: any[] = [];
+      if (isObjectId) {
+        orConditions.push({ _id: customerId });
+      }
+      if (customerId) {
+        orConditions.push({ customerCode: customerId });
+        orConditions.push({ phone: customerId });
+      }
+
+      const customer = await Customer.findOne(
+        orConditions.length > 0 ? { $or: orConditions } : { customerCode: customerId }
+      );
 
       if (!customer) {
         throw new ApiError(404, 'Customer not found', 'NOT_FOUND');

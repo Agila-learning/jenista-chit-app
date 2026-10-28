@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Calculator, 
   Gavel, 
@@ -7,14 +8,21 @@ import {
   Printer, 
   Copy, 
   Check, 
-  ShieldCheck 
+  ShieldCheck,
+  ArrowLeft,
+  Download,
+  Layers,
+  SlidersHorizontal
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/format';
 
 type SchemeType = 'AUCTION' | 'FIXED' | 'REGULAR';
+type ViewMode = 'SCHEDULE' | 'COMPARISON';
 
 export const ChitCalculator: React.FC = () => {
+  const navigate = useNavigate();
   const [scheme, setScheme] = useState<SchemeType>('AUCTION');
+  const [viewMode, setViewMode] = useState<ViewMode>('SCHEDULE');
   const [chitValue, setChitValue] = useState<number>(100000);
   const [duration, setDuration] = useState<number>(20);
   const [foremanCommPercent, setForemanCommPercent] = useState<number>(5);
@@ -31,7 +39,7 @@ export const ChitCalculator: React.FC = () => {
     { label: '₹25 Lakh', value: 2500000, duration: 50 },
   ];
 
-  // Core Calculations
+  // Core Calculations for Selected Scheme
   const calculations = useMemo(() => {
     const grossMonthlyInstallment = Math.round(chitValue / duration);
     const foremanCommissionTotal = Math.round(chitValue * (foremanCommPercent / 100));
@@ -48,8 +56,9 @@ export const ChitCalculator: React.FC = () => {
         foremanCommissionTotal,
         foremanCommissionPerMonth,
         totalDividendPerMember: 0,
+        dividendPerMonth: 0,
         netGainOrCost: winnerNetPayout - totalPaidByMember,
-        effectiveAnnualYield: 0,
+        effectiveAnnualYield: '0.0',
       };
     }
 
@@ -64,8 +73,9 @@ export const ChitCalculator: React.FC = () => {
         foremanCommissionTotal,
         foremanCommissionPerMonth,
         totalDividendPerMember: 0,
+        dividendPerMonth: 0,
         netGainOrCost: winnerNetPayout - totalPaidByMember,
-        effectiveAnnualYield: 0,
+        effectiveAnnualYield: '0.0',
       };
     }
 
@@ -95,7 +105,59 @@ export const ChitCalculator: React.FC = () => {
     };
   }, [scheme, chitValue, duration, foremanCommPercent, avgDiscountPercent]);
 
-  // Generate Month-by-Month Projection Schedule
+  // Comparative Matrix for all 3 schemes simultaneously
+  const comparativeData = useMemo(() => {
+    const gross = Math.round(chitValue / duration);
+    const foremanFee = Math.round(chitValue * (foremanCommPercent / 100));
+
+    // Auction
+    const grossBid = Math.round(chitValue * (avgDiscountPercent / 100));
+    const divPool = Math.max(0, grossBid - foremanFee);
+    const divPerMo = Math.round(divPool / duration);
+    const auctionNetMo = Math.max(0, gross - divPerMo);
+    const auctionTotalPaid = Math.round(auctionNetMo * (duration - 1) + gross);
+    const auctionTotalDiv = Math.round(divPerMo * (duration - 1));
+    const auctionBorrowPayout = chitValue - grossBid;
+    const auctionSaverPayout = chitValue - foremanFee;
+
+    // Fixed
+    const fixedTotalPaid = gross * duration;
+    const fixedPayout = chitValue - foremanFee;
+
+    // Regular
+    const regularTotalPaid = gross * duration;
+    const regularPayout = chitValue - foremanFee;
+
+    return {
+      auction: {
+        grossInstallment: gross,
+        netInstallment: auctionNetMo,
+        avgDividend: divPerMo,
+        totalPaid: auctionTotalPaid,
+        totalDividend: auctionTotalDiv,
+        borrowerPayout: auctionBorrowPayout,
+        saverPayout: auctionSaverPayout,
+        netGain: auctionSaverPayout - auctionTotalPaid,
+        yieldRate: ((auctionTotalDiv / chitValue) * (12 / duration) * 100).toFixed(1)
+      },
+      fixed: {
+        grossInstallment: gross,
+        netInstallment: gross,
+        totalPaid: fixedTotalPaid,
+        winnerPayout: fixedPayout,
+        netCost: fixedPayout - fixedTotalPaid
+      },
+      regular: {
+        grossInstallment: gross,
+        netInstallment: gross,
+        totalPaid: regularTotalPaid,
+        winnerPayout: regularPayout,
+        netCost: regularPayout - regularTotalPaid
+      }
+    };
+  }, [chitValue, duration, foremanCommPercent, avgDiscountPercent]);
+
+  // Month-by-Month Projection Schedule
   const projectionSchedule = useMemo(() => {
     const rows = [];
     const baseInstallment = Math.round(chitValue / duration);
@@ -156,12 +218,33 @@ Gross Installment: ${formatCurrency(calculations.grossMonthlyInstallment)}/mo
 ${scheme === 'AUCTION' ? `Est. Net Installment (after dividend): ${formatCurrency(calculations.netMonthlyInstallment)}/mo
 Est. Dividend Earned: ${formatCurrency(calculations.totalDividendPerMember)}
 Immediate Borrower Payout: ${formatCurrency(calculations.winnerNetPayout)}` : `Winner Net Payout: ${formatCurrency(calculations.winnerNetPayout)}`}
-Regulated Foreman Commission: 5%
-Calculated via Jenista Admin Portal`;
+Regulated Foreman Commission: ${foremanCommPercent}%
+Calculated via Jenista Accounting Engine`;
 
     navigator.clipboard.writeText(summaryText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleExportCSV = () => {
+    const headers = ['Month', 'Base Installment (₹)', 'Bid Discount (%)', 'Dividend (₹)', 'Net Payable (₹)', 'Winner Payout (₹)', 'Cumulative Paid (₹)'];
+    const rows = projectionSchedule.map(r => [
+      r.month,
+      r.baseInstallment,
+      scheme === 'AUCTION' ? `${r.bidPercent}%` : '0%',
+      r.dividend,
+      r.netPayable,
+      r.winnerPayout,
+      r.cumulativePaid
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `jenista_${scheme.toLowerCase()}_chit_${chitValue}_schedule.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handlePrint = () => {
@@ -173,9 +256,25 @@ Calculated via Jenista Admin Portal`;
       {/* Header & Action Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm print:hidden">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-bold uppercase tracking-wider mb-2">
-            <Calculator className="w-3.5 h-3.5 text-blue-600" />
-            Administrative Chit Calculator & Estimator
+          <div className="flex items-center gap-2 mb-2">
+            <button
+              onClick={() => {
+                if (window.history.length > 1) {
+                  navigate(-1);
+                } else {
+                  navigate('/admin');
+                }
+              }}
+              className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors flex items-center gap-1 text-xs font-bold md:hidden"
+              title="Go Back"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back</span>
+            </button>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-bold uppercase tracking-wider">
+              <Calculator className="w-3.5 h-3.5 text-blue-600" />
+              Administrative Chit Calculator & Estimator
+            </div>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
             Chit Plan Financial Modeler
@@ -185,17 +284,25 @@ Calculated via Jenista Admin Portal`;
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={handleCopySummary}
-            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition-colors flex items-center gap-1.5 active:scale-95"
+            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition-colors flex items-center gap-1.5 active:scale-95 cursor-pointer"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
             <span>{copied ? 'Copied' : 'Copy Summary'}</span>
           </button>
           <button
+            onClick={handleExportCSV}
+            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition-colors flex items-center gap-1.5 active:scale-95 cursor-pointer"
+            title="Download full schedule as CSV spreadsheet"
+          >
+            <Download className="w-3.5 h-3.5 text-slate-600" />
+            <span>Export CSV</span>
+          </button>
+          <button
             onClick={handlePrint}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5 active:scale-95"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
           >
             <Printer className="w-3.5 h-3.5" />
             <span>Print Sheet</span>
@@ -218,7 +325,7 @@ Calculated via Jenista Admin Portal`;
               <button
                 type="button"
                 onClick={() => setScheme('AUCTION')}
-                className={`py-2 px-2 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all ${
+                className={`py-2 px-2 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   scheme === 'AUCTION'
                     ? 'bg-indigo-600 text-white shadow-sm font-extrabold'
                     : 'text-slate-600 hover:text-slate-900'
@@ -230,7 +337,7 @@ Calculated via Jenista Admin Portal`;
               <button
                 type="button"
                 onClick={() => setScheme('FIXED')}
-                className={`py-2 px-2 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all ${
+                className={`py-2 px-2 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   scheme === 'FIXED'
                     ? 'bg-blue-600 text-white shadow-sm font-extrabold'
                     : 'text-slate-600 hover:text-slate-900'
@@ -242,7 +349,7 @@ Calculated via Jenista Admin Portal`;
               <button
                 type="button"
                 onClick={() => setScheme('REGULAR')}
-                className={`py-2 px-2 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all ${
+                className={`py-2 px-2 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   scheme === 'REGULAR'
                     ? 'bg-emerald-600 text-white shadow-sm font-extrabold'
                     : 'text-slate-600 hover:text-slate-900'
@@ -268,7 +375,7 @@ Calculated via Jenista Admin Portal`;
                     setChitValue(p.value);
                     setDuration(p.duration);
                   }}
-                  className={`py-2 px-2 text-xs font-bold rounded-xl border transition-all ${
+                  className={`py-2 px-2 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
                     chitValue === p.value && duration === p.duration
                       ? 'bg-blue-50 border-blue-400 text-blue-800 shadow-2xs font-black'
                       : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
@@ -280,21 +387,37 @@ Calculated via Jenista Admin Portal`;
             </div>
           </div>
 
-          {/* Chit Value Input */}
-          <div>
-            <div className="flex justify-between items-center mb-1.5">
-              <label className="text-xs font-bold text-slate-700">Chit Face Value (₹)</label>
-              <span className="text-xs font-extrabold text-blue-600">{formatCurrency(chitValue)}</span>
+          {/* Chit Value Input & Interactive Range Slider */}
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <label className="text-xs font-bold text-slate-700">Chit Face Value</label>
+              <span className="text-sm font-black text-blue-600">{formatCurrency(chitValue)}</span>
             </div>
             <input
               type="number"
               step="5000"
-              min="10000"
-              max="10000000"
+              min="25000"
+              max="5000000"
               value={chitValue}
               onChange={(e) => setChitValue(Math.max(1000, Number(e.target.value)))}
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            {/* Range Slider for tactile adjustment */}
+            <input
+              type="range"
+              min="25000"
+              max="2500000"
+              step="25000"
+              value={chitValue}
+              onChange={(e) => setChitValue(Number(e.target.value))}
+              className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              title="Slide to adjust chit value"
+            />
+            <div className="flex justify-between text-[10px] text-slate-400 font-medium">
+              <span>₹25,000</span>
+              <span>₹10,00,000</span>
+              <span>₹25,00,000</span>
+            </div>
           </div>
 
           {/* Duration Months */}
@@ -309,7 +432,7 @@ Calculated via Jenista Admin Portal`;
                   key={m}
                   type="button"
                   onClick={() => setDuration(m)}
-                  className={`py-2 text-xs font-bold rounded-xl border transition-all ${
+                  className={`py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
                     duration === m
                       ? 'bg-blue-600 text-white border-blue-600'
                       : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
@@ -359,6 +482,39 @@ Calculated via Jenista Admin Portal`;
               </p>
             </div>
           )}
+
+          {/* View Mode Toggle */}
+          <div className="pt-2 border-t border-slate-100">
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+              Display Mode
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setViewMode('SCHEDULE')}
+                className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  viewMode === 'SCHEDULE'
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span>Monthly Schedule</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('COMPARISON')}
+                className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  viewMode === 'COMPARISON'
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Compare Schemes</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Right Output Calculations (7 Cols) */}
@@ -394,7 +550,7 @@ Calculated via Jenista Admin Portal`;
               <p className="text-[11px] text-blue-800/80 mt-1">
                 {scheme === 'AUCTION' 
                   ? `Member saves ~${formatCurrency(calculations.dividendPerMonth || 0)}/mo in dividend`
-                  : `100% full face value minus 5% regulated commission`}
+                  : `100% full face value minus ${foremanCommPercent}% regulated commission`}
               </p>
             </div>
 
@@ -435,80 +591,219 @@ Calculated via Jenista Admin Portal`;
             <p className="text-sm">Chit Value: {formatCurrency(chitValue)} | Duration: {duration} Months | Scheme: {scheme}</p>
           </div>
 
-          {/* Month-by-Month Projection Schedule Card */}
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
-              <div>
-                <h3 className="text-base font-extrabold text-slate-900">
-                  Month-by-Month Schedule Projection
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Detailed timeline of collections, dividends, net payable amounts, and prize disbursements
-                </p>
+          {/* CONDITIONAL VIEW: COMPARISON MATRIX VS SCHEDULE */}
+          {viewMode === 'COMPARISON' ? (
+            <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-indigo-600" />
+                    Side-by-Side Scheme Architectural Comparison
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    For Chit Value: {formatCurrency(chitValue)} over {duration} Months
+                  </p>
+                </div>
               </div>
-              <span className="text-xs font-bold px-3 py-1 bg-slate-100 text-slate-700 rounded-full">
-                {duration} Total Installments
-              </span>
-            </div>
 
-            <div className="overflow-x-auto max-h-[420px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300">
-              <table className="w-full text-left text-xs">
-                <thead className="sticky top-0 bg-slate-100 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
-                  <tr>
-                    <th className="py-2.5 px-3">Month</th>
-                    <th className="py-2.5 px-3">Installment</th>
-                    {scheme === 'AUCTION' && <th className="py-2.5 px-3">Bid %</th>}
-                    {scheme === 'AUCTION' && <th className="py-2.5 px-3 text-emerald-700">Dividend</th>}
-                    <th className="py-2.5 px-3 font-extrabold text-slate-900">Net Payable</th>
-                    <th className="py-2.5 px-3 text-blue-700">Winner Payout</th>
-                    <th className="py-2.5 px-3 text-slate-500">Cumulative Paid</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {projectionSchedule.map((row) => (
-                    <tr key={row.month} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-2.5 px-3 font-bold text-slate-900">
-                        Month {row.month}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">
-                        {formatCurrency(row.baseInstallment)}
-                      </td>
-                      {scheme === 'AUCTION' && (
-                        <td className="py-2.5 px-3 text-indigo-700 font-semibold">
-                          {row.bidPercent}%
-                        </td>
-                      )}
-                      {scheme === 'AUCTION' && (
-                        <td className="py-2.5 px-3 text-emerald-700 font-semibold">
-                          +{formatCurrency(row.dividend)}
-                        </td>
-                      )}
-                      <td className="py-2.5 px-3 font-black text-slate-900 bg-slate-50/50">
-                        {formatCurrency(row.netPayable)}
-                      </td>
-                      <td className="py-2.5 px-3 text-blue-700 font-bold">
-                        {formatCurrency(row.winnerPayout)}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-500 font-medium">
-                        {formatCurrency(row.cumulativePaid)}
-                      </td>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* 1. Auction Scheme */}
+                <div className="p-4 rounded-2xl bg-indigo-50/50 border-2 border-indigo-200 flex flex-col justify-between space-y-4">
+                  <div className="space-y-2">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-600 text-white uppercase tracking-wider">
+                      Auction Scheme
+                    </span>
+                    <h4 className="font-extrabold text-slate-900 text-sm">Competitive Bidding</h4>
+                    <p className="text-[11px] text-slate-600 leading-snug">
+                      Subscribers bid discounts for instant liquidity. Non-winners enjoy recurring monthly dividends.
+                    </p>
+
+                    <div className="space-y-1.5 pt-2 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Base Installment:</span>
+                        <span className="font-bold">{formatCurrency(comparativeData.auction.grossInstallment)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Avg. Net Outflow:</span>
+                        <span className="font-black text-indigo-700">{formatCurrency(comparativeData.auction.netInstallment)}/mo</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Est. Total Dividend:</span>
+                        <span className="font-bold text-emerald-700">+{formatCurrency(comparativeData.auction.totalDividend)}</span>
+                      </div>
+                      <div className="flex justify-between border-t border-indigo-100 pt-1">
+                        <span className="text-slate-500">Borrower Net Payout:</span>
+                        <span className="font-bold text-blue-800">{formatCurrency(comparativeData.auction.borrowerPayout)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Last Winner Payout:</span>
+                        <span className="font-bold text-emerald-800">{formatCurrency(comparativeData.auction.saverPayout)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-white/80 border border-indigo-100 text-[10px] text-indigo-900 font-medium">
+                    🎯 <strong>Best For:</strong> Business owners needing flexible emergency credit or disciplined savers seeking dividend returns.
+                  </div>
+                </div>
+
+                {/* 2. Fixed Draw Scheme */}
+                <div className="p-4 rounded-2xl bg-blue-50/50 border border-blue-200 flex flex-col justify-between space-y-4">
+                  <div className="space-y-2">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-600 text-white uppercase tracking-wider">
+                      Fixed Scheme
+                    </span>
+                    <h4 className="font-extrabold text-slate-900 text-sm">Guaranteed Full Value</h4>
+                    <p className="text-[11px] text-slate-600 leading-snug">
+                      Predictable, fixed installments with transparent monthly lucky draws. Full prize money without auction discount.
+                    </p>
+
+                    <div className="space-y-1.5 pt-2 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Monthly Installment:</span>
+                        <span className="font-black text-blue-900">{formatCurrency(comparativeData.fixed.grossInstallment)}/mo</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Dividend:</span>
+                        <span className="font-bold text-slate-400">None (Zero discount)</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Total Contributed:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(comparativeData.fixed.totalPaid)}</span>
+                      </div>
+                      <div className="flex justify-between border-t border-blue-100 pt-1">
+                        <span className="text-slate-500">Winner Net Payout:</span>
+                        <span className="font-extrabold text-emerald-700">{formatCurrency(comparativeData.fixed.winnerPayout)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Foreman Fee (5%):</span>
+                        <span className="font-bold text-slate-600">{formatCurrency(calculations.foremanCommissionTotal)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-white/80 border border-blue-100 text-[10px] text-blue-900 font-medium">
+                    🎯 <strong>Best For:</strong> Salaried individuals and risk-averse families seeking predictable savings with 100% full payout.
+                  </div>
+                </div>
+
+                {/* 3. Regular Plan Scheme */}
+                <div className="p-4 rounded-2xl bg-emerald-50/50 border border-emerald-200 flex flex-col justify-between space-y-4">
+                  <div className="space-y-2">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-700 text-white uppercase tracking-wider">
+                      Regular Scheme
+                    </span>
+                    <h4 className="font-extrabold text-slate-900 text-sm">Brochure Rotation Turn</h4>
+                    <p className="text-[11px] text-slate-600 leading-snug">
+                      Traditional 20-month disciplined rotation following official Tamil Nadu regulated chit tables and turns.
+                    </p>
+
+                    <div className="space-y-1.5 pt-2 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Fixed Monthly Due:</span>
+                        <span className="font-black text-emerald-900">{formatCurrency(comparativeData.regular.grossInstallment)}/mo</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Dividend:</span>
+                        <span className="font-bold text-slate-400">Scheduled turns</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Total Contributed:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(comparativeData.regular.totalPaid)}</span>
+                      </div>
+                      <div className="flex justify-between border-t border-emerald-100 pt-1">
+                        <span className="text-slate-500">Winner Net Payout:</span>
+                        <span className="font-extrabold text-emerald-700">{formatCurrency(comparativeData.regular.winnerPayout)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Foreman Fee (5%):</span>
+                        <span className="font-bold text-slate-600">{formatCurrency(calculations.foremanCommissionTotal)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-white/80 border border-emerald-100 text-[10px] text-emerald-900 font-medium">
+                    🎯 <strong>Best For:</strong> Planned major events (weddings, education, down payments) scheduled for specific months.
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Month-by-Month Projection Schedule Card */
+            <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm overflow-hidden">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-2 mb-4">
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">
+                    Month-by-Month Schedule Projection
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Detailed timeline of collections, dividends, net payable amounts, and prize disbursements
+                  </p>
+                </div>
+                <span className="text-xs font-bold px-3 py-1 bg-slate-100 text-slate-700 rounded-full self-start sm:self-auto">
+                  {duration} Total Installments
+                </span>
+              </div>
+
+              <div className="overflow-x-auto max-h-[420px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300">
+                <table className="w-full text-left text-xs">
+                  <thead className="sticky top-0 bg-slate-100 text-slate-600 font-bold uppercase text-[10px] tracking-wider z-10">
+                    <tr>
+                      <th className="py-2.5 px-3">Month</th>
+                      <th className="py-2.5 px-3">Installment</th>
+                      {scheme === 'AUCTION' && <th className="py-2.5 px-3">Bid %</th>}
+                      {scheme === 'AUCTION' && <th className="py-2.5 px-3 text-emerald-700">Dividend</th>}
+                      <th className="py-2.5 px-3 font-extrabold text-slate-900">Net Payable</th>
+                      <th className="py-2.5 px-3 text-blue-700">Winner Payout</th>
+                      <th className="py-2.5 px-3 text-slate-500">Cumulative Paid</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {projectionSchedule.map((row) => (
+                      <tr key={row.month} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-2.5 px-3 font-bold text-slate-900">
+                          Month {row.month}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600">
+                          {formatCurrency(row.baseInstallment)}
+                        </td>
+                        {scheme === 'AUCTION' && (
+                          <td className="py-2.5 px-3 text-indigo-700 font-semibold">
+                            {row.bidPercent}%
+                          </td>
+                        )}
+                        {scheme === 'AUCTION' && (
+                          <td className="py-2.5 px-3 text-emerald-700 font-semibold">
+                            +{formatCurrency(row.dividend)}
+                          </td>
+                        )}
+                        <td className="py-2.5 px-3 font-black text-slate-900 bg-slate-50/50">
+                          {formatCurrency(row.netPayable)}
+                        </td>
+                        <td className="py-2.5 px-3 text-blue-700 font-bold">
+                          {formatCurrency(row.winnerPayout)}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-500 font-medium">
+                          {formatCurrency(row.cumulativePaid)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-            {/* Bottom Compliance Note */}
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-              <span className="flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
-                All foreman charges and ceiling limits calculated in accordance with the Chit Funds Act, 1982.
-              </span>
-              <span className="font-semibold text-slate-700">
-                Jenista Chits Accounting Engine
-              </span>
+              {/* Bottom Compliance Note */}
+              <div className="mt-4 pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-500 gap-2">
+                <span className="flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  All foreman charges and ceiling limits calculated in accordance with the Chit Funds Act, 1982.
+                </span>
+                <span className="font-semibold text-slate-700">
+                  Jenista Chits Accounting Engine
+                </span>
+              </div>
             </div>
-          </div>
+          )}
 
         </div>
 

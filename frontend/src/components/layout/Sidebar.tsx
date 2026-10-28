@@ -17,6 +17,7 @@ import {
   BarChart3,
   Bell,
   UserCheck,
+  UserPlus,
   LogOut,
   Calculator
 } from 'lucide-react';
@@ -127,12 +128,19 @@ export const Sidebar = ({
     return custs.filter((c: any) => c.status === 'PENDING_APPROVAL').length;
   });
 
+  const [pendingLeadsCount, setPendingLeadsCount] = useState<number>(() => {
+    const leads = JSON.parse(localStorage.getItem('websiteLeads') || '[]');
+    return leads.filter((l: any) => l.status === 'NEW').length;
+  });
+
   useEffect(() => {
     const updateCounts = () => {
       const reqs = JSON.parse(localStorage.getItem('paymentRequests') || '[]');
       setPendingPaymentsCount(reqs.filter((r: any) => r.status === 'PENDING_VERIFICATION' || r.status === 'PENDING').length);
       const custs = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
       setPendingApprovalsCount(custs.filter((c: any) => c.status === 'PENDING_APPROVAL').length);
+      const leads = JSON.parse(localStorage.getItem('websiteLeads') || '[]');
+      setPendingLeadsCount(leads.filter((l: any) => l.status === 'NEW').length);
     };
     window.addEventListener('storage', updateCounts);
     const interval = setInterval(updateCounts, 3000);
@@ -159,6 +167,12 @@ export const Sidebar = ({
       ]
     },
     { 
+      name: 'Website Leads', 
+      href: '/admin/leads', 
+      icon: UserPlus,
+      badge: pendingLeadsCount
+    },
+    { 
       name: 'Payments', 
       href: '/admin/payments', 
       icon: CreditCard,
@@ -178,9 +192,9 @@ export const Sidebar = ({
     },
     { 
       name: 'Notifications', 
-      href: '/admin/payments', 
+      href: '/admin/notifications', 
       icon: Bell,
-      badge: pendingPaymentsCount + pendingApprovalsCount
+      badge: pendingPaymentsCount + pendingApprovalsCount + pendingLeadsCount
     },
   ];
 

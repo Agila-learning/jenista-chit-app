@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   Search, 
   Bell, 
@@ -14,10 +14,14 @@ import {
   Layers, 
   X,
   Clock,
-  Menu
+  Menu,
+  ArrowLeft,
+  Sparkles
 } from 'lucide-react';
 import { useAuth } from '../../store/AuthContext';
 import { isMockCustomer, isMockGroup } from '../../utils/cleanMockData';
+import { getStoredNotifications, onNotificationSync } from '../../utils/notificationsData';
+import { formatDate } from '../../utils/format';
 
 interface TopbarProps {
   onMenuClick?: () => void;
@@ -27,6 +31,7 @@ interface TopbarProps {
 export const Topbar = ({ onMenuClick }: TopbarProps = {}) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Registration link copy state
   const [copied, setCopied] = useState(false);
@@ -57,6 +62,7 @@ export const Topbar = ({ onMenuClick }: TopbarProps = {}) => {
   // Live pending counts for notifications
   const [pendingPayments, setPendingPayments] = useState<any[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
+  const [systemNotifs, setSystemNotifs] = useState<any[]>([]);
 
   const loadNotificationsData = () => {
     try {
@@ -67,18 +73,22 @@ export const Topbar = ({ onMenuClick }: TopbarProps = {}) => {
       const custs = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
       const filteredCusts = custs.filter((c: any) => c.status === 'PENDING_APPROVAL' && !isMockCustomer(c));
       setPendingApprovals(filteredCusts);
+
+      const notifs = getStoredNotifications().filter(n => !n.isRead && (n.targetRole === 'ADMIN' || n.targetRole === 'ALL'));
+      setSystemNotifs(notifs);
     } catch {
       setPendingPayments([]);
       setPendingApprovals([]);
+      setSystemNotifs([]);
     }
   };
 
   useEffect(() => {
     loadNotificationsData();
-    window.addEventListener('storage', loadNotificationsData);
+    const unsub = onNotificationSync(loadNotificationsData);
     const interval = setInterval(loadNotificationsData, 3000);
     return () => {
-      window.removeEventListener('storage', loadNotificationsData);
+      unsub();
       clearInterval(interval);
     };
   }, []);
@@ -144,14 +154,29 @@ export const Topbar = ({ onMenuClick }: TopbarProps = {}) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const totalNotifications = pendingPayments.length + pendingApprovals.length;
+  const totalNotifications = pendingPayments.length + pendingApprovals.length + systemNotifs.length;
   const adminName = user?.name || 'Santy Y';
   const adminInitials = adminName.slice(0, 2).toUpperCase();
 
+  const isNotRoot = location.pathname !== '/admin/dashboard' && location.pathname !== '/staff/dashboard';
+
   return (
     <header className="h-16 bg-white border-b border-slate-200/80 px-4 sm:px-6 flex items-center justify-between shrink-0 relative z-30 shadow-2xs">
-      {/* Left: Global Search Field & Sidebar Toggle */}
-      <div className="flex items-center gap-2.5 flex-1 max-w-xl">
+      {/* Left: Global Search Field & Sidebar Toggle & Mobile Back */}
+      <div className="flex items-center gap-2 sm:gap-2.5 flex-1 max-w-xl">
+        {/* Mobile / Subpage Back Button */}
+        {isNotRoot && (
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors shrink-0 flex items-center gap-1 font-semibold text-xs border border-slate-200"
+            title="Go Back"
+          >
+            <ArrowLeft className="w-4 h-4 text-slate-700" />
+            <span className="hidden sm:inline">Back</span>
+          </button>
+        )}
+
         {onMenuClick && (
           <button
             type="button"
@@ -329,14 +354,44 @@ export const Topbar = ({ onMenuClick }: TopbarProps = {}) => {
               </div>
 
               <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 text-xs">
-                {pendingPayments.length === 0 && pendingApprovals.length === 0 ? (
+                {pendingPayments.length === 0 && pendingApprovals.length === 0 && systemNotifs.length === 0 ? (
                   <div className="py-8 text-center text-slate-400">
                     <Check className="w-7 h-7 mx-auto text-emerald-500 mb-1" />
                     <p className="font-semibold text-slate-700 text-xs">All caught up!</p>
-                    <p className="text-[11px]">No pending payments or registrations requiring approval.</p>
+                    <p className="text-[11px]">No pending payments, registrations, or unread alerts.</p>
                   </div>
                 ) : (
                   <>
+                    {/* System & Leads Notifications */}
+                    {systemNotifs.map((n) => (
+                      <div
+                        key={n.id}
+                        onClick={() => {
+                          setIsNotificationsOpen(false);
+                          if (n.type === 'NEW_LEAD') navigate('/admin/leads');
+                          else if (n.type.includes('PAYMENT')) navigate('/admin/payments');
+                          else if (n.type === 'NEW_REGISTRATION') navigate('/admin/customers/approvals');
+                          else navigate('/admin/notifications');
+                        }}
+                        className="p-3.5 hover:bg-amber-50/50 cursor-pointer transition-colors flex items-start gap-3"
+                      >
+                        <div className="p-2 bg-purple-100 text-purple-800 rounded-xl shrink-0 mt-0.5">
+                          <Sparkles className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-slate-800 text-xs truncate">
+                            {n.title}
+                          </p>
+                          <p className="text-[11px] text-slate-600 mt-0.5 line-clamp-2">
+                            {n.message}
+                          </p>
+                          <span className="text-[10px] text-slate-400 mt-1 flex items-center gap-1 font-mono">
+                            <Clock className="w-3 h-3" /> {n.timestamp ? formatDate(new Date(n.timestamp)) : 'Recent'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+
                     {pendingPayments.map((p) => (
                       <div
                         key={p.id}
@@ -387,6 +442,20 @@ export const Topbar = ({ onMenuClick }: TopbarProps = {}) => {
                     ))}
                   </>
                 )}
+              </div>
+
+              {/* View All Link */}
+              <div className="p-2.5 bg-slate-50 border-t border-slate-100 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsNotificationsOpen(false);
+                    navigate('/admin/notifications');
+                  }}
+                  className="w-full py-1 text-xs font-bold text-amber-800 hover:text-amber-950 hover:bg-amber-100/60 rounded-lg transition-colors"
+                >
+                  View All Notifications & Announcements →
+                </button>
               </div>
             </div>
           )}

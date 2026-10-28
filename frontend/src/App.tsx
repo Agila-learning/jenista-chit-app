@@ -24,6 +24,8 @@ import { ManageBanks } from './pages/admin/finance/ManageBanks';
 import { CustomerDashboard } from './pages/customer/CustomerDashboard';
 import { CustomerChitScheduleScreen } from './pages/admin/customers/CustomerChitScheduleScreen';
 import { ChitCalculator } from './pages/admin/ChitCalculator';
+import { LeadsManagement } from './pages/admin/customers/LeadsManagement';
+import { NotificationsCenter } from './pages/admin/management/NotificationsCenter';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { purgeMockData } from './utils/cleanMockData';
@@ -73,6 +75,8 @@ function App() {
               <Route path="/admin/receipts" element={<ReceiptEntry />} />
               <Route path="/admin/settings" element={<Settings />} />
               <Route path="/admin/reports/non-payers" element={<NonPayersReport />} />
+              <Route path="/admin/leads" element={<LeadsManagement />} />
+              <Route path="/admin/notifications" element={<NotificationsCenter />} />
             </Route>
           </Route>
         </Routes>

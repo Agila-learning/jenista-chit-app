@@ -24,6 +24,7 @@ import {
   approvePaymentRequestAction,
   rejectPaymentRequestAction
 } from '../../../utils/paymentRequestsData';
+import { addSystemNotification } from '../../../utils/notificationsData';
 
 type TabType = 'VERIFICATION' | 'WITHDRAWALS';
 
@@ -204,6 +205,40 @@ export const Payments = () => {
         } : r
       );
       localStorage.setItem('withdrawalRequests', JSON.stringify(updatedWReqs));
+
+      // 1b. Dispatch System Notification to Customer & Admin
+      try {
+        addSystemNotification({
+          type: 'PRIZE_DISBURSED',
+          title: 'Prize Money Disbursed! 🏆',
+          message: `Your prize payout of ₹${Number(req.eligibleAmount).toLocaleString('en-IN')} for ${req.groupId} has been disbursed via ${disburseModeInput} (Ref: ${payoutRefNo}).`,
+          targetRole: 'CUSTOMER',
+          targetUserId: req.customerId,
+          metadata: {
+            customerId: req.customerId,
+            customerName: req.customerName,
+            groupId: req.groupId,
+            amount: Number(req.eligibleAmount),
+            referenceNo: payoutRefNo
+          }
+        });
+
+        addSystemNotification({
+          type: 'PRIZE_DISBURSED',
+          title: 'Prize Disbursal Completed',
+          message: `Disbursed ₹${Number(req.eligibleAmount).toLocaleString('en-IN')} to ${req.customerName} for ${req.groupId} (${disburseModeInput} Ref: ${payoutRefNo}).`,
+          targetRole: 'ADMIN',
+          metadata: {
+            customerId: req.customerId,
+            customerName: req.customerName,
+            groupId: req.groupId,
+            amount: Number(req.eligibleAmount),
+            referenceNo: payoutRefNo
+          }
+        });
+      } catch (notifErr) {
+        console.warn('Could not dispatch prize disbursal notification:', notifErr);
+      }
 
       // 2. Add DEBIT record to ledgerTransactions
       const ledger = JSON.parse(localStorage.getItem('ledgerTransactions') || '[]');

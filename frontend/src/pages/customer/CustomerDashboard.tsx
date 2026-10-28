@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Layers, CreditCard, TrendingUp, Bell, History, Calendar, ArrowRight, Copy, Table, Gavel, Award, Building2, Wallet, CheckCircle2, Upload, Printer, X, Search, FileText, Landmark, QrCode, Check, Lock } from 'lucide-react';
+import { 
+  Layers, CreditCard, TrendingUp, Bell, History, Calendar, ArrowRight, Copy, Table, 
+  Gavel, Award, Building2, Wallet, CheckCircle2, Upload, Printer, X, Search, FileText, 
+  Landmark, QrCode, Check, Lock, ArrowLeft, Megaphone, Gift, Clock 
+} from 'lucide-react';
 import { formatCurrency, formatDate } from '../../utils/format';
 import { printCashReceipt } from '../../utils/receiptPrinter';
 import { useAuth } from '../../store/AuthContext';
@@ -12,11 +16,21 @@ import { resolveBankForPayment, generateUpiQrBadge, getStoredBankAccounts, type 
 import { isMockGroup } from '../../utils/cleanMockData';
 import { savePaymentRequest, onPaymentSync, syncPaymentRequestsWithBackend, type PaymentRequest } from '../../utils/paymentRequestsData';
 import { buildCustomerChitSchedule } from '../../utils/customerChitSchedule';
+import { 
+  getNotificationsForUser, 
+  markNotificationAsRead, 
+  markAllNotificationsAsRead, 
+  onNotificationSync as onSystemNotifSync, 
+  getStoredAnnouncements, 
+  addSystemNotification,
+  type SystemNotification, 
+  type Announcement 
+} from '../../utils/notificationsData';
 
 export const CustomerDashboard = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'myChits' | 'regularPlanChart' | 'fixedPlanChart' | 'auctionPlanChart'>('myChits');
+  const [activeTab, setActiveTab] = useState<'myChits' | 'prizesRewards' | 'regularPlanChart' | 'fixedPlanChart' | 'auctionPlanChart'>('myChits');
   const [activeChits, setActiveChits] = useState(0);
   const [totalInvested, setTotalInvested] = useState(0);
   const [customerData, setCustomerData] = useState<any | null>(null);
@@ -24,6 +38,11 @@ export const CustomerDashboard = () => {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [copied, setCopied] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Notifications & Announcements States
+  const [notifications, setNotifications] = useState<SystemNotification[]>([]);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
 
   // Payment states
   const [paymentModalChit, setPaymentModalChit] = useState<any | null>(null);
@@ -265,6 +284,45 @@ export const CustomerDashboard = () => {
     };
   }, [user]);
 
+  // Load and subscribe to Customer Notifications & Announcements
+  useEffect(() => {
+    const loadNotifs = () => {
+      if (user?.id) {
+        const notifList = getNotificationsForUser(user.id, 'CUSTOMER');
+        setNotifications(notifList);
+      }
+      setAnnouncements(getStoredAnnouncements());
+    };
+
+    loadNotifs();
+    const unsub = onSystemNotifSync(loadNotifs);
+    const interval = setInterval(loadNotifs, 3000);
+    return () => {
+      unsub();
+      clearInterval(interval);
+    };
+  }, [user]);
+
+  const unreadNotifCount = notifications.filter(n => !n.isRead).length;
+
+  const handleMarkAllRead = () => {
+    if (user?.id) {
+      markAllNotificationsAsRead(user.id, 'CUSTOMER');
+      setNotifications(getNotificationsForUser(user.id, 'CUSTOMER'));
+    }
+  };
+
+  const handleNotifClick = (id: string, actionUrl?: string) => {
+    markNotificationAsRead(id);
+    if (user?.id) {
+      setNotifications(getNotificationsForUser(user.id, 'CUSTOMER'));
+    }
+    if (actionUrl) {
+      setIsNotifOpen(false);
+      navigate(actionUrl);
+    }
+  };
+
   const handlePayNow = (chit: any, isAdvance: boolean = false, suggestedAmount?: number) => {
     setPaymentModalChit(chit);
     setIsAdvancePayment(isAdvance);
@@ -425,6 +483,24 @@ export const CustomerDashboard = () => {
     localStorage.setItem('withdrawalRequests', JSON.stringify(updated));
     window.dispatchEvent(new Event('storage'));
 
+    // Dispatch real-time system alert to Admin
+    try {
+      addSystemNotification({
+        type: 'PRIZE_CLAIM',
+        title: 'New Prize Money Claim Submitted',
+        message: `${user?.name || 'Customer'} (${user?.id || ''}) requested prize money claim of ₹${Number(newWReq.eligibleAmount || 0).toLocaleString('en-IN')} for ${newWReq.groupName || newWReq.groupId} via ${withdrawPayoutMethod}.`,
+        targetRole: 'ADMIN',
+        metadata: {
+          customerId: user?.id,
+          customerName: user?.name,
+          groupId: newWReq.groupId,
+          amount: Number(newWReq.eligibleAmount || 0)
+        }
+      });
+    } catch (notifErr) {
+      console.warn('Could not add prize claim notification:', notifErr);
+    }
+
     setTimeout(() => {
       setWithdrawSubmitting(false);
       setWithdrawSuccessMsg('Withdrawal claim request submitted successfully! Admin will verify and disburse your prize money.');
@@ -441,6 +517,20 @@ export const CustomerDashboard = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-2">
+              <button
+                onClick={() => {
+                  if (window.history.length > 1) {
+                    navigate(-1);
+                  } else {
+                    navigate('/');
+                  }
+                }}
+                className="p-1.5 -ml-1 text-primary-900 hover:bg-neutral-100 rounded-lg transition-colors flex items-center gap-1 font-semibold text-xs border border-transparent hover:border-neutral-200"
+                title="Go Back"
+              >
+                <ArrowLeft className="w-5 h-5" />
+                <span className="hidden sm:inline">Back</span>
+              </button>
               <img src="/assets/Chit logo.jpg.jpeg" alt="Jenista Chits Logo" className="h-10 w-10 object-contain" />
               <span className="font-bold text-xl text-primary-900 tracking-tight">Jenista Chits</span>
             </div>
@@ -517,10 +607,102 @@ export const CustomerDashboard = () => {
                 <Copy className="w-4 h-4 mr-2" />
                 {copied ? 'Copied!' : 'Copy Referral Link'}
               </button>
-              <button className="p-2 bg-white rounded-full shadow-sm hover:shadow-md transition-shadow relative text-neutral-600">
-                <Bell className="w-5 h-5" />
-                <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-danger rounded-full border-2 border-white"></span>
-              </button>
+
+              {/* Interactive Notifications Bell Dropdown */}
+              <div className="relative">
+                <button 
+                  onClick={() => setIsNotifOpen(!isNotifOpen)}
+                  className="p-2 bg-white rounded-full shadow-sm hover:shadow-md transition-shadow relative text-neutral-600 focus:outline-none focus:ring-2 focus:ring-primary-500 cursor-pointer"
+                  title="View Notifications & Announcements"
+                  aria-label="View Notifications"
+                >
+                  <Bell className="w-5 h-5" />
+                  {unreadNotifCount > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-danger text-white text-[10px] font-black rounded-full flex items-center justify-center px-1 border-2 border-white shadow-xs">
+                      {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+                    </span>
+                  )}
+                </button>
+
+                {isNotifOpen && (
+                  <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-xl border border-neutral-200 z-50 overflow-hidden animate-in fade-in duration-150">
+                    <div className="p-3.5 bg-neutral-50 border-b border-neutral-200 flex items-center justify-between">
+                      <div>
+                        <h4 className="font-bold text-xs text-neutral-900">My Notifications</h4>
+                        <p className="text-[10px] text-neutral-500">Live payment, chit & prize updates</p>
+                      </div>
+                      {unreadNotifCount > 0 && (
+                        <button
+                          onClick={handleMarkAllRead}
+                          className="text-[11px] font-bold text-primary-900 hover:underline cursor-pointer"
+                        >
+                          Mark all read
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="max-h-80 overflow-y-auto divide-y divide-neutral-100 text-xs">
+                      {notifications.length === 0 ? (
+                        <div className="p-8 text-center text-neutral-400">
+                          <CheckCircle2 className="w-8 h-8 mx-auto text-emerald-500 mb-2" />
+                          <p className="font-bold text-neutral-700">No new notifications</p>
+                          <p className="text-[11px] text-neutral-500 mt-1">Payment receipts, approvals and draw results will appear here.</p>
+                        </div>
+                      ) : (
+                        notifications.map(n => (
+                          <div
+                            key={n.id}
+                            onClick={() => handleNotifClick(n.id)}
+                            className={`p-3.5 hover:bg-neutral-50 transition-colors cursor-pointer flex items-start gap-3 ${
+                              !n.isRead ? 'bg-amber-50/40 font-medium' : ''
+                            }`}
+                          >
+                            <div className={`p-2 rounded-xl shrink-0 mt-0.5 ${
+                              n.type.includes('APPROVED') || n.type.includes('DISBURSED') 
+                                ? 'bg-emerald-100 text-emerald-800' 
+                                : n.type.includes('ANNOUNCEMENT')
+                                  ? 'bg-purple-100 text-purple-800'
+                                  : 'bg-primary-50 text-primary-900'
+                            }`}>
+                              {n.type.includes('DISBURSED') ? <Award className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-1">
+                                <p className="font-bold text-neutral-900 truncate">{n.title}</p>
+                                <span className="text-[10px] text-neutral-400 whitespace-nowrap">
+                                  {formatDate(n.timestamp)}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-neutral-600 mt-0.5 leading-snug">{n.message}</p>
+                              {n.metadata?.amount && (
+                                <span className="inline-block mt-1.5 px-2 py-0.5 bg-neutral-100 text-neutral-700 font-extrabold text-[10px] rounded-md">
+                                  Amount: {formatCurrency(n.metadata.amount)}
+                                </span>
+                              )}
+                            </div>
+                            {!n.isRead && (
+                              <span className="w-2 h-2 rounded-full bg-danger shrink-0 mt-2"></span>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="p-2.5 bg-neutral-50 border-t border-neutral-200 text-center">
+                      <button
+                        onClick={() => {
+                          setIsNotifOpen(false);
+                          setActiveTab('prizesRewards');
+                        }}
+                        className="text-xs font-bold text-primary-900 hover:underline flex items-center justify-center gap-1 mx-auto cursor-pointer"
+                      >
+                        <span>View All Announcements & Prizes</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -536,6 +718,22 @@ export const CustomerDashboard = () => {
             >
               <Layers className="w-4 h-4 mr-2" />
               My Portfolio & Chits
+            </button>
+            <button
+              onClick={() => setActiveTab('prizesRewards')}
+              className={`pb-3 px-4 font-bold text-sm border-b-2 flex items-center whitespace-nowrap transition-colors ${
+                activeTab === 'prizesRewards'
+                  ? 'border-purple-600 text-purple-900'
+                  : 'border-transparent text-neutral-500 hover:text-neutral-700'
+              }`}
+            >
+              <Award className="w-4 h-4 mr-2 text-purple-600" />
+              Prizes, Rewards & Announcements
+              {announcements.length > 0 && (
+                <span className="ml-2 px-2 py-0.5 text-[10px] bg-purple-100 text-purple-900 rounded-full font-bold">
+                  {announcements.length}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setActiveTab('regularPlanChart')}
@@ -581,7 +779,319 @@ export const CustomerDashboard = () => {
             </button>
           </div>
 
-          {activeTab === 'regularPlanChart' ? (
+          {activeTab === 'prizesRewards' ? (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              {/* Header Hero */}
+              <div className="bg-gradient-to-r from-purple-900 via-indigo-900 to-primary-900 rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-lg">
+                <div className="absolute -right-12 -bottom-12 w-64 h-64 bg-white/5 rounded-full blur-2xl"></div>
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                  <div className="space-y-2 max-w-2xl">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-xs font-bold uppercase tracking-wider text-amber-300">
+                      <Award className="w-3.5 h-3.5" />
+                      Prize Disbursal & Member Benefits Hub
+                    </div>
+                    <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
+                      Prizes, Rewards & Official Notices
+                    </h2>
+                    <p className="text-sm text-purple-100 font-medium">
+                      Track your won chit prize money claims, live auction dividend bonuses, and official announcements broadcasted by Jenista Chits.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      onClick={() => {
+                        const url = `${window.location.origin}/register?ref=${user?.id}`;
+                        navigator.clipboard.writeText(url);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }}
+                      className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-neutral-900 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-sm active:scale-95 cursor-pointer"
+                    >
+                      <Gift className="w-4 h-4" />
+                      <span>{copied ? 'Link Copied!' : 'Referral Reward (0.5% Off)'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* KPI Summary Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Metric 1: Total Won / Disbursed */}
+                <div className="bg-white rounded-2xl p-5 border border-neutral-200 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-neutral-500">Total Prize Disbursed</span>
+                    <div className="p-2 bg-emerald-50 text-emerald-800 rounded-xl">
+                      <Award className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <h3 className="text-2xl font-black text-emerald-700">
+                      {formatCurrency(
+                        myChits.reduce((acc, c) => acc + (c.isWithdrawn ? (Number(c.withdrawnAmount) || 0) : 0), 0)
+                      )}
+                    </h3>
+                    <p className="text-xs text-neutral-500 mt-1">
+                      {myChits.filter(c => c.isWithdrawn).length} chit(s) successfully disbursed
+                    </p>
+                  </div>
+                </div>
+
+                {/* Metric 2: Pending Claims */}
+                <div className="bg-white rounded-2xl p-5 border border-neutral-200 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-neutral-500">Claims in Verification</span>
+                    <div className="p-2 bg-amber-50 text-amber-800 rounded-xl">
+                      <History className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <h3 className="text-2xl font-black text-amber-700">
+                      {pendingWithdrawals.filter(w => w.status === 'PENDING_ADMIN_DISBURSAL').length}
+                    </h3>
+                    <p className="text-xs text-neutral-500 mt-1">
+                      Awaiting admin bank settlement
+                    </p>
+                  </div>
+                </div>
+
+                {/* Metric 3: Estimated Dividend Savings */}
+                <div className="bg-white rounded-2xl p-5 border border-neutral-200 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-neutral-500">Dividend Savings</span>
+                    <div className="p-2 bg-indigo-50 text-indigo-800 rounded-xl">
+                      <TrendingUp className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <h3 className="text-2xl font-black text-indigo-700">
+                      {formatCurrency(
+                        myChits.reduce((acc, c) => {
+                          const base = Number(c.totalValue || c.chitValue || 100000);
+                          return acc + Math.round(base * 0.12);
+                        }, 0)
+                      )}
+                    </h3>
+                    <p className="text-xs text-neutral-500 mt-1">
+                      Accumulated discount across active chits
+                    </p>
+                  </div>
+                </div>
+
+                {/* Metric 4: Official Announcements */}
+                <div className="bg-white rounded-2xl p-5 border border-neutral-200 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-neutral-500">Official Notices</span>
+                    <div className="p-2 bg-purple-50 text-purple-800 rounded-xl">
+                      <Megaphone className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <h3 className="text-2xl font-black text-purple-900">{announcements.length}</h3>
+                    <p className="text-xs text-neutral-500 mt-1">
+                      Live announcements published
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 1: Prize Claims & Disbursal Status */}
+              <div className="bg-white rounded-3xl p-6 border border-neutral-200 shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-neutral-100">
+                  <div>
+                    <h3 className="text-lg font-black text-neutral-900 flex items-center gap-2">
+                      <Award className="w-5 h-5 text-purple-700" />
+                      Prize Disbursal & Claim Status
+                    </h3>
+                    <p className="text-xs text-neutral-500 mt-0.5">
+                      Verify winning certificates, submit bank accounts for payout, and track transfer reference numbers.
+                    </p>
+                  </div>
+                </div>
+
+                {myChits.length === 0 ? (
+                  <div className="p-8 text-center text-neutral-400">
+                    <Award className="w-10 h-10 mx-auto text-neutral-300 mb-2" />
+                    <p className="font-bold text-neutral-700 text-sm">No Active Chits Found</p>
+                    <p className="text-xs text-neutral-500 mt-1">Enroll in a chit group to participate in auctions and win prize money.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {myChits.map((chit) => {
+                      const isDisbursed = chit.isWithdrawn || chit.withdrawnAmount > 0;
+                      const pendingW = pendingWithdrawals.find(w => w.groupId === chit.groupId && w.status === 'PENDING_ADMIN_DISBURSAL');
+                      const chitVal = Number(chit.totalValue || chit.chitValue || 100000);
+                      const foremanFee = Math.round(chitVal * 0.05);
+                      const netPrize = chitVal - foremanFee;
+
+                      return (
+                        <div key={chit.groupId} className={`p-5 rounded-2xl border transition-all ${
+                          isDisbursed 
+                            ? 'bg-emerald-50/40 border-emerald-200' 
+                            : pendingW
+                              ? 'bg-amber-50/40 border-amber-200'
+                              : 'bg-white border-neutral-200 hover:border-neutral-300'
+                        }`}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-700">
+                                {chit.schemeType || 'Chit Group'}
+                              </span>
+                              <h4 className="font-black text-base text-neutral-900 mt-1">
+                                {chit.groupName || chit.groupId}
+                              </h4>
+                              <p className="text-xs text-neutral-500 font-mono">
+                                Ticket #{chit.ticketNumber || 'T-01'} · Face Value: {formatCurrency(chitVal)}
+                              </p>
+                            </div>
+
+                            {isDisbursed ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Disbursed
+                              </span>
+                            ) : pendingW ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-800 border border-amber-200">
+                                <Clock className="w-3.5 h-3.5" /> Processing Claim
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-primary-50 text-primary-900 border border-primary-200">
+                                Draw Active
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mt-4 pt-3 border-t border-neutral-100/80 flex items-center justify-between text-xs">
+                            <div>
+                              <span className="text-[11px] text-neutral-500 block">Eligible Net Prize:</span>
+                              <span className="font-extrabold text-neutral-900 text-sm">{formatCurrency(netPrize)}</span>
+                            </div>
+
+                            {isDisbursed ? (
+                              <div className="text-right">
+                                <span className="text-[10px] text-emerald-800 font-bold block">
+                                  Paid: {formatCurrency(chit.withdrawnAmount || netPrize)}
+                                </span>
+                                <span className="text-[10px] text-neutral-400">Ref: {chit.withdrawnRef || 'DISB-VERIFIED'}</span>
+                              </div>
+                            ) : pendingW ? (
+                              <div className="text-right">
+                                <span className="text-[10px] font-bold text-amber-800 block">
+                                  Submitted to Accounts
+                                </span>
+                                <span className="text-[10px] text-neutral-500">{formatDate(pendingW.requestedAt)}</span>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => handleOpenWithdraw(chit)}
+                                className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition-all shadow-2xs hover:scale-105 active:scale-95 cursor-pointer"
+                              >
+                                Claim Prize Money
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Section 2: Published Official Announcements */}
+              <div className="bg-white rounded-3xl p-6 border border-neutral-200 shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-neutral-100">
+                  <div>
+                    <h3 className="text-lg font-black text-neutral-900 flex items-center gap-2">
+                      <Megaphone className="w-5 h-5 text-amber-600" />
+                      Official Company Announcements
+                    </h3>
+                    <p className="text-xs text-neutral-500 mt-0.5">
+                      Notices, prize winner declarations, holiday updates, and festive dividend schemes.
+                    </p>
+                  </div>
+                  <span className="text-xs font-bold text-neutral-500">
+                    {announcements.length} Published
+                  </span>
+                </div>
+
+                {announcements.length === 0 ? (
+                  <div className="p-8 text-center text-neutral-400">
+                    <Megaphone className="w-8 h-8 mx-auto text-neutral-300 mb-2" />
+                    <p className="font-bold text-neutral-700 text-sm">No announcements at this time</p>
+                    <p className="text-xs text-neutral-500 mt-1">Check back later for auction dates and festive dividends.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {announcements.map((a) => (
+                      <div key={a.id} className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200 hover:border-neutral-300 transition-all">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                              a.category === 'PRIZE_WINNER' 
+                                ? 'bg-purple-100 text-purple-800' 
+                                : a.category === 'AUCTION_RESULT'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : a.category === 'FESTIVAL_OFFER'
+                                    ? 'bg-amber-100 text-amber-900'
+                                    : 'bg-neutral-200 text-neutral-800'
+                            }`}>
+                              {a.category.replace('_', ' ')}
+                            </span>
+                            {(a.pinned || (a as any).priority === 'URGENT') && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-danger text-white uppercase">
+                                Urgent
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[11px] text-neutral-400 font-medium">
+                            {formatDate(a.publishedAt)}
+                          </span>
+                        </div>
+                        <h4 className="font-bold text-sm text-neutral-900">{a.title}</h4>
+                        <p className="text-xs text-neutral-600 mt-1.5 leading-relaxed">{a.content || (a as any).message}</p>
+                        <div className="mt-3 pt-2 border-t border-neutral-200 flex items-center justify-between text-[11px] text-neutral-400">
+                          <span>Notice ID: {a.id}</span>
+                          <span className="font-medium text-neutral-600">By: {a.author}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Section 3: Subscriber Referral & Rewards Program */}
+              <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-3xl p-6 border border-amber-200/80 shadow-2xs space-y-4">
+                <div className="flex items-start gap-4">
+                  <div className="p-3 bg-amber-500 text-white rounded-2xl shadow-sm shrink-0">
+                    <Gift className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-base font-black text-amber-950">Jenista Chit Member Referral Program</h3>
+                    <p className="text-xs text-amber-900/80 leading-relaxed">
+                      Invite friends, family, or business partners to start a disciplined chit savings plan with Jenista Chits. For every successful member who joins with your referral link, you receive a <strong>0.5% dividend bonus</strong> credited directly towards your upcoming monthly installment!
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+                  <div className="flex-1 w-full bg-white px-3.5 py-2.5 rounded-xl border border-amber-200 font-mono text-xs text-neutral-800 truncate shadow-inner">
+                    {`${window.location.origin}/register?ref=${user?.id}`}
+                  </div>
+                  <button
+                    onClick={() => {
+                      const url = `${window.location.origin}/register?ref=${user?.id}`;
+                      navigator.clipboard.writeText(url);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                    className="w-full sm:w-auto px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shrink-0 active:scale-95 shadow-sm cursor-pointer"
+                  >
+                    {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    <span>{copied ? 'Copied to Clipboard!' : 'Copy My Referral Link'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === 'regularPlanChart' ? (
             <RegularPlanSchedule />
           ) : activeTab === 'fixedPlanChart' ? (
             <FixedPlanSchedule />

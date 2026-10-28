@@ -1,5 +1,6 @@
 import { fetchClient } from '../api/client';
 import { resolveBankForPayment, recordBankCredit } from './bankAccountsData';
+import { addSystemNotification } from './notificationsData';
 
 export interface PaymentRequest {
   id: string;
@@ -196,6 +197,25 @@ export const savePaymentRequest = async (req: PaymentRequest) => {
   const updated = [req, ...filtered];
   localStorage.setItem('paymentRequests', JSON.stringify(updated));
 
+  // 1b. Dispatch System Notification for Admin & Staff
+  try {
+    addSystemNotification({
+      type: 'PAYMENT_PENDING',
+      title: 'New Online Payment Submitted',
+      message: `${req.customerName || 'Customer'} submitted ₹${Number(req.amount).toLocaleString('en-IN')} via ${req.paymentMode} for ${req.groupName || req.groupId} (Ref: ${req.referenceNo})`,
+      targetRole: 'ADMIN',
+      metadata: {
+        customerId: req.customerId,
+        customerName: req.customerName,
+        groupId: req.groupId,
+        amount: Number(req.amount),
+        referenceNo: req.referenceNo
+      }
+    });
+  } catch (err) {
+    console.warn('Could not add system notification for payment:', err);
+  }
+
   // 2. Broadcast immediately
   notifyPaymentSync(req);
 
@@ -369,6 +389,40 @@ export const approvePaymentRequestAction = async (req: PaymentRequest) => {
     }
   } catch { }
 
+  // 8. Dispatch notification to Customer and Admin
+  try {
+    addSystemNotification({
+      type: 'PAYMENT_APPROVED',
+      title: 'Payment Approved & Verified! 🎉',
+      message: `Your payment of ₹${Number(req.amount).toLocaleString('en-IN')} for ${req.groupName || req.groupId} (Ref: ${req.referenceNo}) has been approved and credited.`,
+      targetRole: 'CUSTOMER',
+      targetUserId: req.customerId,
+      metadata: {
+        customerId: req.customerId,
+        customerName: req.customerName,
+        groupId: req.groupId,
+        amount: Number(req.amount),
+        referenceNo: req.referenceNo
+      }
+    });
+
+    addSystemNotification({
+      type: 'PAYMENT_APPROVED',
+      title: 'Payment Verified & Credited',
+      message: `Verified payment of ₹${Number(req.amount).toLocaleString('en-IN')} from ${req.customerName} for ${req.groupName || req.groupId}. Deposited to ${assignedBank?.bankName || 'Bank'}.`,
+      targetRole: 'ADMIN',
+      metadata: {
+        customerId: req.customerId,
+        customerName: req.customerName,
+        groupId: req.groupId,
+        amount: Number(req.amount),
+        referenceNo: req.referenceNo
+      }
+    });
+  } catch (err) {
+    console.warn('Could not dispatch approval notifications:', err);
+  }
+
   notifyPaymentSync();
 };
 
@@ -389,6 +443,26 @@ export const rejectPaymentRequestAction = async (reqId: string) => {
     });
   } catch (err) {
     console.warn('Could not sync rejected payment status to backend:', err);
+  }
+
+  try {
+    const targetReq = allReqs.find((r: any) => r.id === reqId);
+    if (targetReq) {
+      addSystemNotification({
+        type: 'SYSTEM',
+        title: 'Payment Verification Rejected',
+        message: `Your payment of ₹${Number(targetReq.amount).toLocaleString('en-IN')} for ${targetReq.groupName || targetReq.groupId} (Ref: ${targetReq.referenceNo}) could not be verified. Please check reference details or contact branch support.`,
+        targetRole: 'CUSTOMER',
+        targetUserId: targetReq.customerId,
+        metadata: {
+          customerId: targetReq.customerId,
+          amount: Number(targetReq.amount),
+          referenceNo: targetReq.referenceNo
+        }
+      });
+    }
+  } catch (err) {
+    console.warn('Could not dispatch rejection notification:', err);
   }
 
   notifyPaymentSync();
