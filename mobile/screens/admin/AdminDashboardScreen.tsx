@@ -18,9 +18,11 @@ import { Colors } from '../../theme/colors';
 import { useAuth } from '../../store/AuthContext';
 import { DataSyncManager } from '../../services/dataSync';
 import { formatCurrency } from '../../utils/format';
+import { MobileNotificationsManager } from '../../services/notificationsData';
 
 export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { user } = useAuth();
+  const [unreadNotifsCount, setUnreadNotifsCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -72,12 +74,14 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
 
   const loadAllMetrics = async () => {
     try {
-      const [custs, groups, ledger] = await Promise.all([
+      const [custs, groups, ledger, notifs] = await Promise.all([
         DataSyncManager.getCustomers(),
         DataSyncManager.getChitGroups(),
         DataSyncManager.getLedgerTransactions(),
+        MobileNotificationsManager.getNotifications().catch(() => []),
       ]);
 
+      setUnreadNotifsCount(notifs.filter((n: any) => !n.isRead).length);
       setAllCustomersList(custs);
       setAvailableGroups(groups);
       if (groups.length > 0 && !selectedGroupId) {
@@ -288,11 +292,17 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
           <View style={styles.headerRightActions}>
             <TouchableOpacity
               style={styles.iconBtn}
-              onPress={() => navigation.navigate('Reports')}
+              onPress={() => navigation.navigate('Notifications')}
               activeOpacity={0.7}
             >
               <Ionicons name="notifications-outline" size={20} color={Colors.white} />
-              <View style={styles.notifBadge} />
+              {unreadNotifsCount > 0 && (
+                <View style={styles.notifBadge}>
+                  <Text style={styles.notifBadgeText}>
+                    {unreadNotifsCount > 9 ? '9+' : unreadNotifsCount}
+                  </Text>
+                </View>
+              )}
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -1096,12 +1106,20 @@ const styles = StyleSheet.create({
   },
   notifBadge: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: Colors.gold.primary,
+    top: 4,
+    right: 4,
+    minWidth: 15,
+    height: 15,
+    borderRadius: 7.5,
+    backgroundColor: '#dc2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  notifBadgeText: {
+    color: '#fff',
+    fontSize: 8,
+    fontWeight: '900',
   },
   userAvatarBtn: {
     width: 38,

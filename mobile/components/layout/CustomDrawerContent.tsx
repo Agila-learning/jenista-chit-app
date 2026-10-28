@@ -123,6 +123,27 @@ export const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props
               isActive={currentRoute === 'PaymentVerifications'}
               onPress={() => navigateTo('PaymentVerifications')}
             />
+
+            <DrawerItem
+              title="Notifications & Alerts"
+              icon="notifications-outline"
+              isActive={currentRoute === 'Notifications'}
+              onPress={() => navigateTo('Notifications')}
+            />
+
+            <DrawerItem
+              title="Website Leads CRM"
+              icon="globe-outline"
+              isActive={currentRoute === 'Leads'}
+              onPress={() => navigateTo('Leads')}
+            />
+
+            <DrawerItem
+              title="Chit Calculator"
+              icon="calculator-outline"
+              isActive={currentRoute === 'ChitCalculator'}
+              onPress={() => navigateTo('ChitCalculator')}
+            />
           </>
         )}
 

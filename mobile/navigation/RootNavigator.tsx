@@ -25,6 +25,9 @@ import { ManageBanksScreen } from '../screens/admin/ManageBanksScreen';
 import { LedgerScreen } from '../screens/admin/LedgerScreen';
 import { PaymentVerificationsScreen } from '../screens/admin/PaymentVerificationsScreen';
 import { SettingsScreen } from '../screens/admin/SettingsScreen';
+import { NotificationsScreen } from '../screens/admin/NotificationsScreen';
+import { LeadsScreen } from '../screens/admin/LeadsScreen';
+import { ChitCalculatorScreen } from '../screens/admin/ChitCalculatorScreen';
 import { StaffDashboardScreen } from '../screens/staff/StaffDashboardScreen';
 import { CustomerDashboardScreen } from '../screens/customer/CustomerDashboardScreen';
 
@@ -86,6 +89,21 @@ const AdminDrawer = () => {
         name="PaymentVerifications"
         component={PaymentVerificationsScreen}
         options={{ title: 'Payment Verifications' }}
+      />
+      <Drawer.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{ title: 'Notifications & Broadcasts' }}
+      />
+      <Drawer.Screen
+        name="Leads"
+        component={LeadsScreen}
+        options={{ title: 'Website Enquiries & Leads' }}
+      />
+      <Drawer.Screen
+        name="ChitCalculator"
+        component={ChitCalculatorScreen}
+        options={{ title: 'Chit Scheme Calculator' }}
       />
       <Drawer.Screen
         name="ManageBanks"
@@ -175,6 +193,16 @@ const CustomerStack = () => {
         name="CustomerSchedule"
         component={CustomerScheduleScreen}
         options={{ title: 'Chit Installment Schedule' }}
+      />
+      <Stack.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{ title: 'Notices & Announcements' }}
+      />
+      <Stack.Screen
+        name="ChitCalculator"
+        component={ChitCalculatorScreen}
+        options={{ title: 'Chit Scheme Calculator' }}
       />
     </Stack.Navigator>
   );

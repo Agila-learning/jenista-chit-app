@@ -31,14 +31,22 @@ import {
   defaultAuctionCategories,
 } from '../../utils/chitCalculations';
 import { buildCustomerChitSchedule } from '../../utils/customerChitSchedule';
+import {
+  MobileNotificationsManager,
+  SystemNotification,
+  Announcement,
+} from '../../services/notificationsData';
 
 export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'myChits' | 'regularPlan' | 'fixedPlan' | 'auctionPlan'>('myChits');
+  const [activeTab, setActiveTab] = useState<'myChits' | 'regularPlan' | 'fixedPlan' | 'auctionPlan' | 'prizesRewards'>('myChits');
   const [customerRecord, setCustomerRecord] = useState<any>(null);
   const [chits, setChits] = useState<CustomerChit[]>([]);
   const [totalInvested, setTotalInvested] = useState(0);
   const [pendingDues, setPendingDues] = useState(0);
+  const [notifications, setNotifications] = useState<SystemNotification[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [showNotifModal, setShowNotifModal] = useState(false);
   const [companyBank, setCompanyBank] = useState<any>(null);
   const [allCompanyBanks, setAllCompanyBanks] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -79,13 +87,18 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
   const fetchCustomerProfile = async () => {
     try {
       if (!user) return;
-      const [allCustomers, banks, ledgerRaw, reqsRaw, wReqsRaw] = await Promise.all([
+      const [allCustomers, banks, ledgerRaw, reqsRaw, wReqsRaw, notifs, anns] = await Promise.all([
         DataSyncManager.getCustomers(),
         DataSyncManager.getBankAccounts(),
         secureStorage.getItem('synced_ledger'),
         secureStorage.getItem('payment_requests'),
         secureStorage.getItem('withdrawal_requests'),
+        MobileNotificationsManager.getNotificationsForUser(user?.id, 'CUSTOMER'),
+        MobileNotificationsManager.getAnnouncements(),
       ]);
+
+      setNotifications(notifs || []);
+      setAnnouncements(anns || []);
 
       if (banks && banks.length > 0) {
         setAllCompanyBanks(banks);
@@ -350,6 +363,20 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
             </Text>
           </View>
           <TouchableOpacity
+            style={styles.notifIconBtn}
+            onPress={() => setShowNotifModal(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="notifications-outline" size={18} color={Colors.white} />
+            {notifications.filter((n) => !n.isRead).length > 0 && (
+              <View style={styles.headerNotifBadge}>
+                <Text style={styles.headerNotifBadgeText}>
+                  {notifications.filter((n) => !n.isRead).length > 9 ? '9+' : notifications.filter((n) => !n.isRead).length}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
             style={styles.referralBtn}
             onPress={() => copyToClipboard(`https://jenistachits.com/register?ref=${user?.id}`, 'ref-link')}
           >
@@ -448,6 +475,21 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
           />
           <Text style={[styles.tabButtonText, activeTab === 'auctionPlan' && styles.tabButtonTextActive]}>
             Auction (20M)
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'prizesRewards' && styles.tabButtonActive]}
+          onPress={() => setActiveTab('prizesRewards')}
+          activeOpacity={0.8}
+        >
+          <Ionicons
+            name="trophy"
+            size={15}
+            color={activeTab === 'prizesRewards' ? Colors.gold.dark : Colors.textSecondary}
+          />
+          <Text style={[styles.tabButtonText, activeTab === 'prizesRewards' && styles.tabButtonTextActive]}>
+            Prizes & Notices
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -893,6 +935,177 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
         </View>
       )}
 
+      {/* TAB 5: PRIZES, REWARDS & ANNOUNCEMENTS */}
+      {activeTab === 'prizesRewards' && (
+        <View style={styles.prizesRewardsContainer}>
+          {/* Festive Dividend Promotion Banner */}
+          <View style={styles.festivePromoCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={styles.trophyCircle}>
+                <Ionicons name="sparkles" size={20} color={Colors.gold.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.festivePromoTag}>FESTIVAL PRIVILEGE 2026</Text>
+                <Text style={styles.festivePromoTitle}>1% Festive Dividend Credit</Text>
+                <Text style={styles.festivePromoSub}>
+                  Pay before the 10th of every month to receive direct dividend cashback applied to your account.
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Prize Claims & Disbursals Section */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Prize Money Claims & Disbursals</Text>
+          </View>
+
+          {chits.length === 0 && pendingWithdrawals.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Ionicons name="trophy-outline" size={36} color={Colors.textMuted} />
+              <Text style={styles.emptyTitle}>No Prize Claims Yet</Text>
+              <Text style={styles.emptySub}>
+                When you win an auction or complete a fixed plan, claim your prize payout here.
+              </Text>
+            </View>
+          ) : (
+            <View style={{ gap: 10, paddingHorizontal: 16 }}>
+              {chits.map((item, idx) => {
+                const chitVal = item.chitValue || 100000;
+                const netPrize = chitVal * 0.95;
+                const wReq = pendingWithdrawals.find((w) => w.groupId === item.groupId);
+                const isDisbursed = item.isWithdrawn || (wReq && wReq.status === 'DISBURSED');
+                const isPending = wReq && wReq.status === 'PENDING_ADMIN_DISBURSAL';
+
+                return (
+                  <View key={`prize-${idx}`} style={styles.prizeCard}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.prizeCardTitle}>{item.groupName}</Text>
+                        <Text style={styles.prizeCardSub}>
+                          Ticket #{item.ticketNumber} • Value: {formatCurrency(chitVal)}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.prizeStatusPill,
+                          isDisbursed
+                            ? styles.prizeStatusDisbursed
+                            : isPending
+                            ? styles.prizeStatusPending
+                            : styles.prizeStatusReady,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.prizeStatusText,
+                            isDisbursed
+                              ? { color: '#065f46' }
+                              : isPending
+                              ? { color: '#92400e' }
+                              : { color: Colors.navy.primary },
+                          ]}
+                        >
+                          {isDisbursed ? '✓ DISBURSED' : isPending ? '⏳ UNDER REVIEW' : 'ELIGIBLE'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.prizeCardDivider} />
+
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <View>
+                        <Text style={styles.subLabel}>NET PRIZE (95%)</Text>
+                        <Text style={[styles.mainVal, { color: Colors.gold.dark }]}>{formatCurrency(netPrize)}</Text>
+                      </View>
+
+                      {!isDisbursed && !isPending && (
+                        <TouchableOpacity
+                          style={styles.claimPrizeActionBtn}
+                          onPress={() => handleOpenWithdraw(item)}
+                          activeOpacity={0.85}
+                        >
+                          <Ionicons name="wallet-outline" size={14} color={Colors.white} />
+                          <Text style={styles.claimPrizeActionText}>Claim Prize</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {isPending && (
+                        <Text style={styles.pendingReviewNotice}>
+                          Payment details submitted. Disbursal in progress.
+                        </Text>
+                      )}
+
+                      {isDisbursed && (
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={{ fontSize: 11, color: '#059669', fontWeight: '800' }}>
+                            Transferred to Bank/UPI
+                          </Text>
+                          <Text style={{ fontSize: 10, color: Colors.textMuted }}>
+                            Ref: {wReq?.id || 'DISBURSED'}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
+          {/* Company Announcements & Circulars */}
+          <View style={[styles.sectionHeader, { marginTop: 14 }]}>
+            <Text style={styles.sectionTitle}>Company Notices & Broadcasts</Text>
+            <View style={styles.annBadge}>
+              <Text style={styles.annBadgeText}>{announcements.length} Active</Text>
+            </View>
+          </View>
+
+          <View style={{ gap: 10, paddingHorizontal: 16 }}>
+            {announcements.map((ann) => (
+              <View key={ann.id} style={styles.announcementCard}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View style={styles.annCategoryPill}>
+                    <Text style={styles.annCategoryText}>{ann.category.replace('_', ' ')}</Text>
+                  </View>
+                  <Text style={styles.annDateText}>{formatDate(ann.publishedAt)}</Text>
+                </View>
+                <Text style={styles.annTitle}>{ann.title}</Text>
+                <Text style={styles.annContent}>{ann.content}</Text>
+                <View style={styles.annFooter}>
+                  <Ionicons name="shield-checkmark" size={12} color={Colors.gold.dark} />
+                  <Text style={styles.annAuthor}>Verified Notice by {ann.author}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+
+          {/* Member Referral Reward Card */}
+          <View style={styles.referralHeroCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={[styles.trophyCircle, { backgroundColor: '#3b82f6' }]}>
+                <Ionicons name="gift" size={20} color={Colors.white} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.referralHeroTitle}>Member Referral Rewards</Text>
+                <Text style={styles.referralHeroSub}>
+                  Earn 0.5% dividend bonus credit for every friend or colleague who joins Jenista Chits through your link.
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={styles.referralHeroCopyBtn}
+              onPress={() => copyToClipboard(`https://jenistachits.com/register?ref=${user?.id}`, 'ref-link-tab')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="share-social-outline" size={15} color={Colors.white} />
+              <Text style={styles.referralHeroCopyText}>
+                {copiedKey === 'ref-link-tab' ? '✓ Link Copied' : 'Share My Referral Link'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {/* 3. MODAL: SUBMIT PAYMENT */}
       {paymentModalChit && (
         <Modal visible transparent animationType="fade" onRequestClose={() => setPaymentModalChit(null)}>
@@ -1191,6 +1404,107 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
           </View>
         </Modal>
       )}
+
+      {/* 5. MODAL: NOTIFICATIONS & ANNOUNCEMENTS SLIDE-UP */}
+      <Modal visible={showNotifModal} transparent animationType="slide" onRequestClose={() => setShowNotifModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { maxHeight: '82%' }]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Notifications & Notices</Text>
+                <Text style={styles.modalSubtitle}>
+                  {notifications.filter((n) => !n.isRead).length} unread updates
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                {notifications.some((n) => !n.isRead) && (
+                  <TouchableOpacity
+                    onPress={async () => {
+                      await MobileNotificationsManager.markAllAsRead();
+                      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: Colors.gold.dark }}>
+                      Mark all read
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={() => setShowNotifModal(false)}>
+                  <Ionicons name="close" size={22} color={Colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <ScrollView style={{ marginTop: 8 }} showsVerticalScrollIndicator={false}>
+              {notifications.length === 0 ? (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <Ionicons name="notifications-off-outline" size={40} color={Colors.textMuted} />
+                  <Text style={{ marginTop: 8, fontSize: 14, fontWeight: '700', color: Colors.textMuted }}>
+                    No notifications right now
+                  </Text>
+                </View>
+              ) : (
+                notifications.map((item) => {
+                  const isPayment = item.type.includes('PAYMENT');
+                  const isPrize = item.type.includes('PRIZE');
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={[styles.notifItemCard, !item.isRead && styles.notifItemUnread]}
+                      onPress={async () => {
+                        await MobileNotificationsManager.markAsRead(item.id);
+                        setNotifications((prev) =>
+                          prev.map((n) => (n.id === item.id ? { ...n, isRead: true } : n))
+                        );
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <View
+                        style={[
+                          styles.notifIconCircle,
+                          {
+                            backgroundColor: isPayment
+                              ? '#d1fae5'
+                              : isPrize
+                              ? '#fef3c7'
+                              : '#e0e7ff',
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name={
+                            isPayment
+                              ? 'checkmark-circle'
+                              : isPrize
+                              ? 'trophy'
+                              : 'notifications'
+                          }
+                          size={18}
+                          color={
+                            isPayment
+                              ? '#059669'
+                              : isPrize
+                              ? Colors.gold.dark
+                              : Colors.navy.primary
+                          }
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Text style={styles.notifItemTitle}>{item.title}</Text>
+                          {!item.isRead && <View style={styles.unreadDot} />}
+                        </View>
+                        <Text style={styles.notifItemMessage}>{item.message}</Text>
+                        <Text style={styles.notifItemTime}>{formatDate(item.timestamp)}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       <View style={{ height: 40 }} />
     </ScrollView>
@@ -2034,6 +2348,271 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     color: Colors.white,
+  },
+  notifIconBtn: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    position: 'relative',
+  },
+  headerNotifBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: '#dc2626',
+    borderRadius: 7,
+    minWidth: 14,
+    height: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  headerNotifBadgeText: {
+    fontSize: 8,
+    fontWeight: '900',
+    color: Colors.white,
+  },
+  prizesRewardsContainer: {
+    gap: 12,
+    marginBottom: 16,
+  },
+  festivePromoCard: {
+    backgroundColor: '#1e1b4b',
+    marginHorizontal: 16,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#3730a3',
+  },
+  trophyCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#312e81',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  festivePromoTag: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.gold.primary,
+    letterSpacing: 0.5,
+  },
+  festivePromoTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.white,
+    marginTop: 2,
+  },
+  festivePromoSub: {
+    fontSize: 11,
+    color: '#c7d2fe',
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  prizeCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  prizeCardTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  prizeCardSub: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  prizeStatusPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  prizeStatusDisbursed: {
+    backgroundColor: '#d1fae5',
+  },
+  prizeStatusPending: {
+    backgroundColor: '#fef3c7',
+  },
+  prizeStatusReady: {
+    backgroundColor: '#e0e7ff',
+  },
+  prizeStatusText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  prizeCardDivider: {
+    height: 1,
+    backgroundColor: '#f1f5f9',
+    marginVertical: 10,
+  },
+  claimPrizeActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.navy.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  claimPrizeActionText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.white,
+  },
+  pendingReviewNotice: {
+    fontSize: 11,
+    fontStyle: 'italic',
+    color: '#b45309',
+    maxWidth: 160,
+    textAlign: 'right',
+  },
+  annBadge: {
+    backgroundColor: '#e0e7ff',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  annBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.navy.primary,
+  },
+  announcementCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  annCategoryPill: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  annCategoryText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.textMuted,
+  },
+  annDateText: {
+    fontSize: 11,
+    color: Colors.textMuted,
+  },
+  annTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.text,
+    marginTop: 8,
+  },
+  annContent: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 4,
+    lineHeight: 18,
+  },
+  annFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f8fafc',
+  },
+  annAuthor: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.gold.dark,
+  },
+  referralHeroCard: {
+    backgroundColor: '#0f172a',
+    marginHorizontal: 16,
+    marginTop: 6,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#1e293b',
+  },
+  referralHeroTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.white,
+  },
+  referralHeroSub: {
+    fontSize: 11,
+    color: '#94a3b8',
+    marginTop: 3,
+    lineHeight: 16,
+  },
+  referralHeroCopyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#2563eb',
+    marginTop: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  referralHeroCopyText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.white,
+  },
+  notifItemCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#f8fafc',
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  notifItemUnread: {
+    backgroundColor: '#eff6ff',
+    borderColor: '#bfdbfe',
+  },
+  notifIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notifItemTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#2563eb',
+  },
+  notifItemMessage: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  notifItemTime: {
+    fontSize: 10,
+    color: Colors.textMuted,
+    marginTop: 4,
   },
 });
 

@@ -10,21 +10,28 @@ import { isMockCustomer, isMockGroup } from './cleanMockData';
  */
 
 const LIVE_RENDER_API = 'https://jenista-chits.onrender.com/api/v1';
-const LOCAL_API = 'http://192.168.1.39:3000/api/v1'; // Local Wi-Fi address for physical phones & emulators
+const CANDIDATE_LOCAL_APIS = [
+  'http://localhost:3000/api/v1',
+  'http://192.168.1.35:3000/api/v1',
+  'http://10.0.2.2:3000/api/v1',
+  'http://192.168.1.39:3000/api/v1',
+];
 
 export const getActiveBaseUrl = async (): Promise<string> => {
-  // Test if local backend is reachable first, else fallback smoothly to live Render API
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 1200);
-    const res = await fetch(`${LOCAL_API.replace('/api/v1', '')}/health`, {
-      signal: controller.signal,
-    }).catch(() => null);
-    clearTimeout(timeout);
-    if (res && res.status === 200) {
-      return LOCAL_API;
-    }
-  } catch {}
+  // Test if any local backend is reachable first, else fallback smoothly to live Render API
+  for (const candidate of CANDIDATE_LOCAL_APIS) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 600);
+      const res = await fetch(`${candidate.replace('/api/v1', '')}/health`, {
+        signal: controller.signal,
+      }).catch(() => null);
+      clearTimeout(timeout);
+      if (res && res.status === 200) {
+        return candidate;
+      }
+    } catch {}
+  }
   return LIVE_RENDER_API;
 };
 
