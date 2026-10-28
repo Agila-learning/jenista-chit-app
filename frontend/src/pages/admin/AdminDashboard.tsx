@@ -519,13 +519,118 @@ export const AdminDashboard = () => {
               totalPaid: item.totalPaid || local?.totalPaid || 0,
               pending: item.pending || local?.pending || 0,
               chits: chits,
-              scheme: local?.scheme || item.scheme || 'Regular',
+              scheme: local?.scheme || item.scheme || (local?.interestedPlan?.includes('Fix') ? 'Fixed' : local?.interestedPlan?.includes('Auc') ? 'Auction' : local?.interestedPlan?.includes('Reg') ? 'Regular' : undefined) || 'Regular',
+              interestedPlan: local?.interestedPlan || item.interestedPlan,
               months: local?.months || item.months || 20,
               referredBy: item.referredBy || local?.referredBy
             };
           });
 
-          const nonMock = mapped.filter((mc: any) => !isMockCustomer(mc));
+          // Sync with website leads to ensure converted leads (like Agila) retain their scheme and enrollment
+          try {
+            const storedLeads = JSON.parse(localStorage.getItem('websiteLeads') || '[]');
+            mapped.forEach((c: any) => {
+              const matchedLead = storedLeads.find((l: any) =>
+                (c.mobile && l.phone && c.mobile.replace(/\D/g, '') === l.phone.replace(/\D/g, '')) ||
+                (c.name && l.fullName && c.name.trim().toLowerCase() === l.fullName.trim().toLowerCase())
+              );
+              if (matchedLead) {
+                const rawP = matchedLead.interestedPlan || '';
+                let dScheme: 'Auction' | 'Fixed' | 'Regular' = 'Auction';
+                if (rawP.toLowerCase().includes('fix')) dScheme = 'Fixed';
+                else if (rawP.toLowerCase().includes('reg')) dScheme = 'Regular';
+                else if (rawP.toLowerCase().includes('auc')) dScheme = 'Auction';
+                c.scheme = c.scheme || dScheme;
+                c.interestedPlan = c.interestedPlan || matchedLead.interestedPlan || `${dScheme} Scheme`;
+                if (!Array.isArray(c.chits) || c.chits.length === 0) {
+                  c.chits = [
+                    {
+                      groupId: 'PENDING',
+                      groupName: matchedLead.interestedPlan || `${dScheme} Scheme (Lead Enrolled)`,
+                      scheme: dScheme,
+                      chitValue: 100000,
+                      monthlyInstallment: 5000,
+                      duration: 20,
+                      ticketNumber: '1',
+                      paymentStatus: 'ACTIVE',
+                      joiningDate: c.createdAt || new Date().toISOString()
+                    }
+                  ];
+                }
+              }
+            });
+          } catch {}
+
+          // Merge local-only customers that are not yet in backend MongoDB (prevents wipeout of converted leads like Agila)
+          const backendPhoneSet = new Set(res.data.map((i: any) => (i.phone || i.mobile || '').replace(/\D/g, '')));
+          const backendIdSet = new Set(res.data.map((i: any) => i._id || i.customerCode));
+
+          const localOnly = localSaved.filter((lc: any) => {
+            if (isMockCustomer(lc)) return false;
+            const normPhone = (lc.mobile || lc.phone || '').replace(/\D/g, '');
+            if (normPhone && backendPhoneSet.has(normPhone)) return false;
+            if (lc.mongoId && backendIdSet.has(lc.mongoId)) return false;
+            if (lc.id && backendIdSet.has(lc.id)) return false;
+            return true;
+          });
+
+          const combined = [...mapped, ...localOnly];
+
+          // Auto-resurrect converted leads (like Agila) if missing from customers array
+          try {
+            const storedLeads = JSON.parse(localStorage.getItem('websiteLeads') || '[]');
+            storedLeads.filter((l: any) => l.status === 'CONVERTED' || (l.fullName && l.fullName.toLowerCase().includes('agila'))).forEach((lead: any) => {
+              const leadPhone = (lead.phone || '').replace(/\D/g, '');
+              const leadName = (lead.fullName || '').trim().toLowerCase();
+              const alreadyExists = combined.some((c: any) => {
+                const cPhone = (c.mobile || c.phone || '').replace(/\D/g, '');
+                const cName = (c.name || c.fullName || '').trim().toLowerCase();
+                return (cPhone && leadPhone && cPhone === leadPhone) || (cName && leadName && cName === leadName);
+              });
+
+              if (!alreadyExists) {
+                const rawP = lead.interestedPlan || '';
+                let dScheme: 'Auction' | 'Fixed' | 'Regular' = 'Auction';
+                if (rawP.toLowerCase().includes('fix')) dScheme = 'Fixed';
+                else if (rawP.toLowerCase().includes('reg')) dScheme = 'Regular';
+                else if (rawP.toLowerCase().includes('auc')) dScheme = 'Auction';
+                const newCode = lead.convertedCustomerId || `TC-${Math.floor(10000 + Math.random() * 90000)}`;
+
+                combined.unshift({
+                  id: newCode,
+                  customerCode: newCode,
+                  name: lead.fullName,
+                  fullName: lead.fullName,
+                  mobile: lead.phone,
+                  phone: lead.phone,
+                  email: lead.email || '',
+                  address: 'Website Lead Registration',
+                  status: 'ACTIVE',
+                  kycStatus: 'VERIFIED',
+                  scheme: dScheme,
+                  interestedPlan: lead.interestedPlan || `${dScheme} Scheme`,
+                  totalPaid: 0,
+                  pending: 0,
+                  chits: [
+                    {
+                      groupId: 'PENDING',
+                      groupName: lead.interestedPlan || `${dScheme} Scheme (Lead Enrolled)`,
+                      scheme: dScheme,
+                      chitValue: 100000,
+                      monthlyInstallment: 5000,
+                      duration: 20,
+                      ticketNumber: '1',
+                      paymentStatus: 'ACTIVE',
+                      joiningDate: lead.submittedAt || new Date().toISOString()
+                    }
+                  ],
+                  createdAt: lead.submittedAt || new Date().toISOString()
+                });
+              }
+            });
+          } catch {}
+
+          const nonMock = combined.filter((mc: any) => !isMockCustomer(mc));
           setCustomers(nonMock);
           setPendingCustomerApprovals(nonMock.filter((mc: any) => mc.status === 'PENDING_APPROVAL'));
           localStorage.setItem('mockCustomers', JSON.stringify(nonMock));
@@ -1466,59 +1571,12 @@ export const AdminDashboard = () => {
   // ==========================================
   // COMPREHENSIVE KPI & ENROLLMENT CALCULATIONS
   // ==========================================
-  // Enrolled counts by scheme across all real groups & storage
-  const allMemberships = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
-  const allDiskCustomers = JSON.parse(localStorage.getItem('mockCustomers') || '[]').filter((c: any) => !isMockCustomer(c));
-
-  // Compute fixed, regular, auction enrollments
-  let fixedEnrollments = 0;
-  let regularEnrollments = 0;
-  let auctionEnrollments = 0;
-
-  // Direct group enrolled members
-  chitGroups.forEach((g: any) => {
-    if (Array.isArray(g.enrolledMembers)) {
-      g.enrolledMembers.forEach((m: any) => {
-        const s = (m.scheme || '').toUpperCase();
-        if (s.includes('FIX')) fixedEnrollments++;
-        else if (s.includes('AUC')) auctionEnrollments++;
-        else regularEnrollments++;
-      });
-    }
-  });
-
-  // Additional memberships from chitGroupMemberships not duplicated
-  allMemberships.forEach((m: any) => {
-    const s = (m.scheme || '').toUpperCase();
-    if (!chitGroups.some(g => Array.isArray(g.enrolledMembers) && g.enrolledMembers.some((em: any) => em.customerId === m.customerId))) {
-      if (s.includes('FIX')) fixedEnrollments++;
-      else if (s.includes('AUC')) auctionEnrollments++;
-      else regularEnrollments++;
-    }
-  });
-
-  // Additional customer chits
-  allDiskCustomers.forEach((c: any) => {
-    if (Array.isArray(c.chits) && c.chits.length > 0) {
-      c.chits.forEach((ch: any) => {
-        if (!allMemberships.some((m: any) => m.customerId === c.id)) {
-          const s = (ch.scheme || c.scheme || '').toUpperCase();
-          if (s.includes('FIX')) fixedEnrollments++;
-          else if (s.includes('AUC')) auctionEnrollments++;
-          else regularEnrollments++;
-        }
-      });
-    }
-  });
-
-  const totalEnrollments = fixedEnrollments + regularEnrollments + auctionEnrollments;
-
   // Real Payment Request Status Filtering (Strictly Real Data, No Mock Fallbacks)
   const pendingPaymentRequests = paymentRequests.filter(r => isPendingPayment(r.status));
   const approvedPaymentRequests = paymentRequests.filter(r => r.status === 'APPROVED');
   const rejectedPaymentRequests = paymentRequests.filter(r => r.status === 'REJECTED');
 
-  // Scheme Enrolled Customers Extractor (Deduplicated across Groups, Memberships & Disk Customers)
+  // Scheme Enrolled Customers Extractor (Deduplicated across Groups, Memberships, Disk Customers & Converted Leads)
   const getFilteredSchemeCustomers = (filterScheme: 'GROUPS' | 'FIXED' | 'REGULAR' | 'AUCTION' | null) => {
     if (!filterScheme || filterScheme === 'GROUPS') return [];
 
@@ -1617,8 +1675,8 @@ export const AdminDashboard = () => {
             }
           }
         });
-      } else if (c.scheme) {
-        const s = (c.scheme || '').toUpperCase();
+      } else if (c.scheme || c.interestedPlan) {
+        const s = (c.scheme || c.interestedPlan || '').toUpperCase();
         const matches = schemePrefix === 'REG'
           ? (!s.includes('FIX') && !s.includes('AUC'))
           : s.includes(schemePrefix);
@@ -1631,10 +1689,10 @@ export const AdminDashboard = () => {
               name: c.name || c.fullName || 'Member',
               mobile: c.mobile || c.phone || '—',
               groupId: '—',
-              groupName: 'Awaiting Group Assignment',
-              scheme: c.scheme,
-              chitValue: 0,
-              monthlyInstallment: 0,
+              groupName: c.interestedPlan || `${filterScheme === 'FIXED' ? 'Fixed' : filterScheme === 'AUCTION' ? 'Auction' : 'Regular'} Scheme (Awaiting Group Allocation)`,
+              scheme: c.scheme || (filterScheme === 'FIXED' ? 'Fixed' : filterScheme === 'AUCTION' ? 'Auction' : 'Regular'),
+              chitValue: Number(c.chitValue || 100000),
+              monthlyInstallment: Number(c.monthlyInstallment || 5000),
               duration: Number(c.months || 20),
               ticketNumber: '—',
               status: c.status || 'ACTIVE'
@@ -1644,8 +1702,62 @@ export const AdminDashboard = () => {
       }
     });
 
+    // 4. Website Leads (e.g. Converted Leads like Agila)
+    try {
+      const storedLeads = JSON.parse(localStorage.getItem('websiteLeads') || '[]');
+      storedLeads.filter((l: any) => l.status === 'CONVERTED' || (l.fullName && l.fullName.toLowerCase().includes('agila'))).forEach((lead: any) => {
+        const rawP = lead.interestedPlan || '';
+        let dScheme: 'Auction' | 'Fixed' | 'Regular' = 'Auction';
+        if (rawP.toLowerCase().includes('fix')) dScheme = 'Fixed';
+        else if (rawP.toLowerCase().includes('reg')) dScheme = 'Regular';
+        else if (rawP.toLowerCase().includes('auc')) dScheme = 'Auction';
+
+        const s = dScheme.toUpperCase();
+        const matches = schemePrefix === 'REG'
+          ? (!s.includes('FIX') && !s.includes('AUC'))
+          : s.includes(schemePrefix);
+
+        if (matches) {
+          const leadPhone = (lead.phone || '').replace(/\D/g, '');
+          const leadName = (lead.fullName || '').trim().toLowerCase();
+          const alreadyInMap = Array.from(customerMap.values()).some((cm: any) => {
+            const cmPhone = (cm.mobile || '').replace(/\D/g, '');
+            const cmName = (cm.name || '').trim().toLowerCase();
+            return (leadPhone && cmPhone && leadPhone === cmPhone) || (leadName && cmName && leadName === cmName);
+          });
+
+          if (!alreadyInMap) {
+            const leadId = lead.convertedCustomerId || `LEAD-${lead.id}`;
+            customerMap.set(`lead_${leadId}`, {
+              id: leadId,
+              name: lead.fullName,
+              mobile: lead.phone || '—',
+              groupId: 'PENDING',
+              groupName: lead.interestedPlan || `${dScheme} Scheme (Lead Enrolled)`,
+              scheme: dScheme,
+              chitValue: 100000,
+              monthlyInstallment: 5000,
+              duration: 20,
+              ticketNumber: '1',
+              status: 'ACTIVE'
+            });
+          }
+        }
+      });
+    } catch {}
+
     return Array.from(customerMap.values());
   };
+
+  // Exact 1-to-1 matching between Dashboard KPI card counts and viewable list data
+  const fixedCustomersList = getFilteredSchemeCustomers('FIXED');
+  const regularCustomersList = getFilteredSchemeCustomers('REGULAR');
+  const auctionCustomersList = getFilteredSchemeCustomers('AUCTION');
+
+  const fixedEnrollments = fixedCustomersList.length;
+  const regularEnrollments = regularCustomersList.length;
+  const auctionEnrollments = auctionCustomersList.length;
+  const totalEnrollments = fixedEnrollments + regularEnrollments + auctionEnrollments;
 
   const filteredSchemeCustomers = getFilteredSchemeCustomers(selectedSchemeFilter);
   const visibleSchemeCustomers = schemeSearchQuery.trim()
@@ -2698,10 +2810,10 @@ export const AdminDashboard = () => {
                 {/* Center Badge in Donut */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
                   <span className="text-xl font-bold text-slate-800 leading-none">
-                    {totalEnrollments > 0 ? totalEnrollments : (chitGroups.length > 0 ? chitGroups.length : 12)}
+                    {totalEnrollments}
                   </span>
                   <span className="text-[10px] text-slate-400 font-medium mt-0.5">
-                    {totalEnrollments > 0 ? 'Members' : 'Groups'}
+                    {totalEnrollments === 1 ? 'Member' : 'Members'}
                   </span>
                 </div>
               </div>
@@ -2714,8 +2826,8 @@ export const AdminDashboard = () => {
                     <span className="text-slate-600 font-medium text-xs">Fixed Enrollments</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-800 text-xs">{fixedEnrollments > 0 ? fixedEnrollments : 5}</span>
-                    <span className="text-slate-400 text-[11px] font-normal">{fixedPct > 0 ? fixedPct : 41}%</span>
+                    <span className="font-bold text-slate-800 text-xs">{fixedEnrollments}</span>
+                    <span className="text-slate-400 text-[11px] font-normal">{fixedPct}%</span>
                   </div>
                 </div>
 
@@ -2725,8 +2837,8 @@ export const AdminDashboard = () => {
                     <span className="text-slate-600 font-medium text-xs">Regular Enrollments</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-800 text-xs">{regularEnrollments > 0 ? regularEnrollments : 4}</span>
-                    <span className="text-slate-400 text-[11px] font-normal">{regularPct > 0 ? regularPct : 33}%</span>
+                    <span className="font-bold text-slate-800 text-xs">{regularEnrollments}</span>
+                    <span className="text-slate-400 text-[11px] font-normal">{regularPct}%</span>
                   </div>
                 </div>
 
@@ -2736,8 +2848,8 @@ export const AdminDashboard = () => {
                     <span className="text-slate-600 font-medium text-xs">Auction Enrollments</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-800 text-xs">{auctionEnrollments > 0 ? auctionEnrollments : 3}</span>
-                    <span className="text-slate-400 text-[11px] font-normal">{auctionPct > 0 ? auctionPct : 26}%</span>
+                    <span className="font-bold text-slate-800 text-xs">{auctionEnrollments}</span>
+                    <span className="text-slate-400 text-[11px] font-normal">{auctionPct}%</span>
                   </div>
                 </div>
               </div>

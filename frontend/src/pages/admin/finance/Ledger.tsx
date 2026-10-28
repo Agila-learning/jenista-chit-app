@@ -11,7 +11,9 @@ import {
   Calendar, 
   Layers, 
   CreditCard, 
-  RotateCcw
+  RotateCcw,
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '../../../utils/format';
 import { printCashReceipt } from '../../../utils/receiptPrinter';
@@ -255,6 +257,204 @@ export const Ledger: React.FC = () => {
 
   const hasActiveFilters = paymentMethodFilter !== 'ALL' || dateFilter !== 'ALL' || groupFilter !== 'ALL' || schemeFilter !== 'ALL' || searchTerm !== '';
 
+  // 1. Export Colourful Excel (.xls) for Ledger
+  const handleExportColourfulExcel = () => {
+    if (filtered.length === 0) {
+      alert("No transactions available to export");
+      return;
+    }
+
+    const todayStr = new Date().toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+    const nowTimeStr = new Date().toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const rowsHtml = filtered.map((txn, idx) => {
+      const isZebra = idx % 2 === 1;
+      const rowBg = isZebra ? '#F8FAFC' : '#FFFFFF';
+      const cust = resolveCustomer(txn);
+      const scheme = resolveScheme(txn);
+      const groupName = (txn.groupId || txn.chitGroup || txn.reference?.split('/')?.[1] || 'General Chit Fund').trim();
+      const isCredit = txn.type === 'CREDIT';
+
+      let schemeBadgeBg = '#FEF3C7';
+      let schemeBadgeColor = '#92400E';
+      if (scheme === 'Auction') {
+        schemeBadgeBg = '#F3E8FF';
+        schemeBadgeColor = '#6B21A8';
+      } else if (scheme === 'Fixed') {
+        schemeBadgeBg = '#DCFCE7';
+        schemeBadgeColor = '#166534';
+      }
+
+      const typeBg = isCredit ? '#DCFCE7' : '#FEE2E2';
+      const typeColor = isCredit ? '#166534' : '#991B1B';
+
+      return `
+        <tr style="background-color: ${rowBg};">
+          <td style="padding: 10px; border: 1px solid #E2E8F0; text-align: center; font-size: 11px; color: #64748B;">${idx + 1}</td>
+          <td style="padding: 10px; border: 1px solid #E2E8F0; font-size: 11px; color: #334155;">${formatDate(txn.date)}</td>
+          <td style="padding: 10px; border: 1px solid #E2E8F0; font-size: 12px; font-weight: bold; color: #0B1A30;">${cust.name}</td>
+          <td style="padding: 10px; border: 1px solid #E2E8F0; font-size: 11px; color: #475569; font-family: monospace;">${cust.id || '—'}</td>
+          <td style="padding: 10px; border: 1px solid #E2E8F0; font-size: 11px; color: #334155; mso-number-format:'\\@';">${cust.phone || '—'}</td>
+          <td style="padding: 10px; border: 1px solid #E2E8F0; text-align: center;">
+            <span style="background-color: ${schemeBadgeBg}; color: ${schemeBadgeColor}; padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 10px; text-transform: uppercase;">
+              ${scheme}
+            </span>
+          </td>
+          <td style="padding: 10px; border: 1px solid #E2E8F0; font-size: 11px; font-weight: 600; color: #1E293B;">${groupName}</td>
+          <td style="padding: 10px; border: 1px solid #E2E8F0; text-align: center;">
+            <span style="background-color: ${typeBg}; color: ${typeColor}; padding: 3px 8px; border-radius: 10px; font-weight: bold; font-size: 10px;">
+              ${txn.type}
+            </span>
+          </td>
+          <td style="padding: 10px; border: 1px solid #E2E8F0; font-size: 11px; color: #475569;">${txn.paymentMethod || 'CASH'}</td>
+          <td style="padding: 10px; border: 1px solid #E2E8F0; text-align: right; font-size: 12px; font-weight: bold; color: ${isCredit ? '#15803D' : '#DC2626'};">
+            ${isCredit ? '+' : '-'} ₹ ${Number(txn.amount || 0).toLocaleString('en-IN')}
+          </td>
+          <td style="padding: 10px; border: 1px solid #E2E8F0; font-size: 11px; color: #64748B;">${txn.description || '—'}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const excelHtml = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <!--[if gte mso 9]>
+        <xml>
+          <x:ExcelWorkbook>
+            <x:ExcelWorksheets>
+              <x:ExcelWorksheet>
+                <x:Name>General_Ledger</x:Name>
+                <x:WorksheetOptions>
+                  <x:DisplayGridlines/>
+                </x:WorksheetOptions>
+              </x:ExcelWorksheet>
+            </x:ExcelWorksheets>
+          </x:ExcelWorkbook>
+        </xml>
+        <![endif]-->
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+        <style>
+          body { font-family: 'Segoe UI', Arial, sans-serif; }
+          table { border-collapse: collapse; width: 100%; }
+          th { background-color: #0B1A30; color: #FFFFFF; font-weight: bold; font-size: 11px; padding: 12px 10px; text-align: left; border: 1px solid #002244; }
+          .title-header { background-color: #0B1A30; color: #FFBF32; font-size: 18px; font-weight: bold; padding: 16px; text-align: center; }
+          .summary-cell { background-color: #F1F5F9; color: #0F172A; font-size: 11px; padding: 8px 12px; border: 1px solid #CBD5E1; }
+          .total-row { background-color: #0B1A30; color: #FFFFFF; font-size: 12px; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <table>
+          <tr>
+            <td colspan="11" class="title-header">
+              JENISTA CHIT FUNDS (P) LTD - AUDIT GENERAL LEDGER & CASH FLOW
+            </td>
+          </tr>
+          <tr>
+            <td colspan="11" style="background-color: #1E293B; color: #E2E8F0; text-align: center; font-size: 11px; padding: 6px;">
+              Generated on ${todayStr} at ${nowTimeStr} | Total Entries: ${filtered.length} | Net Balance: ₹ ${balance.toLocaleString('en-IN')}
+            </td>
+          </tr>
+          <tr><td colspan="11" style="height: 10px;"></td></tr>
+
+          <tr>
+            <td colspan="3" class="summary-cell" style="font-weight: bold;">TOTAL CREDITS (INFLOW):</td>
+            <td colspan="2" class="summary-cell" style="font-weight: bold; color: #166534;">+ ₹ ${totalCredits.toLocaleString('en-IN')}</td>
+            <td colspan="3" class="summary-cell" style="font-weight: bold;">TOTAL DEBITS (OUTFLOW):</td>
+            <td colspan="3" class="summary-cell" style="font-weight: bold; color: #DC2626;">- ₹ ${totalDebits.toLocaleString('en-IN')}</td>
+          </tr>
+          <tr><td colspan="11" style="height: 10px;"></td></tr>
+
+          <thead>
+            <tr>
+              <th style="text-align: center; width: 40px;">#</th>
+              <th>Date</th>
+              <th>Customer Name</th>
+              <th>Customer ID</th>
+              <th>Phone</th>
+              <th style="text-align: center;">Scheme</th>
+              <th>Group Name</th>
+              <th style="text-align: center;">Type</th>
+              <th>Payment Method</th>
+              <th style="text-align: right;">Amount (INR)</th>
+              <th>Description / Reference</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+          <tfoot>
+            <tr class="total-row">
+              <td colspan="9" style="padding: 12px; text-align: right; border: 1px solid #002244;">
+                NET FILTERED CASH BALANCE:
+              </td>
+              <td style="padding: 12px; text-align: right; border: 1px solid #002244; font-size: 14px; color: #FFBF32; background-color: #0B1A30;">
+                ₹ ${balance.toLocaleString('en-IN')}
+              </td>
+              <td style="background-color: #0B1A30;"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([excelHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Jenista_Ledger_Export_${new Date().toISOString().split('T')[0]}.xls`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // 2. Export Standard CSV (.csv) with UTF-8 BOM
+  const handleExportCSV = () => {
+    if (filtered.length === 0) {
+      alert("No transactions available to export");
+      return;
+    }
+
+    const headers = ['#', 'Date', 'Customer Name', 'Customer ID', 'Phone', 'Scheme', 'Group Name', 'Type', 'Payment Method', 'Amount (INR)', 'Description'];
+    const rows = filtered.map((txn, idx) => {
+      const cust = resolveCustomer(txn);
+      const scheme = resolveScheme(txn);
+      const groupName = (txn.groupId || txn.chitGroup || txn.reference?.split('/')?.[1] || 'General Chit Fund').trim();
+      return [
+        idx + 1,
+        `"${formatDate(txn.date)}"`,
+        `"${(cust.name || '').replace(/"/g, '""')}"`,
+        `"${cust.id || ''}"`,
+        `"${cust.phone || ''}"`,
+        `"${scheme}"`,
+        `"${(groupName || '').replace(/"/g, '""')}"`,
+        `"${txn.type}"`,
+        `"${txn.paymentMethod || 'CASH'}"`,
+        txn.amount,
+        `"${(txn.description || '').replace(/"/g, '""')}"`
+      ];
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(row => row.join(','))].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Ledger_Transactions_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Page Header */}
@@ -272,16 +472,37 @@ export const Ledger: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {hasActiveFilters && (
             <button
               onClick={handleResetFilters}
-              className="px-3 py-2 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl border border-rose-200 flex items-center gap-1"
+              className="px-3 py-2 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl border border-rose-200 flex items-center gap-1 transition-colors"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               Reset Filters
             </button>
           )}
+
+          {/* Export Colourful Excel (.xls) */}
+          <button 
+            onClick={handleExportColourfulExcel}
+            className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-xl shadow-xs text-xs font-bold transition-all active:scale-95"
+            title="Download formatted Excel spreadsheet with corporate styling, colored badges, and total summaries"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-100" />
+            <span>Colourful Excel (.xls)</span>
+          </button>
+
+          {/* Export CSV */}
+          <button 
+            onClick={handleExportCSV}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl shadow-xs hover:bg-slate-50 transition-colors text-xs font-bold"
+            title="Download standard CSV format with UTF-8 support"
+          >
+            <Download className="w-3.5 h-3.5 text-slate-500" />
+            <span>CSV</span>
+          </button>
+
           <Button 
             variant="secondary" 
             onClick={() => window.print()}

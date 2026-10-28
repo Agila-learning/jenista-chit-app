@@ -30,7 +30,64 @@ export const LeadsManagement: React.FC = () => {
   const [convertingLeadId, setConvertingLeadId] = useState<string | null>(null);
 
   const loadData = () => {
-    setLeads(getStoredLeads());
+    const storedLeads = getStoredLeads();
+    setLeads(storedLeads);
+
+    // Self-healing: Ensure all existing converted customers have their scheme and chit reflected
+    try {
+      const customers = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
+      let hasUpdates = false;
+
+      const updatedCusts = customers.map((c: any) => {
+        // Find matching lead by phone, name, or customerCode
+        const matchingLead = storedLeads.find(l => 
+          (c.mobile && l.phone && c.mobile.replace(/\D/g, '') === l.phone.replace(/\D/g, '')) ||
+          (c.name && l.fullName && c.name.trim().toLowerCase() === l.fullName.trim().toLowerCase()) ||
+          (l.convertedCustomerId && (l.convertedCustomerId === c.id || l.convertedCustomerId === c.customerCode))
+        );
+
+        if (matchingLead) {
+          const rawPlan = matchingLead.interestedPlan || '';
+          let detectedScheme: 'Auction' | 'Fixed' | 'Regular' = 'Auction';
+          if (rawPlan.toLowerCase().includes('fix')) detectedScheme = 'Fixed';
+          else if (rawPlan.toLowerCase().includes('reg')) detectedScheme = 'Regular';
+          else if (rawPlan.toLowerCase().includes('auc')) detectedScheme = 'Auction';
+
+          const needsScheme = !c.scheme || c.scheme === '—';
+          const needsChit = !Array.isArray(c.chits) || c.chits.length === 0;
+
+          if (needsScheme || needsChit) {
+            hasUpdates = true;
+            return {
+              ...c,
+              scheme: c.scheme || detectedScheme,
+              interestedPlan: c.interestedPlan || matchingLead.interestedPlan || `${detectedScheme} Scheme`,
+              chits: (!Array.isArray(c.chits) || c.chits.length === 0) ? [
+                {
+                  groupId: 'PENDING',
+                  groupName: matchingLead.interestedPlan || `${detectedScheme} Scheme (Enrolled Lead)`,
+                  scheme: detectedScheme,
+                  chitValue: 100000,
+                  monthlyInstallment: 5000,
+                  duration: 20,
+                  ticketNumber: '1',
+                  paymentStatus: 'ACTIVE',
+                  joiningDate: c.createdAt || new Date().toISOString()
+                }
+              ] : c.chits
+            };
+          }
+        }
+        return c;
+      });
+
+      if (hasUpdates) {
+        localStorage.setItem('mockCustomers', JSON.stringify(updatedCusts));
+        window.dispatchEvent(new Event('storage'));
+      }
+    } catch (e) {
+      console.warn('Error in customer self-healing:', e);
+    }
   };
 
   useEffect(() => {
@@ -43,10 +100,17 @@ export const LeadsManagement: React.FC = () => {
     setConvertingLeadId(lead.id);
 
     try {
-      // 1. Generate unique customer code
+      // 1. Detect chosen plan scheme
+      const rawPlan = lead.interestedPlan || 'Auction Chit Plan';
+      let detectedScheme: 'Auction' | 'Fixed' | 'Regular' = 'Auction';
+      if (rawPlan.toLowerCase().includes('fix')) detectedScheme = 'Fixed';
+      else if (rawPlan.toLowerCase().includes('reg')) detectedScheme = 'Regular';
+      else if (rawPlan.toLowerCase().includes('auc')) detectedScheme = 'Auction';
+
+      // 2. Generate unique customer code
       const nextId = `TC-${Math.floor(10000 + Math.random() * 90000)}`;
 
-      // 2. Add to mockCustomers
+      // 3. Add to mockCustomers with chosen scheme and active enrollment chit
       const customers = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
       const newCustomer = {
         id: nextId,
@@ -59,16 +123,31 @@ export const LeadsManagement: React.FC = () => {
         address: 'Lead Inquirer (Landing Page Registration)',
         status: 'ACTIVE',
         kycStatus: 'VERIFIED',
+        scheme: detectedScheme,
+        interestedPlan: lead.interestedPlan || `${detectedScheme} Scheme`,
         totalPaid: 0,
         pending: 0,
-        chits: [],
+        chits: [
+          {
+            groupId: 'PENDING',
+            groupName: lead.interestedPlan || `${detectedScheme} Scheme (Lead Enrolled)`,
+            scheme: detectedScheme,
+            chitValue: 100000,
+            monthlyInstallment: 5000,
+            duration: 20,
+            ticketNumber: '1',
+            paymentStatus: 'ACTIVE',
+            joiningDate: new Date().toISOString()
+          }
+        ],
         createdAt: new Date().toISOString()
       };
 
       const updatedCustomers = [newCustomer, ...customers.filter((c: any) => c.id !== nextId && c.mobile !== lead.phone)];
       localStorage.setItem('mockCustomers', JSON.stringify(updatedCustomers));
+      window.dispatchEvent(new Event('storage'));
 
-      // 3. Post to backend MongoDB if online
+      // 4. Post to backend MongoDB if online
       try {
         await fetchClient('/customers', {
           method: 'POST',
@@ -78,6 +157,8 @@ export const LeadsManagement: React.FC = () => {
             phone: lead.phone,
             email: lead.email,
             address: 'Website Lead Conversion',
+            scheme: detectedScheme,
+            interestedPlan: lead.interestedPlan,
             status: 'ACTIVE'
           })
         });
@@ -85,7 +166,7 @@ export const LeadsManagement: React.FC = () => {
         console.warn('Backend customer lead post skipped/offline:', err);
       }
 
-      // 4. Update lead status
+      // 5. Update lead status
       updateLeadStatus(lead.id, 'CONVERTED', nextId);
 
       // 5. Notify system

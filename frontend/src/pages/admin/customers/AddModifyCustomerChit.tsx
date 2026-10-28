@@ -13,20 +13,32 @@ export const AddModifyCustomerChit = () => {
       // Fetch directly from MongoDB backend
       const res = await fetchClient('/customers?status=PENDING_APPROVAL');
       if (res && res.data && Array.isArray(res.data)) {
-        const mongoCustomers = res.data.map((c: any) => ({
-          id: c.customerCode || c._id,
-          mongoId: c._id,
-          name: c.fullName || c.name,
-          mobile: c.phone || c.mobile,
-          address: c.address,
-          status: c.status,
-          referredBy: c.referredBy || null,
-        }));
+        const saved = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
+        const mongoCustomers = res.data.map((c: any) => {
+          const local = saved.find((lc: any) => 
+            lc.id === (c.customerCode || c._id) || 
+            lc.mongoId === c._id || 
+            (lc.mobile && (lc.mobile === c.phone || lc.phone === c.phone))
+          );
+          return {
+            id: c.customerCode || c._id,
+            mongoId: c._id,
+            name: c.fullName || c.name,
+            mobile: c.phone || c.mobile,
+            phone: c.phone || c.mobile,
+            address: c.address,
+            status: c.status,
+            referredBy: c.referredBy || local?.referredBy || null,
+            scheme: c.scheme || local?.scheme || 'Regular',
+            interestedPlan: c.interestedPlan || local?.interestedPlan,
+            chits: (c.chits && c.chits.length > 0) ? c.chits : (local?.chits || [])
+          };
+        });
         setPendingCustomers(mongoCustomers);
         
-        // Also sync local storage mockCustomers for any offline usage
-        const saved = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
-        const updatedStorage = [...saved.filter((s: any) => s.status !== 'PENDING_APPROVAL'), ...mongoCustomers];
+        // Also sync local storage mockCustomers without stripping fields
+        const nonPendingLocal = saved.filter((s: any) => s.status !== 'PENDING_APPROVAL');
+        const updatedStorage = [...nonPendingLocal, ...mongoCustomers];
         localStorage.setItem('mockCustomers', JSON.stringify(updatedStorage));
         return;
       }
@@ -49,24 +61,83 @@ export const AddModifyCustomerChit = () => {
 
   const handleApprove = async (id: string, mongoId?: string) => {
     try {
-      // 1. Update in local cache first so UI reacts immediately
+      // 1. Cross-reference with website leads to extract chosen plan / scheme
+      const storedLeads = JSON.parse(localStorage.getItem('websiteLeads') || '[]');
       const customers = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
-      const updated = customers.map((c: any) => 
-        (c.id === id || c.mongoId === mongoId || c.customerCode === id) 
-          ? { ...c, status: 'ACTIVE', kycStatus: 'VERIFIED' } 
-          : c
+
+      const targetCustomer = customers.find((c: any) => 
+        c.id === id || c.mongoId === mongoId || c.customerCode === id
       );
+
+      const targetPhone = (targetCustomer?.mobile || targetCustomer?.phone || '').replace(/\D/g, '');
+      const targetName = (targetCustomer?.name || targetCustomer?.fullName || '').trim().toLowerCase();
+
+      let matchedLead = storedLeads.find((l: any) => {
+        const lPhone = (l.phone || '').replace(/\D/g, '');
+        const lName = (l.fullName || '').trim().toLowerCase();
+        return (targetPhone && lPhone && targetPhone === lPhone) || (targetName && lName && targetName === lName);
+      });
+
+      let chosenScheme: 'Auction' | 'Fixed' | 'Regular' = targetCustomer?.scheme || 'Regular';
+      let planName = targetCustomer?.interestedPlan || `${chosenScheme} Scheme`;
+
+      if (matchedLead) {
+        const rawP = matchedLead.interestedPlan || '';
+        if (rawP.toLowerCase().includes('fix')) chosenScheme = 'Fixed';
+        else if (rawP.toLowerCase().includes('reg')) chosenScheme = 'Regular';
+        else if (rawP.toLowerCase().includes('auc')) chosenScheme = 'Auction';
+        planName = matchedLead.interestedPlan || `${chosenScheme} Scheme`;
+
+        // Mark lead as converted
+        matchedLead.status = 'CONVERTED';
+        matchedLead.convertedCustomerId = id;
+        localStorage.setItem('websiteLeads', JSON.stringify(storedLeads));
+      }
+
+      // 2. Update in local cache with active scheme and default enrollment chit
+      const updated = customers.map((c: any) => {
+        if (c.id === id || c.mongoId === mongoId || c.customerCode === id) {
+          const hasExistingChits = Array.isArray(c.chits) && c.chits.length > 0;
+          return {
+            ...c,
+            status: 'ACTIVE',
+            kycStatus: 'VERIFIED',
+            scheme: chosenScheme,
+            interestedPlan: planName,
+            chits: hasExistingChits ? c.chits : [
+              {
+                groupId: 'PENDING',
+                groupName: planName,
+                scheme: chosenScheme,
+                chitValue: 100000,
+                monthlyInstallment: 5000,
+                duration: 20,
+                ticketNumber: '1',
+                paymentStatus: 'ACTIVE',
+                joiningDate: new Date().toISOString()
+              }
+            ]
+          };
+        }
+        return c;
+      });
+
       localStorage.setItem('mockCustomers', JSON.stringify(updated));
       setPendingCustomers(prev => prev.filter(c => c.id !== id && c.mongoId !== mongoId));
 
-      // 2. Broadcast storage event so Topbar and Sidebar badges decrement immediately
+      // 3. Broadcast storage event so Topbar and Sidebar badges decrement immediately
       window.dispatchEvent(new Event('storage'));
 
-      // 3. Post to backend
+      // 4. Post to backend
       const targetId = mongoId || id;
       await fetchClient(`/customers/${targetId}/status`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: 'ACTIVE', kycStatus: 'VERIFIED' }),
+        body: JSON.stringify({ 
+          status: 'ACTIVE', 
+          kycStatus: 'VERIFIED',
+          scheme: chosenScheme,
+          interestedPlan: planName
+        }),
       });
     } catch (e) {
       console.warn('Failed to update status on server:', e);

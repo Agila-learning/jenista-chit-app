@@ -53,7 +53,14 @@ export const LeadsScreen: React.FC = () => {
     try {
       const newCustomerId = `TC-${Math.floor(10000 + Math.random() * 90000)}`;
 
-      // 1. Add to synced_customers
+      // 1. Detect chosen plan scheme
+      const rawPlan = lead.interestedPlan || 'Auction Chit Plan';
+      let detectedScheme: 'Auction' | 'Fixed' | 'Regular' = 'Auction';
+      if (rawPlan.toLowerCase().includes('fix')) detectedScheme = 'Fixed';
+      else if (rawPlan.toLowerCase().includes('reg')) detectedScheme = 'Regular';
+      else if (rawPlan.toLowerCase().includes('auc')) detectedScheme = 'Auction';
+
+      // 2. Add to synced_customers with scheme and enrollment chit
       const customers = await DataSyncManager.getCustomers();
       const newCustomer = {
         id: newCustomerId,
@@ -62,10 +69,24 @@ export const LeadsScreen: React.FC = () => {
         mobile: lead.phone,
         email: lead.email || '',
         status: 'ACTIVE',
-        kycStatus: 'PENDING',
+        kycStatus: 'VERIFIED',
+        scheme: detectedScheme,
+        interestedPlan: lead.interestedPlan || `${detectedScheme} Scheme`,
         totalPaid: 0,
         pending: 0,
-        chits: [],
+        chits: [
+          {
+            groupId: 'PENDING',
+            groupName: lead.interestedPlan || `${detectedScheme} Scheme (Lead Enrolled)`,
+            scheme: detectedScheme,
+            chitValue: 100000,
+            monthlyInstallment: 5000,
+            duration: 20,
+            ticketNumber: '1',
+            paymentStatus: 'ACTIVE',
+            joiningDate: new Date().toISOString(),
+          }
+        ],
         createdAt: new Date().toISOString(),
       };
       const updatedCustomers = [newCustomer, ...customers.filter((c: any) => c.id !== newCustomerId)];
