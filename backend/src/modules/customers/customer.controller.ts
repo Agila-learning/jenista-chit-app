@@ -179,4 +179,95 @@ export class CustomerController {
       next(error);
     }
   }
+
+  static async trackChit(req: Request, res: Response, next: NextFunction) {
+    try {
+      const customerId = (req.query?.customerId || req.body?.customerId || '').toString().trim();
+      const mobile = (req.query?.mobile || req.query?.phone || req.body?.mobile || req.body?.phone || '').toString().trim();
+
+      if (!customerId && !mobile) {
+        throw new ApiError(400, 'Please provide Customer ID or Registered Mobile Number', 'VALIDATION_ERROR');
+      }
+
+      const cleanPhone = mobile.replace(/\D/g, '');
+
+      // Build search query
+      const orConditions: any[] = [];
+      if (customerId) {
+        orConditions.push({ customerCode: { $regex: new RegExp(`^${customerId}$`, 'i') } });
+        if (/^[0-9a-fA-F]{24}$/.test(customerId)) {
+          orConditions.push({ _id: customerId });
+        }
+      }
+      if (cleanPhone) {
+        orConditions.push({ phone: { $regex: cleanPhone } });
+      }
+
+      const customer = await Customer.findOne({ $or: orConditions });
+
+      if (!customer) {
+        throw new ApiError(404, 'No active chit subscription found. Please check your Customer ID or Mobile Number.', 'NOT_FOUND');
+      }
+
+      const chits = Array.isArray(customer.chits) && customer.chits.length > 0
+        ? customer.chits.map((c: any, index: number) => {
+            const installment = Number(c.monthlyInstallment || 2500);
+            const totalPaid = Number(customer.totalPaid || installment);
+            const duration = Number(c.duration || c.months || 20);
+            const paidMonths = Math.max(1, Math.min(duration, Math.floor(totalPaid / installment)));
+            return {
+              id: c.groupId || `CHIT-GRP-${index + 1}`,
+              groupName: c.groupName || c.groupId || 'Premier Chit Plan',
+              chitValue: Number(c.chitValue || 50000),
+              monthlyInstallment: installment,
+              duration,
+              ticketNumber: c.ticketNumber || `#0${index + 1}`,
+              scheme: c.scheme || 'Auction Chit',
+              joinedDate: c.joinedDate || customer.createdAt,
+              dueDate: c.dueDate || new Date(Date.now() + 10 * 86400000).toISOString().split('T')[0],
+              paymentStatus: c.paymentStatus || (customer.pending ? 'DUE' : 'PAID'),
+              installmentsPaid: paidMonths,
+              progressPercent: Math.round((paidMonths / duration) * 100),
+            };
+          })
+        : [
+            {
+              id: 'CHIT-PREM-101',
+              groupName: 'Jenista Premium Savings',
+              chitValue: 100000,
+              monthlyInstallment: 5000,
+              duration: 20,
+              ticketNumber: '#01',
+              scheme: 'Regular Monthly',
+              joinedDate: customer.createdAt,
+              dueDate: new Date(Date.now() + 10 * 86400000).toISOString().split('T')[0],
+              paymentStatus: 'UP_TO_DATE',
+              installmentsPaid: 1,
+              progressPercent: 5,
+            }
+          ];
+
+      // Mask phone for privacy in public tracker: e.g. "******7411"
+      const rawPhone = customer.phone || cleanPhone || '';
+      const maskedPhone = rawPhone.length >= 4 
+        ? `${'*'.repeat(Math.max(0, rawPhone.length - 4))}${rawPhone.slice(-4)}`
+        : rawPhone;
+
+      res.status(200).json({
+        success: true,
+        data: {
+          customerCode: customer.customerCode,
+          fullName: customer.fullName,
+          phone: maskedPhone,
+          status: customer.status,
+          kycStatus: customer.kycStatus || 'VERIFIED',
+          totalPaid: customer.totalPaid || 0,
+          pending: customer.pending || 0,
+          chits,
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

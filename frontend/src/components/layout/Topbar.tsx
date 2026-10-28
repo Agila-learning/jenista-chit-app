@@ -13,7 +13,8 @@ import {
   Users, 
   Layers, 
   X,
-  Clock
+  Clock,
+  Menu
 } from 'lucide-react';
 import { useAuth } from '../../store/AuthContext';
 import { isMockCustomer, isMockGroup } from '../../utils/cleanMockData';
@@ -23,7 +24,7 @@ interface TopbarProps {
   isSidebarOpen?: boolean;
 }
 
-export const Topbar = (_props: TopbarProps = {}) => {
+export const Topbar = ({ onMenuClick }: TopbarProps = {}) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -149,8 +150,19 @@ export const Topbar = (_props: TopbarProps = {}) => {
 
   return (
     <header className="h-16 bg-white border-b border-slate-200/80 px-4 sm:px-6 flex items-center justify-between shrink-0 relative z-30 shadow-2xs">
-      {/* Left: Global Search Field */}
-      <div className="flex items-center gap-3 flex-1 max-w-xl">
+      {/* Left: Global Search Field & Sidebar Toggle */}
+      <div className="flex items-center gap-2.5 flex-1 max-w-xl">
+        {onMenuClick && (
+          <button
+            type="button"
+            onClick={onMenuClick}
+            className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors shrink-0"
+            title="Toggle Sidebar Navigation"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        )}
+
         {/* Global Search Bar */}
         <div ref={searchRef} className="relative flex-1">
           <div className="relative">

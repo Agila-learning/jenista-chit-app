@@ -5,6 +5,7 @@ import { fetchClient } from '../../../api/client';
 import { printCashReceipt } from '../../../utils/receiptPrinter';
 import { useAuth } from '../../../store/AuthContext';
 import { isMockCustomer, isMockGroup } from '../../../utils/cleanMockData';
+import { notifyPaymentSync } from '../../../utils/paymentRequestsData';
 
 interface ReceiptData {
   receiptNo: string;
@@ -16,6 +17,7 @@ interface ReceiptData {
   mobileNumber: string;
   chitGroup: string;
   monthNumber: string;
+  expectedInstallment: string;
   receiptAmt: string;
   referenceNo: string;
   executive: string;
@@ -32,6 +34,7 @@ const EMPTY: ReceiptData = {
   mobileNumber: '',
   chitGroup: '',
   monthNumber: '',
+  expectedInstallment: '',
   receiptAmt: '',
   referenceNo: '',
   executive: 'Admin User',
@@ -48,6 +51,11 @@ export const ReceiptEntry = () => {
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
   const [customerQuery, setCustomerQuery] = useState('');
   const printRef = useRef<HTMLDivElement>(null);
+
+  // Inbuilt Admin Signature & Signatory States
+  const [adminSignature, setAdminSignature] = useState<string>(() => localStorage.getItem('adminSignature') || '');
+  const [signatoryName, setSignatoryName] = useState<string>(() => localStorage.getItem('adminSignatoryName') || 'System Admin');
+  const [signatoryTitle, setSignatoryTitle] = useState<string>(() => localStorage.getItem('adminSignatoryTitle') || 'Authorized Signatory');
 
   useEffect(() => {
     const c = localStorage.getItem('mockCustomers');
@@ -126,10 +134,62 @@ export const ReceiptEntry = () => {
         }
       })
       .catch((err: any) => console.warn('Could not sync receipt entry customers:', err));
+
+    const syncSignatures = () => {
+      setAdminSignature(localStorage.getItem('adminSignature') || '');
+      setSignatoryName(localStorage.getItem('adminSignatoryName') || 'System Admin');
+      setSignatoryTitle(localStorage.getItem('adminSignatoryTitle') || 'Authorized Signatory');
+    };
+    window.addEventListener('storage', syncSignatures);
+    return () => window.removeEventListener('storage', syncSignatures);
   }, []);
 
   const set = (key: keyof ReceiptData, val: string) =>
     setForm(f => ({ ...f, [key]: val }));
+
+  // Auto-calculation of monthly installment based on customer chits & chit group
+  const getMonthlyDue = (groupId: string, custId?: string) => {
+    if (!groupId) return 0;
+    const targetCustId = custId || form.customerId;
+    const customer = customersDB.find(c => c.id === targetCustId || c.mongoId === targetCustId);
+    const custChit = customer?.chits?.find((ch: any) => 
+      ch.groupId === groupId || ch.groupName === groupId || ch.id === groupId
+    );
+    if (custChit) {
+      if (custChit.monthlyInstallment) return Number(custChit.monthlyInstallment);
+      if (custChit.chitValue && custChit.duration) {
+        return Math.round(Number(custChit.chitValue) / Number(custChit.duration));
+      }
+    }
+
+    const group = chitGroups.find(g => 
+      g.id === groupId || g.code === groupId || g.name === groupId
+    );
+    if (group) {
+      if (group.customerChitAmount) return Number(group.customerChitAmount);
+      if (group.installment) return Number(group.installment);
+      if (group.monthlyContribution) return Number(group.monthlyContribution);
+      if (group.value && group.duration) {
+        return Math.round(Number(group.value) / Number(group.duration));
+      }
+    }
+    return 0;
+  };
+
+  const getGroupScheme = (groupId: string): 'Fixed' | 'Auction' | 'Regular' => {
+    if (!groupId) return 'Regular';
+    const customer = customersDB.find(c => c.id === form.customerId || c.mongoId === form.customerId);
+    const custChit = customer?.chits?.find((ch: any) => 
+      ch.groupId === groupId || ch.groupName === groupId || ch.id === groupId
+    );
+    const group = chitGroups.find(g => 
+      g.id === groupId || g.code === groupId || g.name === groupId
+    );
+    const combined = `${custChit?.scheme || ''} ${group?.scheme || ''} ${group?.type || ''} ${groupId}`.toUpperCase();
+    if (combined.includes('FIX')) return 'Fixed';
+    if (combined.includes('AUC')) return 'Auction';
+    return 'Regular';
+  };
 
   const filteredCustomers = customersDB.filter(c => {
     const q = customerQuery.toLowerCase();
@@ -141,9 +201,45 @@ export const ReceiptEntry = () => {
     ?.chits || [];
 
   const handleSelectCustomer = (c: any) => {
-    setForm(f => ({ ...f, customerId: c.id, customerName: c.name || '', mobileNumber: c.mobile || '', chitGroup: '' }));
+    const firstChit = c.chits && c.chits.length > 0 ? c.chits[0] : null;
+    const initialGroup = firstChit ? (firstChit.groupId || firstChit.groupName) : '';
+    const initialMonth = '1';
+    const due = initialGroup ? getMonthlyDue(initialGroup, c.id) : 0;
+
+    setForm(f => ({
+      ...f,
+      customerId: c.id,
+      customerName: c.name || '',
+      mobileNumber: c.mobile || c.phone || '',
+      chitGroup: initialGroup,
+      monthNumber: initialMonth,
+      expectedInstallment: due > 0 ? String(due) : '',
+      receiptAmt: due > 0 ? String(due) : (f.receiptAmt || '')
+    }));
     setShowCustomerPicker(false);
     setCustomerQuery('');
+  };
+
+  const handleGroupChange = (newGroup: string) => {
+    const month = form.monthNumber || '1';
+    const due = getMonthlyDue(newGroup, form.customerId);
+    setForm(f => ({
+      ...f,
+      chitGroup: newGroup,
+      monthNumber: month,
+      expectedInstallment: due > 0 ? String(due) : '',
+      receiptAmt: due > 0 ? String(due) : f.receiptAmt
+    }));
+  };
+
+  const handleMonthChange = (newMonth: string) => {
+    const due = getMonthlyDue(form.chitGroup, form.customerId);
+    setForm(f => ({
+      ...f,
+      monthNumber: newMonth,
+      expectedInstallment: due > 0 ? String(due) : f.expectedInstallment,
+      receiptAmt: due > 0 ? String(due) : f.receiptAmt
+    }));
   };
 
   const handleSave = () => {
@@ -151,18 +247,36 @@ export const ReceiptEntry = () => {
       alert('Please fill Customer, Amount, and Payment Mode.');
       return;
     }
-    // 1. Save to master ledger
+
+    const paidNum = Number(form.receiptAmt);
+    const expectedNum = Number(form.expectedInstallment || paidNum);
+    const isPartialPayment = expectedNum > 0 && paidNum < expectedNum;
+    const balanceRemaining = Math.max(0, expectedNum - paidNum);
+
+    // 1. Save to master ledger with complete metadata
     const existing = JSON.parse(localStorage.getItem('ledgerTransactions') || '[]');
     const entry = {
       id: form.receiptNo,
+      receiptNo: form.receiptNo,
       date: new Date().toISOString(),
       type: form.type === 'COLLECTION' ? 'CREDIT' : 'DEBIT',
       category: form.type === 'COLLECTION' ? 'INSTALLMENT' : 'DISBURSAL',
-      amount: Number(form.receiptAmt),
+      amount: paidNum,
+      dueAmount: expectedNum,
+      remainingBalance: balanceRemaining,
+      isPartial: isPartialPayment,
+      customerId: form.customerId,
+      customerName: form.customerName,
+      mobileNumber: form.mobileNumber,
+      groupId: form.chitGroup,
+      chitGroup: form.chitGroup,
+      monthNumber: form.monthNumber,
+      scheme: getGroupScheme(form.chitGroup),
       reference: `${form.customerId} / ${form.chitGroup}`,
-      description: `${form.type === 'COLLECTION' ? 'Collection' : 'Disbursal'} - Month ${form.monthNumber || '—'}`,
+      description: `${form.type === 'COLLECTION' ? 'Collection' : 'Disbursal'} - Month ${form.monthNumber || '—'}${isPartialPayment ? ` (Partial: ₹${balanceRemaining.toLocaleString('en-IN')} Pending)` : ''}`,
       collectedBy: form.executive || user?.name || 'Staff User',
       paymentMode: form.receiptMode,
+      status: 'VERIFIED'
     };
     localStorage.setItem('ledgerTransactions', JSON.stringify([entry, ...existing]));
 
@@ -176,18 +290,101 @@ export const ReceiptEntry = () => {
       mobileNumber: form.mobileNumber,
       chitGroup: form.chitGroup,
       monthNumber: form.monthNumber,
-      amount: Number(form.receiptAmt),
+      amount: paidNum,
+      dueAmount: expectedNum,
+      remainingBalance: balanceRemaining,
+      isPartial: isPartialPayment,
       mode: form.receiptMode,
       referenceNo: form.referenceNo,
       executive: form.executive || user?.name || 'Staff User',
-      status: 'COLLECTED',
+      status: isPartialPayment ? 'PARTIAL' : 'COLLECTED',
       type: form.type,
     };
     const existingStaffRecs = JSON.parse(localStorage.getItem('staffReceipts') || '[]');
     localStorage.setItem('staffReceipts', JSON.stringify([staffReceipt, ...existingStaffRecs]));
 
-    // 3. Dispatch storage event so live dashboards update immediately
-    window.dispatchEvent(new Event('storage'));
+    // 3. Update customer record in mockCustomers
+    try {
+      const storedCusts = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
+      const updatedCusts = storedCusts.map((c: any) => {
+        if (c.id === form.customerId || c.mongoId === form.customerId) {
+          const currentTotalPaid = Number(c.totalPaid || 0);
+          const currentPending = Number(c.pending || 0);
+          return {
+            ...c,
+            totalPaid: currentTotalPaid + paidNum,
+            pending: isPartialPayment 
+              ? Math.max(0, currentPending - paidNum + balanceRemaining)
+              : Math.max(0, currentPending - paidNum),
+            lastPayment: {
+              receiptNo: form.receiptNo,
+              date: form.receiptDate,
+              amount: paidNum,
+              dueAmount: expectedNum,
+              isPartial: isPartialPayment,
+              month: form.monthNumber
+            }
+          };
+        }
+        return c;
+      });
+      localStorage.setItem('mockCustomers', JSON.stringify(updatedCusts));
+      setCustomersDB(updatedCusts);
+    } catch (err) {
+      console.warn('Could not update customer record:', err);
+    }
+
+    // 4. Update Chit Group Memberships
+    try {
+      const memberships = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
+      const cleanMobile = form.mobileNumber.replace(/\D/g, '');
+      const updatedMemberships = memberships.map((m: any) => {
+        const mPhone = (m.mobile || m.phone || '').replace(/\D/g, '');
+        if ((m.customerId === form.customerId || (cleanMobile && mPhone === cleanMobile)) && 
+            (m.groupId === form.chitGroup || m.groupName === form.chitGroup)) {
+          return {
+            ...m,
+            paymentStatus: isPartialPayment ? 'PARTIAL' : 'PAID',
+            lastPaidMonth: form.monthNumber,
+            lastPaidDate: form.receiptDate,
+          };
+        }
+        return m;
+      });
+      localStorage.setItem('chitGroupMemberships', JSON.stringify(updatedMemberships));
+    } catch (mErr) {
+      console.warn('Could not update chitGroupMemberships:', mErr);
+    }
+
+    // 5. Update mockChitGroups enrolledMembers
+    try {
+      const groups = JSON.parse(localStorage.getItem('mockChitGroups') || '[]');
+      const cleanMobile = form.mobileNumber.replace(/\D/g, '');
+      const updatedGroups = groups.map((g: any) => {
+        if (g.code === form.chitGroup || g.id === form.chitGroup || g.name === form.chitGroup) {
+          const members = Array.isArray(g.enrolledMembers) ? g.enrolledMembers.map((m: any) => {
+            const mPhone = (m.mobile || m.phone || '').replace(/\D/g, '');
+            if (m.customerId === form.customerId || (cleanMobile && mPhone === cleanMobile)) {
+              return {
+                ...m,
+                paymentStatus: isPartialPayment ? 'PARTIAL' : 'PAID',
+                lastPaidMonth: form.monthNumber,
+                lastPaidDate: form.receiptDate,
+              };
+            }
+            return m;
+          }) : [];
+          return { ...g, enrolledMembers: members };
+        }
+        return g;
+      });
+      localStorage.setItem('mockChitGroups', JSON.stringify(updatedGroups));
+    } catch (gErr) {
+      console.warn('Could not update mockChitGroups:', gErr);
+    }
+
+    // 6. Broadcast payment event across tabs/roles (Staff, Customer, Admin)
+    notifyPaymentSync(entry);
     setSaved(true);
   };
 
@@ -198,6 +395,10 @@ export const ReceiptEntry = () => {
   };
 
   const handlePrint = () => {
+    const expNum = Number(form.expectedInstallment || form.receiptAmt);
+    const paidNum = Number(form.receiptAmt || 0);
+    const isPart = expNum > 0 && paidNum < expNum;
+
     printCashReceipt({
       receiptNo: form.receiptNo,
       date: form.receiptDate,
@@ -205,15 +406,25 @@ export const ReceiptEntry = () => {
       customerId: form.customerId,
       customerMobile: form.mobileNumber,
       groupName: form.chitGroup,
+      monthNumber: form.monthNumber,
       paymentMode: form.receiptMode || 'CASH',
       amount: form.receiptAmt,
+      expectedInstallment: expNum,
+      isPartial: isPart,
+      remainingBalance: Math.max(0, expNum - paidNum),
+      adminSignature: adminSignature,
+      signatoryName: signatoryName,
+      signatoryTitle: signatoryTitle,
       description: `${form.type === 'COLLECTION' ? 'Collection' : 'Disbursal'} - Month ${form.monthNumber || '—'} - ${form.customerName || 'Customer'}`,
       referenceNo: form.referenceNo,
       collectedBy: form.executive || 'Jenista Cash Counter'
     });
   };
 
+  const expectedAmt = Number(form.expectedInstallment || 0);
   const amtNum = Number(form.receiptAmt || 0);
+  const isPartial = expectedAmt > 0 && amtNum > 0 && amtNum < expectedAmt;
+  const remainingBalance = Math.max(0, expectedAmt - amtNum);
 
   return (
     <div className="space-y-6" onClick={() => showCustomerPicker && setShowCustomerPicker(false)}>
@@ -303,13 +514,33 @@ export const ReceiptEntry = () => {
               </select>
             </Field>
             <Field label="Chit Group">
-              <select value={form.chitGroup} onChange={e => set('chitGroup', e.target.value)} className="field-select">
-                <option value="">-- Select --</option>
-                {selectedCustomerChits.length > 0
-                  ? selectedCustomerChits.map((ch: any, i: number) => <option key={i} value={ch.groupId}>{ch.groupId}</option>)
-                  : chitGroups.map((g: any, i: number) => <option key={i} value={g.code || g.id}>{g.code || g.id} – {g.name}</option>)
-                }
-              </select>
+              <div>
+                <select 
+                  value={form.chitGroup} 
+                  onChange={e => handleGroupChange(e.target.value)} 
+                  className="field-select font-semibold text-slate-800"
+                >
+                  <option value="">-- Select --</option>
+                  {selectedCustomerChits.length > 0
+                    ? selectedCustomerChits.map((ch: any, i: number) => <option key={i} value={ch.groupId || ch.groupName}>{ch.groupId || ch.groupName}</option>)
+                    : chitGroups.map((g: any, i: number) => <option key={i} value={g.code || g.id}>{g.code || g.id} – {g.name}</option>)
+                  }
+                </select>
+                {form.chitGroup && (
+                  <div className="px-3 py-1 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-[10px] text-slate-400 font-medium">Scheme:</span>
+                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                      getGroupScheme(form.chitGroup) === 'Fixed'
+                        ? 'bg-blue-100 text-blue-800'
+                        : getGroupScheme(form.chitGroup) === 'Auction'
+                          ? 'bg-indigo-100 text-indigo-800'
+                          : 'bg-emerald-100 text-emerald-800'
+                    }`}>
+                      {getGroupScheme(form.chitGroup)} Chit
+                    </span>
+                  </div>
+                )}
+              </div>
             </Field>
             <Field label="Receipt No.">
               <input value={form.receiptNo} readOnly className="field-input font-mono bg-slate-50" />
@@ -333,7 +564,7 @@ export const ReceiptEntry = () => {
                   readOnly
                   onClick={e => { e.stopPropagation(); setShowCustomerPicker(true); }}
                   placeholder="Click lens to search..."
-                  className="field-input cursor-pointer"
+                  className="field-input cursor-pointer font-bold text-slate-800"
                 />
               </div>
             </Field>
@@ -359,10 +590,41 @@ export const ReceiptEntry = () => {
               <input type="date" value={form.receiptDate} onChange={e => set('receiptDate', e.target.value)} className="field-input" />
             </Field>
             <Field label="Month No.">
-              <input type="number" value={form.monthNumber} onChange={e => set('monthNumber', e.target.value)} placeholder="e.g. 12" className="field-input" />
+              <input 
+                type="number" 
+                min="1"
+                value={form.monthNumber} 
+                onChange={e => handleMonthChange(e.target.value)} 
+                placeholder="e.g. 1" 
+                className="field-input font-bold text-slate-800" 
+              />
             </Field>
             <Field label="Receipt Amount (₹)">
-              <input type="number" value={form.receiptAmt} onChange={e => set('receiptAmt', e.target.value)} placeholder="0.00" className="field-input font-bold text-lg" />
+              <div>
+                <input 
+                  type="number" 
+                  value={form.receiptAmt} 
+                  onChange={e => set('receiptAmt', e.target.value)} 
+                  placeholder="0.00" 
+                  className={`field-input font-bold text-lg ${isPartial ? 'text-amber-800 bg-amber-50/40' : 'text-slate-900'}`} 
+                />
+                {expectedAmt > 0 && (
+                  <div className="px-3 py-1 text-[10px] flex items-center justify-between bg-slate-50 border-t border-slate-100">
+                    <span className="text-slate-500 font-medium">
+                      Due: <strong>₹{expectedAmt.toLocaleString('en-IN')}</strong>
+                    </span>
+                    {isPartial && (
+                      <button
+                        type="button"
+                        onClick={() => set('receiptAmt', String(expectedAmt))}
+                        className="text-[10px] font-bold text-blue-600 hover:text-blue-800 underline"
+                      >
+                        Reset to Full Due
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </Field>
 
             {/* Row 4 - Remarks full width */}
@@ -370,6 +632,21 @@ export const ReceiptEntry = () => {
               <input value={form.remarks} onChange={e => set('remarks', e.target.value)} placeholder="Optional notes..." className="field-input" />
             </Field>
           </div>
+
+          {/* Partial Payment Banner in Form */}
+          {isPartial && (
+            <div className="px-6 py-3 bg-amber-50/90 border-t border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-950 animate-in fade-in duration-200">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse shrink-0"></span>
+                <span>
+                  <strong>Partial Payment:</strong> Collecting ₹{amtNum.toLocaleString('en-IN')} of ₹{expectedAmt.toLocaleString('en-IN')} monthly installment.
+                </span>
+              </div>
+              <span className="font-bold text-amber-900 bg-amber-100/90 px-2.5 py-1 rounded border border-amber-300 shrink-0">
+                ₹{remainingBalance.toLocaleString('en-IN')} Remaining Balance
+              </span>
+            </div>
+          )}
 
           {saved && (
             <div className="px-6 py-4 bg-green-50 border-t border-green-200 flex items-center gap-3">
@@ -386,9 +663,15 @@ export const ReceiptEntry = () => {
             <div className="h-3 bg-[repeating-linear-gradient(90deg,_transparent_0px,_transparent_8px,_#e2e8f0_8px,_#e2e8f0_10px)]" />
 
             <div className="px-6 pt-5 pb-4 border-b-2 border-dashed border-slate-200">
-              <div className="text-center mb-4">
-                <p className="text-lg font-black tracking-widest uppercase text-slate-900">Jenista Chits</p>
-                <p className="text-[10px] text-slate-400 tracking-wider mt-0.5">Financial Services Pvt. Ltd.</p>
+              <div className="text-center mb-3">
+                <img 
+                  src="/assets/Chit logo.jpg.jpeg" 
+                  alt="Jenista Chits Logo" 
+                  className="w-12 h-12 mx-auto mb-2 object-contain rounded-md"
+                />
+                <p className="text-base font-black tracking-widest uppercase text-slate-900 leading-tight">Jenista Chits</p>
+                <p className="text-[10px] text-amber-700 tracking-wider font-bold mt-0.5">Faith, Commitment, Victory</p>
+                <p className="text-[9px] text-slate-400 tracking-wider">Financial Services Pvt. Ltd.</p>
                 <span className="inline-block mt-2 px-3 py-0.5 border border-slate-800 text-[9px] font-black tracking-widest uppercase text-slate-800">
                   {form.type === 'COLLECTION' ? 'Collection Receipt' : 'Disbursal Receipt'}
                 </span>
@@ -414,16 +697,58 @@ export const ReceiptEntry = () => {
               {form.remarks && <ReceiptRow label="Remarks" value={form.remarks} />}
             </div>
 
-            <div className="px-6 py-4 border-b-2 border-dashed border-slate-200">
-              <div className="flex justify-between items-end">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Net Amount</span>
-                <span className="text-xl font-black text-slate-900 tracking-tight">
-                  ₹{amtNum > 0 ? amtNum.toLocaleString('en-IN') : '0.00'}
-                </span>
+            {isPartial ? (
+              <div className="px-6 py-3.5 border-b-2 border-dashed border-slate-200 space-y-1.5 bg-amber-50/40">
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-slate-500 font-bold uppercase tracking-wider">Monthly Due</span>
+                  <span className="font-bold text-slate-800">₹{expectedAmt.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-emerald-700 font-bold uppercase tracking-wider">Amount Paid</span>
+                  <span className="font-black text-emerald-800 text-sm">₹{amtNum.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-amber-700 font-bold uppercase tracking-wider">Remaining Due</span>
+                  <span className="font-black text-amber-800">₹{remainingBalance.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="pt-1 border-t border-dashed border-slate-200 flex justify-between items-center">
+                  <span className="text-[10px] font-black uppercase text-amber-800">Status</span>
+                  <span className="text-[9px] font-black px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                    PARTIAL PAYMENT
+                  </span>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="px-6 py-4 border-b-2 border-dashed border-slate-200">
+                <div className="flex justify-between items-end">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Net Amount</span>
+                  <span className="text-xl font-black text-slate-900 tracking-tight">
+                    ₹{amtNum > 0 ? amtNum.toLocaleString('en-IN') : '0.00'}
+                  </span>
+                </div>
+              </div>
+            )}
 
-            <div className="px-6 py-4 text-center space-y-1">
+            <div className="px-6 py-4 text-center space-y-2">
+              {adminSignature ? (
+                <div className="flex flex-col items-center justify-center my-1">
+                  <img src={adminSignature} alt="Authorized Signatory" className="h-10 max-w-[130px] object-contain mb-1" />
+                  <div className="w-32 border-t border-slate-400"></div>
+                  <span className="text-[9px] font-bold text-slate-700 uppercase tracking-widest mt-1">
+                    {signatoryName}
+                  </span>
+                  <span className="text-[8px] text-slate-500 font-medium">
+                    {signatoryTitle}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center my-1">
+                  <div className="w-32 border-t border-slate-400 mt-6"></div>
+                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mt-1">
+                    Authorized Signatory
+                  </span>
+                </div>
+              )}
               <p className="text-[9px] text-slate-400 uppercase tracking-wider">Executive: {form.executive}</p>
               <p className="text-[9px] text-slate-400">Thank you for your trust in Jenista Chits.</p>
               <p className="text-[9px] text-slate-400">Computer-generated receipt.</p>

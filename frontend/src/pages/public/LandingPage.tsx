@@ -11,12 +11,12 @@ export const LandingPage = () => {
   return (
     <>
       <HeroSection />
+      <TrackChitSection />
+      <PlansSection />
       <HowItWorksSection />
       <AppFeaturesSection />
       <AboutUsSection />
-      <PlansSection />
       <TestimonialsSection />
-      <TrackChitSection />
       <ContactSection />
     </>
   );

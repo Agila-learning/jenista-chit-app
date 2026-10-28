@@ -9,6 +9,10 @@ router.post('/', CustomerController.createCustomer);
 // Public route for customer login
 router.post('/login', CustomerController.customerLogin);
 
+// Public route to track chit subscription
+router.get('/track', CustomerController.trackChit);
+router.post('/track', CustomerController.trackChit);
+
 // Customer list (allows filtering by status, search, etc.)
 router.get('/', CustomerController.getCustomers);
 

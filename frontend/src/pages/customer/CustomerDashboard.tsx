@@ -154,11 +154,67 @@ export const CustomerDashboard = () => {
         setMyChits(finalChits);
         setActiveChits(finalChits.length);
 
-        // Reconcile total invested across MongoDB, localStorage, and ledger transactions
+        // Reconcile total invested across MongoDB, localStorage, ledger transactions, and staff receipts
+        const cIds = [
+          user?.id, 
+          customer?.id, 
+          customer?.customerCode, 
+          customer?.mongoId
+        ].filter(Boolean).map(s => String(s).toLowerCase());
+
+        const cleanCustMobile = (customer?.mobile || '').replace(/\D/g, '');
+        const cleanCustPhone = (customer?.phone || '').replace(/\D/g, '');
+        const cPhones = [cleanUserPhone, cleanCustMobile, cleanCustPhone].filter(Boolean);
+
         const ledger = JSON.parse(localStorage.getItem('ledgerTransactions') || '[]');
-        const myTransactions = ledger.filter((t: any) => 
-          (user?.id && (t.customerId === user.id || t.reference?.includes(user.id) || t.description?.includes(user.id)))
-        );
+        const myTransactions: any[] = ledger.filter((t: any) => {
+          const tCustId = String(t.customerId || '').toLowerCase();
+          const tMobile = String(t.mobileNumber || '').replace(/\D/g, '');
+          const ref = String(t.reference || '').toLowerCase();
+          const desc = String(t.description || '').toLowerCase();
+
+          const matchesId = cIds.some(id => tCustId === id || ref.includes(id) || desc.includes(id));
+          const matchesPhone = cPhones.some(p => (tMobile && tMobile.includes(p)) || ref.includes(p) || desc.includes(p));
+
+          return matchesId || matchesPhone;
+        });
+
+        // Also merge staffReceipts so physical cash receipts at counters are immediately visible
+        const staffRecs = JSON.parse(localStorage.getItem('staffReceipts') || '[]');
+        staffRecs.forEach((sr: any) => {
+          const srCustId = String(sr.customerId || '').toLowerCase();
+          const srMobile = String(sr.mobileNumber || '').replace(/\D/g, '');
+          const matchesId = cIds.some(id => srCustId === id);
+          const matchesPhone = cPhones.some(p => srMobile && srMobile.includes(p));
+
+          if (matchesId || matchesPhone) {
+            const alreadyInList = myTransactions.some(
+              (t: any) => t.id === sr.receiptNo || t.receiptNo === sr.receiptNo
+            );
+            if (!alreadyInList) {
+              myTransactions.push({
+                id: sr.receiptNo,
+                receiptNo: sr.receiptNo,
+                date: sr.timestamp || sr.date,
+                type: sr.type === 'DISBURSAL' ? 'DEBIT' : 'CREDIT',
+                category: sr.type === 'DISBURSAL' ? 'DISBURSAL' : 'INSTALLMENT',
+                amount: Number(sr.amount),
+                dueAmount: Number(sr.dueAmount || sr.amount),
+                remainingBalance: Number(sr.remainingBalance || 0),
+                isPartial: Boolean(sr.isPartial),
+                reference: `${sr.customerId} / ${sr.chitGroup}`,
+                description: `Branch Receipt - Month ${sr.monthNumber || '1'} (${sr.mode || 'CASH'})`,
+                collectedBy: sr.executive || 'Staff User',
+                paymentMode: sr.mode || 'CASH',
+                status: 'VERIFIED'
+              });
+            }
+          }
+        });
+
+        // Sort latest transactions first
+        myTransactions.sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+
         const ledgerCreditTotal = myTransactions
           .filter((t: any) => t.type === 'CREDIT' || t.category === 'INSTALLMENT')
           .reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
@@ -707,14 +763,14 @@ export const CustomerDashboard = () => {
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <h4 className="font-bold text-lg text-primary-900">{chit.groupName || chit.groupId}</h4>
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${
-                            (chit.scheme || '').toLowerCase().includes('fix')
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                              : (chit.scheme || '').toLowerCase().includes('auc')
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                            scheduleSummary.scheme === 'Fixed'
+                              ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                              : scheduleSummary.scheme === 'Auction'
                                 ? 'bg-purple-100 text-purple-800 border border-purple-300'
-                                : 'bg-amber-100 text-amber-900 border border-amber-300'
+                                : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
                           }`}>
-                            {chit.scheme || 'Regular'} Plan ({chit.months || chit.duration || 20}M)
+                            {scheduleSummary.scheme} Chit Plan ({chit.months || chit.duration || scheduleSummary.totalDurationMonths || 20}M)
                           </span>
                           {isCurrentMonthPaid && (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">

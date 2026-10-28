@@ -1,9 +1,8 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { PublicLayout } from './components/layout/PublicLayout';
 import { LandingPage } from './pages/public/LandingPage';
-import { CustomerLoginPage } from './pages/auth/CustomerLoginPage';
+import { LoginPage } from './pages/auth/LoginPage';
 import { CustomerRegistrationPage } from './pages/auth/CustomerRegistrationPage';
-import { AdminLoginPage } from './pages/auth/AdminLoginPage';
 import { AuthProvider } from './store/AuthContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { AdminLayout } from './components/layout/AdminLayout';
@@ -24,6 +23,7 @@ import { Payments } from './pages/admin/finance/Payments';
 import { ManageBanks } from './pages/admin/finance/ManageBanks';
 import { CustomerDashboard } from './pages/customer/CustomerDashboard';
 import { CustomerChitScheduleScreen } from './pages/admin/customers/CustomerChitScheduleScreen';
+import { ChitCalculator } from './pages/admin/ChitCalculator';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { purgeMockData } from './utils/cleanMockData';
@@ -44,10 +44,10 @@ function App() {
             <Route index element={<LandingPage />} />
           </Route>
           
-          <Route path="/customer-login" element={<CustomerLoginPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/customer-login" element={<LoginPage />} />
+          <Route path="/admin-login" element={<LoginPage />} />
           <Route path="/register" element={<CustomerRegistrationPage />} />
-          <Route path="/admin-login" element={<AdminLoginPage />} />
-          <Route path="/login" element={<Navigate to="/customer-login" replace />} />
           
           {/* Protected Routes */}
           <Route element={<ProtectedRoute />}>
@@ -68,6 +68,8 @@ function App() {
               <Route path="/admin/payments" element={<Payments />} />
               <Route path="/admin/banks" element={<ManageBanks />} />
 
+              <Route path="/admin/calculator" element={<ChitCalculator />} />
+              <Route path="/staff/calculator" element={<ChitCalculator />} />
               <Route path="/admin/receipts" element={<ReceiptEntry />} />
               <Route path="/admin/settings" element={<Settings />} />
               <Route path="/admin/reports/non-payers" element={<NonPayersReport />} />

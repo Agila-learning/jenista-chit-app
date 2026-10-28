@@ -9,19 +9,24 @@ import {
   CreditCard, 
   Receipt,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  X,
   Landmark,
   Gavel,
   BarChart3,
   Bell,
   UserCheck,
-  LogOut
+  LogOut,
+  Calculator
 } from 'lucide-react';
 import { useAuth } from '../../store/AuthContext';
 
 interface SidebarProps {
-  isOpen?: boolean;
-  setIsOpen?: (isOpen: boolean) => void;
+  isCollapsed?: boolean;
   onToggle?: () => void;
+  isMobileOpen?: boolean;
+  setIsMobileOpen?: (open: boolean) => void;
 }
 
 interface NavItem {
@@ -102,7 +107,12 @@ const TempleSilhouette = () => (
   </svg>
 );
 
-export const Sidebar = (_props: SidebarProps = {}) => {
+export const Sidebar = ({ 
+  isCollapsed = false, 
+  onToggle, 
+  isMobileOpen = false, 
+  setIsMobileOpen 
+}: SidebarProps = {}) => {
   const location = useLocation();
   const { user, logout } = useAuth();
   const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
@@ -154,6 +164,7 @@ export const Sidebar = (_props: SidebarProps = {}) => {
       icon: CreditCard,
       badge: pendingPaymentsCount
     },
+    { name: 'Chit Calculator', href: '/admin/calculator', icon: Calculator },
     { name: 'Schemes', href: '/admin/manage-plans', icon: Gavel },
     { name: 'Manage Bank', href: '/admin/banks', icon: Landmark },
     { name: 'Ledger', href: '/admin/ledger', icon: FileText },
@@ -182,6 +193,7 @@ export const Sidebar = (_props: SidebarProps = {}) => {
 
   const staffNavigation: NavItem[] = [
     { name: 'Staff Dashboard', href: '/staff/dashboard', icon: LayoutDashboard },
+    { name: 'Chit Calculator', href: '/staff/calculator', icon: Calculator },
     { name: 'Raise Receipt', href: '/admin/receipts', icon: Receipt },
     { 
       name: 'Customers', 
@@ -204,25 +216,34 @@ export const Sidebar = (_props: SidebarProps = {}) => {
 
   const mainNav = isStaff ? staffNavigation : adminMainNavigation;
   const mgmtNav = isStaff ? [] : adminManagementNavigation;
-  const [isHovered, setIsHovered] = useState(false);
+  // Active expansion state: mobile drawer open or desktop expanded
+  const isExpanded = isMobileOpen || !isCollapsed;
 
   return (
     <>
-      {/* Sidebar Component: Hover Mode Deep Navy Panel */}
+      {/* Mobile Backdrop Overlay */}
+      {isMobileOpen && (
+        <div 
+          onClick={() => setIsMobileOpen?.(false)}
+          className="fixed inset-0 bg-slate-950/70 z-40 backdrop-blur-xs lg:hidden animate-in fade-in duration-200"
+        />
+      )}
+
+      {/* Sidebar Container: Non-overlapping flex layout on desktop, sliding drawer on mobile */}
       <aside 
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => {
-          setIsHovered(false);
-          setOpenSubmenu(null);
-        }}
         className={cn(
-          "fixed inset-y-0 left-0 z-50 bg-[#0d1527] text-slate-200 flex flex-col transition-all duration-300 ease-in-out border-r border-[#1e293b]/70 shadow-2xl overflow-x-hidden group/sidebar",
-          isHovered ? "w-64" : "w-[68px]"
+          "bg-[#0d1527] text-slate-200 flex flex-col transition-all duration-300 ease-in-out border-r border-[#1e293b]/70 shadow-2xl overflow-x-hidden h-screen shrink-0",
+          // Mobile responsive positioning
+          "fixed inset-y-0 left-0 z-50",
+          isMobileOpen ? "translate-x-0 w-64 shadow-2xl" : "-translate-x-full lg:translate-x-0",
+          // Desktop responsive flow
+          "lg:relative lg:z-30",
+          isCollapsed ? "lg:w-[72px]" : "lg:w-64"
         )}
       >
         {/* Brand Section Header */}
-        <div className="h-16 flex items-center px-3.5 border-b border-slate-800/80 bg-[#0a1120] shrink-0 overflow-hidden">
-          <div className="flex items-center gap-3 w-full">
+        <div className="h-16 flex items-center justify-between px-3.5 border-b border-slate-800/80 bg-[#0a1120] shrink-0 overflow-hidden">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 via-amber-500 to-amber-700 p-0.5 shadow-md shadow-amber-900/30 flex items-center justify-center shrink-0">
               <div className="w-full h-full bg-[#0d1527] rounded-[10px] flex items-center justify-center overflow-hidden">
                 <img 
@@ -235,16 +256,39 @@ export const Sidebar = (_props: SidebarProps = {}) => {
                 />
               </div>
             </div>
-            {isHovered && (
+            {isExpanded && (
               <div className="flex flex-col min-w-0 animate-in fade-in duration-200">
                 <span className="font-extrabold text-white text-base tracking-tight leading-tight truncate">
                   Jenista Chits
                 </span>
-                <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest leading-none mt-0.5">
-                  Chit Funds
+                <span className="text-[9px] font-bold text-amber-400 uppercase tracking-widest leading-none mt-0.5 truncate">
+                  Faith, Commitment, Victory
                 </span>
               </div>
             )}
+          </div>
+
+          {/* Header Toggle / Close Buttons */}
+          <div className="flex items-center">
+            {isMobileOpen ? (
+              <button
+                type="button"
+                onClick={() => setIsMobileOpen?.(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 lg:hidden"
+                title="Close Navigation"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            ) : onToggle ? (
+              <button
+                type="button"
+                onClick={onToggle}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 hidden lg:flex items-center justify-center transition-colors"
+                title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+              >
+                {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -262,41 +306,43 @@ export const Sidebar = (_props: SidebarProps = {}) => {
                     onClick={(e) => {
                       if (item.subItems) {
                         e.preventDefault();
-                        if (!isHovered) setIsHovered(true);
+                        if (isCollapsed && onToggle) onToggle();
                         setOpenSubmenu(openSubmenu === item.name ? null : item.name);
+                      } else {
+                        setIsMobileOpen?.(false);
                       }
                     }}
-                    title={!isHovered ? item.name : undefined}
+                    title={!isExpanded ? item.name : undefined}
                     className={cn(
                       "flex items-center rounded-xl transition-all font-medium text-xs tracking-wide relative group",
-                      isHovered ? "justify-between px-3 py-2.5" : "justify-center h-11 w-11 mx-auto",
+                      isExpanded ? "justify-between px-3 py-2.5" : "justify-center h-11 w-11 mx-auto",
                       isActive
-                        ? "bg-[#b8860b]/20 text-[#e6c687] border border-[#b8860b]/40 font-semibold shadow-2xs"
+                        ? "bg-blue-600/20 text-blue-300 border border-blue-500/40 font-semibold shadow-2xs"
                         : "text-[#8b9bb4] hover:text-white hover:bg-white/[0.05]"
                     )}
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <item.icon className={cn(
                         "w-4 h-4 shrink-0 transition-colors",
-                        isActive ? "text-[#e6c687]" : "text-[#8b9bb4] group-hover:text-white"
+                        isActive ? "text-blue-400" : "text-[#8b9bb4] group-hover:text-white"
                       )} />
-                      {isHovered && <span className="truncate">{item.name}</span>}
+                      {isExpanded && <span className="truncate">{item.name}</span>}
                     </div>
 
                     {/* Collapsed dot badge */}
-                    {!isHovered && item.badge !== undefined && item.badge > 0 && (
-                      <span className="w-2 h-2 rounded-full bg-amber-400 absolute top-2 right-2 animate-pulse" />
+                    {!isExpanded && item.badge !== undefined && item.badge > 0 && (
+                      <span className="w-2 h-2 rounded-full bg-blue-400 absolute top-2 right-2 animate-pulse" />
                     )}
 
-                    {/* Hovered pill badge and chevron */}
-                    {isHovered && (
+                    {/* Expanded pill badge and chevron */}
+                    {isExpanded && (
                       <div className="flex items-center gap-1.5 shrink-0 animate-in fade-in duration-150">
                         {item.badge !== undefined && item.badge > 0 && (
                           <span className={cn(
                             "text-[10px] font-black px-1.5 py-0.5 rounded-full shadow-xs",
                             isActive 
-                              ? "bg-[#b8860b] text-white" 
-                              : "bg-amber-500 text-slate-950 animate-pulse"
+                              ? "bg-blue-600 text-white" 
+                              : "bg-blue-500 text-white animate-pulse"
                           )}>
                             {item.badge}
                           </span>
@@ -312,7 +358,7 @@ export const Sidebar = (_props: SidebarProps = {}) => {
                   </NavLink>
 
                   {/* Expandable Submenu */}
-                  {isHovered && item.subItems && openSubmenu === item.name && (
+                  {isExpanded && item.subItems && openSubmenu === item.name && (
                     <div className="ml-7 mt-1 pl-3 border-l border-slate-800 space-y-1 py-1 animate-in fade-in duration-150">
                       {item.subItems.map(subItem => {
                         const isSubActive = location.pathname === subItem.href;
@@ -320,6 +366,7 @@ export const Sidebar = (_props: SidebarProps = {}) => {
                           <NavLink
                             key={subItem.name}
                             to={subItem.href}
+                            onClick={() => setIsMobileOpen?.(false)}
                             className={cn(
                               "block py-1.5 px-2.5 text-[11px] rounded-lg transition-colors font-medium",
                               isSubActive 
@@ -341,7 +388,7 @@ export const Sidebar = (_props: SidebarProps = {}) => {
           {/* Management Section */}
           {mgmtNav.length > 0 && (
             <div className="space-y-1 pt-2 border-t border-slate-800/60">
-              {isHovered && (
+              {isExpanded && (
                 <div className="px-3 pb-1.5 animate-in fade-in duration-150">
                   <span className="text-[10px] font-bold tracking-widest uppercase text-slate-500">
                     Management
@@ -354,10 +401,11 @@ export const Sidebar = (_props: SidebarProps = {}) => {
                   <NavLink
                     key={item.name}
                     to={item.href}
-                    title={!isHovered ? item.name : undefined}
+                    onClick={() => setIsMobileOpen?.(false)}
+                    title={!isExpanded ? item.name : undefined}
                     className={cn(
                       "flex items-center rounded-xl transition-all font-medium text-xs tracking-wide group",
-                      isHovered ? "justify-between px-3 py-2.5" : "justify-center h-11 w-11 mx-auto",
+                      isExpanded ? "justify-between px-3 py-2.5" : "justify-center h-11 w-11 mx-auto",
                       isActive
                         ? "bg-[#b8860b]/20 text-[#e6c687] border border-[#b8860b]/40 font-semibold shadow-2xs"
                         : "text-[#8b9bb4] hover:text-white hover:bg-white/[0.05]"
@@ -368,7 +416,7 @@ export const Sidebar = (_props: SidebarProps = {}) => {
                         "w-4 h-4 shrink-0 transition-colors",
                         isActive ? "text-[#e6c687]" : "text-[#8b9bb4] group-hover:text-white"
                       )} />
-                      {isHovered && <span className="truncate">{item.name}</span>}
+                      {isExpanded && <span className="truncate">{item.name}</span>}
                     </div>
                   </NavLink>
                 );
@@ -377,7 +425,7 @@ export const Sidebar = (_props: SidebarProps = {}) => {
           )}
 
           {/* Indian Architectural Heritage Vignette */}
-          {isHovered && (
+          {isExpanded && (
             <div className="pt-4 pb-2 text-center border-t border-slate-800/60 animate-in fade-in duration-200">
               <TempleSilhouette />
               <p className="text-[10px] text-amber-200/60 font-serif italic tracking-wider mt-1.5 leading-tight">
@@ -391,13 +439,13 @@ export const Sidebar = (_props: SidebarProps = {}) => {
         <div className="p-3 border-t border-slate-800 bg-[#090f1d] shrink-0 overflow-hidden">
           <div className={cn(
             "flex items-center",
-            isHovered ? "justify-between" : "justify-center"
+            isExpanded ? "justify-between" : "justify-center"
           )}>
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-amber-500 to-amber-300 text-slate-950 flex items-center justify-center font-black text-xs shrink-0 shadow-sm">
                 {(user?.name || 'Santy Y').slice(0, 2).toUpperCase()}
               </div>
-              {isHovered && (
+              {isExpanded && (
                 <div className="min-w-0 truncate animate-in fade-in duration-150">
                   <p className="text-xs font-bold text-white truncate leading-tight">
                     {user?.name || 'Santy Y'}
@@ -409,8 +457,9 @@ export const Sidebar = (_props: SidebarProps = {}) => {
               )}
             </div>
 
-            {isHovered && (
+            {isExpanded && (
               <button
+                type="button"
                 onClick={logout}
                 title="Log out of session"
                 className="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition-colors animate-in fade-in duration-150"

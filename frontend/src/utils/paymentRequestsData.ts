@@ -128,9 +128,11 @@ export const getStoredPaymentRequests = (): PaymentRequest[] => {
     if (!Array.isArray(parsed)) {
       return [];
     }
-    // Filter out initial mock payment request IDs
+    // Filter out initial mock / old payment request IDs and old Dhanush data
     const realOnly = parsed.filter((r: any) =>
-      !['PAY-78201', 'PAY-78202', 'PAY-78203', 'PAY-78190'].includes(r.id)
+      !['PAY-78201', 'PAY-78202', 'PAY-78203', 'PAY-78190', 'PAY-666408', 'PAY-374835'].includes(r.id) &&
+      r.customerName !== 'Dhanush' &&
+      r.customerId !== 'TC-73071'
     );
     if (realOnly.length !== parsed.length) {
       localStorage.setItem('paymentRequests', JSON.stringify(realOnly));
@@ -143,66 +145,43 @@ export const getStoredPaymentRequests = (): PaymentRequest[] => {
 };
 
 /**
- * Fetch latest payment requests from Backend API with local storage fallback and two-way sync
+ * Fetch latest payment requests from Backend API with local storage sync
  */
 export const syncPaymentRequestsWithBackend = async (): Promise<PaymentRequest[]> => {
   try {
     const res: any = await fetchClient('/payments/requests');
     if (res && res.data && Array.isArray(res.data)) {
-      const backendList: PaymentRequest[] = res.data.map((r: any) => ({
-        id: r.id,
-        customerId: r.customerId,
-        customerName: r.customerName,
-        mobile: r.mobile,
-        groupId: r.groupId,
-        groupName: r.groupName,
-        ticketNumber: r.ticketNumber,
-        amount: Number(r.amount),
-        paymentMode: r.paymentMode,
-        referenceNo: r.referenceNo,
-        bankAccountId: r.bankAccountId,
-        bankName: r.bankName,
-        paymentScreenshot: r.paymentScreenshot || r.screenshotUrl,
-        screenshotUrl: r.screenshotUrl || r.paymentScreenshot,
-        submittedAt: r.submittedAt || r.createdAt,
-        status: r.status,
-        remarks: r.remarks,
-        verifiedAt: r.verifiedAt,
-        rejectedAt: r.rejectedAt
-      }));
+      const backendList: PaymentRequest[] = res.data
+        .filter((r: any) =>
+          !['PAY-666408', 'PAY-374835'].includes(r.id) &&
+          r.customerName !== 'Dhanush' &&
+          r.customerId !== 'TC-73071'
+        )
+        .map((r: any) => ({
+          id: r.id,
+          customerId: r.customerId,
+          customerName: r.customerName,
+          mobile: r.mobile,
+          groupId: r.groupId,
+          groupName: r.groupName,
+          ticketNumber: r.ticketNumber,
+          amount: Number(r.amount),
+          paymentMode: r.paymentMode,
+          referenceNo: r.referenceNo,
+          bankAccountId: r.bankAccountId,
+          bankName: r.bankName,
+          paymentScreenshot: r.paymentScreenshot || r.screenshotUrl,
+          screenshotUrl: r.screenshotUrl || r.paymentScreenshot,
+          submittedAt: r.submittedAt || r.createdAt,
+          status: r.status,
+          remarks: r.remarks,
+          verifiedAt: r.verifiedAt,
+          rejectedAt: r.rejectedAt
+        }));
 
-      // Merge backend items with local items
-      const local = getStoredPaymentRequests();
-      const backendIds = new Set(backendList.map(b => b.id));
-
-      // Push any local requests that were created offline or in InPrivate to the backend DB
-      const unsyncedLocal = local.filter(item => !backendIds.has(item.id));
-      if (unsyncedLocal.length > 0) {
-        Promise.allSettled(
-          unsyncedLocal.map(item =>
-            fetchClient('/payments/requests', {
-              method: 'POST',
-              body: JSON.stringify(item)
-            })
-          )
-        ).catch(() => {});
-      }
-
-      const localMap = new Map<string, PaymentRequest>(local.map(item => [item.id, item]));
-
-      // Add backend items (backend status takes precedence if approved/rejected)
-      backendList.forEach(item => {
-        const existing = localMap.get(item.id);
-        if (!existing || item.status === 'APPROVED' || item.status === 'REJECTED') {
-          localMap.set(item.id, item);
-        }
-      });
-
-      const merged = Array.from(localMap.values()).sort(
-        (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
-      );
-      localStorage.setItem('paymentRequests', JSON.stringify(merged));
-      return merged;
+      // Active database is the single source of truth
+      localStorage.setItem('paymentRequests', JSON.stringify(backendList));
+      return backendList;
     }
   } catch (err) {
     console.warn('Backend payment requests sync unavailable, using local cache:', err);
@@ -277,6 +256,33 @@ export const approvePaymentRequestAction = async (req: PaymentRequest) => {
     status: 'VERIFIED'
   };
   localStorage.setItem('ledgerTransactions', JSON.stringify([newLedgerEntry, ...ledger]));
+
+  // 3b. Add to staffReceipts so staff collections & customer dues update immediately
+  try {
+    const staffRecs = JSON.parse(localStorage.getItem('staffReceipts') || '[]');
+    const onlineStaffReceipt = {
+      receiptNo: newLedgerEntry.id,
+      date: new Date().toISOString().split('T')[0],
+      timestamp: new Date().toISOString(),
+      customerId: req.customerId,
+      customerName: req.customerName,
+      mobileNumber: req.mobile,
+      chitGroup: req.groupName || req.groupId,
+      monthNumber: '1',
+      amount: Number(req.amount),
+      dueAmount: Number(req.amount),
+      remainingBalance: 0,
+      isPartial: false,
+      mode: req.paymentMode || 'ONLINE',
+      referenceNo: req.referenceNo,
+      executive: 'Online Portal / Verified by Admin',
+      status: 'COLLECTED',
+      type: 'COLLECTION'
+    };
+    localStorage.setItem('staffReceipts', JSON.stringify([onlineStaffReceipt, ...staffRecs]));
+  } catch (err) {
+    console.warn('Could not add to staffReceipts:', err);
+  }
 
   // 4. Update mockCustomers
   const customers = JSON.parse(localStorage.getItem('mockCustomers') || '[]');

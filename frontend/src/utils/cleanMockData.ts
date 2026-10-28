@@ -22,7 +22,7 @@ export const MOCK_GROUP_NAMES = new Set([
 ]);
 
 export const MOCK_CUSTOMER_IDS = new Set([
-  'TC-10045', 'TC-10046', 'TC-10047', 'TC-10048',
+  'TC-10045', 'TC-10046', 'TC-10047', 'TC-10048', 'TC-73071',
   'CUST-1001', 'CUST-1002', 'CUST-1003', 'CUST-1004', 'CUST-1005',
   'CUST-1006', 'CUST-1007', 'CUST-1008', 'CUST-1009', 'CUST-1010',
   'CUST-1011', 'CUST-1012', 'CUST-1013', 'CUST-1014', 'CUST-1015',
@@ -34,7 +34,8 @@ export const MOCK_CUSTOMER_NAMES = new Set([
   'V. Saravanan', 'P. Suresh', 'T. Anand', 'D. Kavitha', 'N. Ramesh',
   'B. Divya', 'J. Karthik', 'G. Balaji', 'S. Vijay', 'M. Senthil',
   'K. Revathi', 'P. Mani', 'R. Vignesh', 'E. Rajesh', 'S. Deepa',
-  'Rahul Sharma', 'Karthik Subramanian', 'Priya Meenakshi', 'Customer Demo'
+  'Rahul Sharma', 'Karthik Subramanian', 'Priya Meenakshi', 'Customer Demo',
+  'Dhanush'
 ]);
 
 export const isMockGroup = (g: any): boolean => {
@@ -57,6 +58,7 @@ export const isMockCustomer = (c: any): boolean => {
   if (MOCK_CUSTOMER_NAMES.has(name)) return true;
   if (/^CUST-10(0[1-9]|1[0-9]|20)$/.test(id)) return true;
   if (/^TC-1004[5-8]$/.test(id)) return true;
+  if (id === 'TC-73071' || name.toLowerCase() === 'dhanush') return true;
   return false;
 };
 
@@ -158,15 +160,47 @@ export const purgeMockData = (): void => {
       }
     }
 
-    // 6. Purge paymentRequests: only drop static hardcoded dummy IDs, never real or demo customer submissions
+    // 6. Purge paymentRequests: remove mock/old dummy IDs and payments belonging to mock/deleted customers
     const rawPayments = localStorage.getItem('paymentRequests');
     if (rawPayments) {
       const parsedPayments = JSON.parse(rawPayments);
       if (Array.isArray(parsedPayments)) {
         const cleanPayments = parsedPayments.filter((p: any) =>
-          !['PAY-78201', 'PAY-78202', 'PAY-78203', 'PAY-78190'].includes(p.id)
+          !['PAY-78201', 'PAY-78202', 'PAY-78203', 'PAY-78190', 'PAY-666408', 'PAY-374835'].includes(p.id) &&
+          !isMockCustomer({ id: p.customerId, name: p.customerName }) &&
+          p.customerName !== 'Dhanush' &&
+          p.customerId !== 'TC-73071'
         );
         localStorage.setItem('paymentRequests', JSON.stringify(cleanPayments));
+      }
+    }
+
+    // 7. Purge withdrawalRequests
+    const rawWithdrawals = localStorage.getItem('withdrawalRequests');
+    if (rawWithdrawals) {
+      const parsedW = JSON.parse(rawWithdrawals);
+      if (Array.isArray(parsedW)) {
+        const cleanW = parsedW.filter((w: any) =>
+          !isMockCustomer({ id: w.customerId, name: w.customerName }) &&
+          w.customerName !== 'Dhanush' &&
+          w.customerId !== 'TC-73071'
+        );
+        localStorage.setItem('withdrawalRequests', JSON.stringify(cleanW));
+      }
+    }
+
+    // 8. Purge ledgerTransactions
+    const rawLedger = localStorage.getItem('ledgerTransactions');
+    if (rawLedger) {
+      const parsedL = JSON.parse(rawLedger);
+      if (Array.isArray(parsedL)) {
+        const cleanL = parsedL.filter((l: any) =>
+          !['PAY-666408', 'PAY-374835'].includes(l.paymentRequestId) &&
+          !isMockCustomer({ id: l.customerId, name: l.customerName }) &&
+          l.customerName !== 'Dhanush' &&
+          l.customerId !== 'TC-73071'
+        );
+        localStorage.setItem('ledgerTransactions', JSON.stringify(cleanL));
       }
     }
   } catch (err) {

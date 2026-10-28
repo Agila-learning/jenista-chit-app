@@ -13,6 +13,13 @@ export interface ReceiptDetails {
   description?: string;
   referenceNo?: string;
   collectedBy?: string;
+  monthNumber?: string | number;
+  expectedInstallment?: number | string;
+  isPartial?: boolean;
+  remainingBalance?: number | string;
+  adminSignature?: string;
+  signatoryName?: string;
+  signatoryTitle?: string;
 }
 
 // Convert numbers to Indian Rupees in words
@@ -95,6 +102,14 @@ export const printCashReceipt = (data: ReceiptDetails) => {
   const amountVal = Number(data.amount || 0);
   const wordsStr = numberToWordsINR(amountVal);
   const cashier = data.collectedBy || 'Jenista Cash Counter';
+
+  // Inbuilt Admin Signature & Details
+  const adminSig = data.adminSignature || localStorage.getItem('adminSignature') || '';
+  const sigName = data.signatoryName || localStorage.getItem('adminSignatoryName') || 'System Admin';
+  const sigTitle = data.signatoryTitle || localStorage.getItem('adminSignatoryTitle') || 'Authorized Signatory';
+  const isPartial = Boolean(data.isPartial && Number(data.remainingBalance || 0) > 0);
+  const dueAmt = Number(data.expectedInstallment || 0);
+  const remBal = Number(data.remainingBalance || 0);
 
   const win = window.open('', '_blank');
   if (!win) {
@@ -183,6 +198,13 @@ export const printCashReceipt = (data: ReceiptDetails) => {
             padding-bottom: 14px;
             margin-bottom: 14px;
           }
+          .logo-img {
+            width: 52px;
+            height: 52px;
+            object-fit: contain;
+            margin-bottom: 6px;
+            border-radius: 8px;
+          }
           .company-name {
             font-size: 20px;
             font-weight: 900;
@@ -192,9 +214,10 @@ export const printCashReceipt = (data: ReceiptDetails) => {
           }
           .tagline {
             font-size: 11px;
-            color: #475569;
-            font-weight: 600;
+            color: #b45309;
+            font-weight: 700;
             margin-top: 2px;
+            letter-spacing: 0.5px;
           }
           .reg-info {
             font-size: 9.5px;
@@ -272,6 +295,13 @@ export const printCashReceipt = (data: ReceiptDetails) => {
             margin-bottom: 12px;
             font-weight: 600;
           }
+          .partial-box {
+            background: #fffbeb;
+            border: 1.5px solid #fde68a;
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin: 12px 0 6px 0;
+          }
           .signatures {
             display: flex;
             justify-content: space-between;
@@ -288,7 +318,7 @@ export const printCashReceipt = (data: ReceiptDetails) => {
           .sign-line {
             margin-top: 26px;
             border-top: 1px solid #94a3b8;
-            width: 115px;
+            width: 125px;
           }
           .footer {
             text-align: center;
@@ -321,8 +351,9 @@ export const printCashReceipt = (data: ReceiptDetails) => {
         <div class="voucher">
           ${isCash ? '<div class="cash-watermark">PAID CASH</div>' : ''}
           <div class="header">
+            <img src="/assets/Chit logo.jpg.jpeg" alt="Jenista Chits Logo" class="logo-img" />
             <div class="company-name">Jenista Chits Pvt Ltd</div>
-            <div class="tagline">Government Registered Chit Fund Company</div>
+            <div class="tagline">Faith, Commitment, Victory</div>
             <div class="reg-info">Reg. Under Chit Funds Act 1982 · CIN: U65992TN2020PTC018290</div>
             <div class="receipt-type-badge">
               ${isCash ? '💵 Cash Payment Receipt Voucher' : '💳 Official Payment Receipt'}
@@ -361,6 +392,11 @@ export const printCashReceipt = (data: ReceiptDetails) => {
               <span class="meta-label">Chit Scheme / Group</span>
               <span class="meta-val">${grpName}</span>
             </div>
+            ${data.monthNumber ? `
+            <div class="meta-row">
+              <span class="meta-label">Payable Month</span>
+              <span class="meta-val">Month ${data.monthNumber}</span>
+            </div>` : ''}
             ${data.ticketNumber ? `
             <div class="meta-row">
               <span class="meta-label">Ticket Number</span>
@@ -383,10 +419,32 @@ export const printCashReceipt = (data: ReceiptDetails) => {
             </div>` : ''}
           </div>
 
+          ${isPartial ? `
+          <div class="partial-box">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #78350f; font-weight: 700; margin-bottom: 4px;">
+              <span>Monthly Installment Due:</span>
+              <span>₹${dueAmt.toLocaleString('en-IN')}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 16px; color: #047857; font-weight: 900; margin-bottom: 4px;">
+              <span>Amount Paid (Received):</span>
+              <span>₹${amountVal.toLocaleString('en-IN')}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #b45309; font-weight: 800; border-top: 1px dashed #fde68a; padding-top: 4px;">
+              <span>Remaining Month Balance:</span>
+              <span>₹${remBal.toLocaleString('en-IN')}</span>
+            </div>
+            <div style="text-align: right; margin-top: 6px;">
+              <span style="font-size: 10px; font-weight: 900; background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">
+                PARTIAL PAYMENT
+              </span>
+            </div>
+          </div>
+          ` : `
           <div class="amount-box">
             <span class="amount-label">Total Amount Paid</span>
             <span class="amount-val">₹${amountVal.toLocaleString('en-IN')}</span>
           </div>
+          `}
           <div class="amount-words">(${wordsStr})</div>
 
           <div class="signatures">
@@ -395,9 +453,15 @@ export const printCashReceipt = (data: ReceiptDetails) => {
               <span>Member Signature</span>
             </div>
             <div class="sign-col">
-              <div class="sign-line"></div>
-              <span>${cashier}</span>
-              <div style="font-size: 9px; color: #94a3b8; margin-top: 1px;">Authorized Seal</div>
+              ${adminSig ? `
+                <img src="${adminSig}" alt="Authorized Signature" style="max-height: 42px; max-width: 120px; object-fit: contain; margin-bottom: -18px; display: block; margin-left: auto; margin-right: auto;" />
+                <div class="sign-line" style="margin-top: 2px;"></div>
+              ` : `
+                <div class="sign-line"></div>
+              `}
+              <span style="font-weight: 800; color: #0f172a;">${sigName}</span>
+              <div style="font-size: 9px; color: #64748b; margin-top: 1px;">${sigTitle}</div>
+              <div style="font-size: 8.5px; color: #94a3b8;">${cashier}</div>
             </div>
           </div>
 

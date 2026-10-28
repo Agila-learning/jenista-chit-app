@@ -28,12 +28,12 @@ export const Footer = () => {
           </div>
 
           <div>
-            <h4 className="text-white font-semibold mb-4 uppercase tracking-wider text-sm">Customer Support</h4>
+            <h4 className="text-white font-semibold mb-4 uppercase tracking-wider text-sm">Quick Portals</h4>
             <ul className="space-y-2 text-sm">
-              <li><Link to="/login" className="hover:text-accent transition-colors">Customer Portal</Link></li>
-              <li><Link to="/track" className="hover:text-accent transition-colors">Track Chit Status</Link></li>
-              <li><Link to="/faq" className="hover:text-accent transition-colors">FAQ</Link></li>
-              <li><Link to="/complaints" className="hover:text-accent transition-colors">Register Complaint</Link></li>
+              <li><Link to="/login" className="hover:text-emerald-400 transition-colors">Member & Staff Login</Link></li>
+              <li><a href="#track-chit" className="hover:text-emerald-400 transition-colors">Track Chit Status</a></li>
+              <li><a href="#plans" className="hover:text-emerald-400 transition-colors">Chit Plans Comparison</a></li>
+              <li><Link to="/register" className="hover:text-emerald-400 transition-colors">New Member Registration</Link></li>
             </ul>
           </div>
 

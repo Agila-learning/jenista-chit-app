@@ -3,7 +3,8 @@ import { Button } from '../../../components/common/Button';
 import { Input } from '../../../components/common/Input';
 import { 
   Building2, Shield, Bell, 
-  FileCheck, ShieldCheck, MapPin, Plus, Trash2, CheckCircle2
+  FileCheck, ShieldCheck, MapPin, Plus, Trash2, CheckCircle2,
+  PenTool, UploadCloud
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 
@@ -45,6 +46,17 @@ export const Settings = () => {
   const [kyc, setKyc] = useState(DEFAULT_KYC);
   const [notifs, setNotifs] = useState(DEFAULT_NOTIFS);
 
+  // Admin Signature & Authorized Signatory States
+  const [adminSignature, setAdminSignature] = useState<string>(() => {
+    return localStorage.getItem('adminSignature') || '';
+  });
+  const [signatoryName, setSignatoryName] = useState<string>(() => {
+    return localStorage.getItem('adminSignatoryName') || 'System Admin';
+  });
+  const [signatoryTitle, setSignatoryTitle] = useState<string>(() => {
+    return localStorage.getItem('adminSignatoryTitle') || 'Authorized Signatory';
+  });
+
   const [savedAlert, setSavedAlert] = useState(false);
 
   // Load from local storage
@@ -63,6 +75,15 @@ export const Settings = () => {
 
     const sNotifs = localStorage.getItem('appSettings_notifs');
     if (sNotifs) setNotifs(JSON.parse(sNotifs));
+
+    const sig = localStorage.getItem('adminSignature');
+    if (sig) setAdminSignature(sig);
+
+    const sName = localStorage.getItem('adminSignatoryName');
+    if (sName) setSignatoryName(sName);
+
+    const sTitle = localStorage.getItem('adminSignatoryTitle');
+    if (sTitle) setSignatoryTitle(sTitle);
   }, []);
 
   // Show generic save alert
@@ -129,8 +150,45 @@ export const Settings = () => {
     localStorage.setItem('appSettings_roles', JSON.stringify(updated));
   };
 
+  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        alert('File size exceeds 2MB limit. Please upload a smaller image.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string;
+        setAdminSignature(base64);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveSignature = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (adminSignature) {
+      localStorage.setItem('adminSignature', adminSignature);
+    } else {
+      localStorage.removeItem('adminSignature');
+    }
+    localStorage.setItem('adminSignatoryName', signatoryName);
+    localStorage.setItem('adminSignatoryTitle', signatoryTitle);
+    window.dispatchEvent(new Event('storage'));
+    triggerSaveAlert();
+  };
+
+  const handleRemoveSignature = () => {
+    setAdminSignature('');
+    localStorage.removeItem('adminSignature');
+    window.dispatchEvent(new Event('storage'));
+    triggerSaveAlert();
+  };
+
   const settingsTabs = [
     { id: 'organization', name: 'Organization Profile', icon: Building2 },
+    { id: 'signature', name: 'Admin Signature & Seal', icon: PenTool },
     { id: 'branches', name: 'Branch Management', icon: MapPin },
     { id: 'roles', name: 'Roles & Permissions', icon: Shield },
     { id: 'kyc', name: 'KYC Configuration', icon: FileCheck },
@@ -503,6 +561,135 @@ export const Settings = () => {
 
                 <div className="flex justify-end pt-6 border-t border-neutral-100">
                   <Button type="submit" variant="primary" className="px-8">Save Preferences</Button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Tab 6: Admin Signature & Seal */}
+          {activeTab === 'signature' && (
+            <div className="bg-white rounded-xl border border-neutral-200 p-6 shadow-sm space-y-6">
+              <div className="border-b border-neutral-100 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700">
+                    <PenTool className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-neutral-900">Admin Signature & Seal</h2>
+                    <p className="text-xs text-neutral-500">Upload official admin signature to automatically apply onto all collection receipts & bills.</p>
+                  </div>
+                </div>
+              </div>
+
+              <form onSubmit={handleSaveSignature} className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                      Authorized Signatory Name
+                    </label>
+                    <Input 
+                      value={signatoryName} 
+                      onChange={e => setSignatoryName(e.target.value)}
+                      placeholder="e.g. System Admin"
+                      className="font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                      Designation / Title
+                    </label>
+                    <Input 
+                      value={signatoryTitle} 
+                      onChange={e => setSignatoryTitle(e.target.value)}
+                      placeholder="e.g. Authorized Signatory"
+                      className="font-medium"
+                    />
+                  </div>
+                </div>
+
+                {/* Upload & Preview Card */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
+                    Official Signature Image (PNG, JPG, SVG)
+                  </label>
+
+                  {adminSignature ? (
+                    <div className="p-6 bg-slate-50 border-2 border-slate-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-6">
+                      <div className="flex flex-col items-center justify-center p-4 bg-white rounded-xl border border-slate-200 shadow-xs min-w-[220px]">
+                        <img 
+                          src={adminSignature} 
+                          alt="Admin Signature Preview" 
+                          className="h-16 max-w-[200px] object-contain mb-2"
+                        />
+                        <div className="w-36 border-t border-slate-400 my-1"></div>
+                        <span className="text-xs font-bold text-slate-800">{signatoryName}</span>
+                        <span className="text-[10px] text-slate-500 font-medium">{signatoryTitle}</span>
+                      </div>
+
+                      <div className="flex-1 space-y-2 text-center sm:text-left">
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-bold">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Signature Configured & Active</span>
+                        </div>
+                        <p className="text-xs text-slate-600">
+                          This signature is automatically rendered on the Receipt Desk thermal bill and official printed receipts.
+                        </p>
+                        <div className="flex flex-wrap gap-2.5 pt-2">
+                          <label className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-2xs">
+                            <span>Change Image</span>
+                            <input 
+                              type="file" 
+                              accept="image/*" 
+                              onChange={handleSignatureUpload} 
+                              className="hidden" 
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={handleRemoveSignature}
+                            className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-colors"
+                          >
+                            Remove Signature
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="border-2 border-dashed border-slate-300 hover:border-blue-500 bg-slate-50 hover:bg-blue-50/40 rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all group">
+                      <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 group-hover:text-blue-600 group-hover:border-blue-300 shadow-xs mb-3 transition-colors">
+                        <UploadCloud className="w-6 h-6" />
+                      </div>
+                      <span className="text-sm font-bold text-slate-800">
+                        Click to upload admin signature image
+                      </span>
+                      <span className="text-xs text-slate-500 mt-1">
+                        PNG with transparent background or high contrast JPG (Max 2MB)
+                      </span>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleSignatureUpload} 
+                        className="hidden" 
+                      />
+                    </label>
+                  )}
+                </div>
+
+                {/* Information Callout */}
+                <div className="p-4 bg-amber-50/70 border border-amber-200/80 rounded-xl text-xs text-amber-950 flex items-start gap-3">
+                  <ShieldCheck className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold">Inbuilt Automatic Application</p>
+                    <p className="text-[11px] text-amber-900 mt-0.5 leading-relaxed">
+                      Once uploaded, this signature will be automatically placed under the <strong>Authorized Signatory</strong> section on all collection receipts, customer payment slips, and printable vouchers across the system.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-4 border-t border-neutral-100">
+                  <Button type="submit" variant="primary" className="px-8">
+                    Save Signature
+                  </Button>
                 </div>
               </form>
             </div>

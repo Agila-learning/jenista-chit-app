@@ -7,10 +7,6 @@ export const AddModifyCustomerChit = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    loadPendingCustomers();
-  }, []);
-
   const loadPendingCustomers = async () => {
     setIsLoading(true);
     try {
@@ -44,6 +40,10 @@ export const AddModifyCustomerChit = () => {
     const customers = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
     setPendingCustomers(customers.filter((c: any) => c.status === 'PENDING_APPROVAL'));
   };
+
+  useEffect(() => {
+    loadPendingCustomers();
+  }, []);
 
   const handleApprove = async (id: string, mongoId?: string) => {
     if (window.confirm('Are you sure you want to approve this customer registration?')) {

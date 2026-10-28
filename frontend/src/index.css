@@ -3,17 +3,17 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary-50: #fefce8;
-  --color-primary-100: #fef9c3;
-  --color-primary-200: #fef08a;
-  --color-primary-300: #fde047;
-  --color-primary-400: #facc15;
-  --color-primary-500: #eab308;
-  --color-primary-600: #ca8a04;
-  --color-primary-700: #a16207;
-  --color-primary-800: #854d0e;
-  --color-primary-900: #713f12;
-  --color-primary-950: #422006;
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #2563eb;
+  --color-primary-600: #1d4ed8;
+  --color-primary-700: #1e40af;
+  --color-primary-800: #1e3a8a;
+  --color-primary-900: #0f172a;
+  --color-primary-950: #090e1a;
 
   --color-secondary-50: #f8fafc;
   --color-secondary-100: #f1f5f9;
@@ -27,9 +27,9 @@
   --color-secondary-900: #0f172a;
   --color-secondary-950: #020617;
 
-  --color-accent: #D4AF37;
-  --color-accent-light: #F3E5AB;
-  --color-accent-dark: #996515;
+  --color-accent: #059669;
+  --color-accent-light: #ecfdf5;
+  --color-accent-dark: #047857;
 
   --color-success: #059669;
   --color-success-light: #d1fae5;
@@ -74,11 +74,11 @@
 
 @layer components {
   .btn-primary {
-    @apply bg-primary-500 text-neutral-900 px-4 py-2 rounded-md font-bold hover:bg-primary-600 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 shadow-sm;
+    @apply bg-primary-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-primary-700 transition-all focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 shadow-sm active:scale-98;
   }
   
   .btn-secondary {
-    @apply bg-secondary-50 text-primary-900 border border-neutral-300 px-4 py-2 rounded-md font-medium hover:bg-neutral-100 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-900 focus:ring-offset-2;
+    @apply bg-white text-slate-800 border border-slate-200 px-4 py-2 rounded-xl font-medium hover:bg-slate-50 transition-all focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
   }
 
   .btn-accent {

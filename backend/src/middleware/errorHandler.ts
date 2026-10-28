@@ -3,6 +3,7 @@ import { ApiError } from '../common/ApiError';
 import { logger } from '../utils/logger';
 
 export const errorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
+  console.error('API Error:', err);
   logger.error(err);
 
   if (err instanceof ApiError) {

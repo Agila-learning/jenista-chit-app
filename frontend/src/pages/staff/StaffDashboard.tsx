@@ -16,13 +16,15 @@ import {
   X,
   RotateCw,
   Layers,
-  Calendar
+  Calendar,
+  Calculator
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '../../utils/format';
 import { printCashReceipt } from '../../utils/receiptPrinter';
 import { useAuth } from '../../store/AuthContext';
 import { fetchClient } from '../../api/client';
 import { isMockCustomer, isMockGroup } from '../../utils/cleanMockData';
+import { onPaymentSync } from '../../utils/paymentRequestsData';
 
 export const StaffDashboard = () => {
   const navigate = useNavigate();
@@ -143,7 +145,12 @@ export const StaffDashboard = () => {
 
     const handleStorageChange = () => loadAllData();
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    const unsubPaymentSync = onPaymentSync(loadAllData);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      unsubPaymentSync();
+    };
   }, [user]);
 
   // Calculations for Today's Stats
@@ -293,6 +300,15 @@ export const StaffDashboard = () => {
           )}
 
           <button
+            onClick={() => navigate('/staff/calculator')}
+            className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 rounded-xl text-xs font-bold transition-all shadow-xs"
+            title="Open Interactive Chit Calculator"
+          >
+            <Calculator className="w-4 h-4 text-blue-700" />
+            <span className="hidden sm:inline">Chit Calculator</span>
+          </button>
+
+          <button
             onClick={() => navigate('/admin/manage-plans')}
             className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold transition-all shadow-xs"
             title="View Regular, Fixed & Auction Plans"
@@ -417,7 +433,16 @@ export const StaffDashboard = () => {
             <span>Register Customer</span>
           </button>
 
-          {/* Quick Action 3: Day-End Handover */}
+          {/* Quick Action 3: Chit Calculator */}
+          <button
+            onClick={() => navigate('/staff/calculator')}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-xl transition-all shadow-sm active:scale-95"
+          >
+            <Calculator className="w-4 h-4" />
+            <span>Chit Calculator</span>
+          </button>
+
+          {/* Quick Action 4: Day-End Handover */}
           <button
             onClick={() => setIsHandoverModalOpen(true)}
             disabled={todayCashTotal === 0 && todayReceipts.length === 0}
@@ -533,9 +558,24 @@ export const StaffDashboard = () => {
                             {c.mobile || '—'}
                           </td>
                           <td className="py-3.5 px-4">
-                            <span className="px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-700 text-xs font-semibold">
-                              {chitInfo}
-                            </span>
+                            <div className="flex flex-col gap-1 items-start">
+                              <span className="px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-800 text-xs font-semibold">
+                                {chitInfo}
+                              </span>
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                String(chitInfo).toUpperCase().includes('FIX') || String(c.scheme || '').toUpperCase().includes('FIX')
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : String(chitInfo).toUpperCase().includes('AUC') || String(c.scheme || '').toUpperCase().includes('AUC')
+                                    ? 'bg-indigo-100 text-indigo-800'
+                                    : 'bg-emerald-100 text-emerald-800'
+                              }`}>
+                                {String(chitInfo).toUpperCase().includes('FIX') || String(c.scheme || '').toUpperCase().includes('FIX')
+                                  ? 'Fixed Chit'
+                                  : String(chitInfo).toUpperCase().includes('AUC') || String(c.scheme || '').toUpperCase().includes('AUC')
+                                    ? 'Auction Chit'
+                                    : 'Regular Chit'}
+                              </span>
+                            </div>
                           </td>
                           <td className="py-3.5 px-4 text-right">
                             <span className="font-black text-rose-600 text-sm">

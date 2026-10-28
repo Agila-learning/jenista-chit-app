@@ -1,16 +1,38 @@
-import { MapPin, Phone, Mail, Clock } from 'lucide-react';
+import React, { useState } from 'react';
+import { MapPin, Phone, Mail, Clock, CheckCircle2, ArrowRight } from 'lucide-react';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
 
 export const ContactSection = () => {
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [message, setMessage] = useState('');
+  const [isSubmitted, setIsSubmitted] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!firstName || !phone) return;
+    setIsSubmitted(true);
+    // Reset after delay
+    setTimeout(() => {
+      setFirstName('');
+      setLastName('');
+      setEmail('');
+      setPhone('');
+      setMessage('');
+    }, 500);
+  };
+
   return (
     <section id="contact" className="py-24 bg-neutral-50 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         <div className="text-center max-w-3xl mx-auto mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold text-primary-950 mb-4">Get in Touch</h2>
+          <h2 className="text-3xl md:text-4xl font-bold text-primary-950 mb-4">Join a Plan or Get in Touch</h2>
           <p className="text-neutral-600 text-lg">
-            Have questions about our chit plans? Our financial advisors are ready to help you plan a better future.
+            Have questions about our chit plans or ready to enrol? Submit your details below and our financial advisors will assist you immediately.
           </p>
         </div>
 
@@ -88,43 +110,85 @@ export const ContactSection = () => {
 
           {/* Contact Form */}
           <div className="bg-white p-8 rounded-2xl shadow-lg border border-neutral-200">
-            <h3 className="text-2xl font-bold text-primary-950 mb-2">Send a Message</h3>
-            <p className="text-neutral-500 mb-8">We will get back to you within 24 hours.</p>
+            <h3 className="text-2xl font-bold text-primary-950 mb-2">Enrol / Send an Enquiry</h3>
+            <p className="text-neutral-500 mb-8">We will review your inquiry and connect with you within 24 hours.</p>
 
-            <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-neutral-700">First Name</label>
-                  <Input placeholder="John" />
+            {isSubmitted ? (
+              <div className="p-6 bg-emerald-50 border border-emerald-200 rounded-2xl text-center space-y-3 animate-in fade-in">
+                <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto text-emerald-600">
+                  <CheckCircle2 className="w-7 h-7" />
                 </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-neutral-700">Last Name</label>
-                  <Input placeholder="Doe" />
+                <h4 className="text-lg font-extrabold text-emerald-900">Enquiry Received!</h4>
+                <p className="text-xs sm:text-sm text-emerald-800 leading-relaxed max-w-sm mx-auto">
+                  Thank you! Our senior chit advisor will call you shortly to assist with plan enrollment and documentation.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setIsSubmitted(false)}
+                  className="mt-3 px-4 py-2 text-xs font-bold bg-white text-emerald-800 rounded-xl border border-emerald-300 hover:bg-emerald-50"
+                >
+                  Send Another Message
+                </button>
+              </div>
+            ) : (
+              <form className="space-y-6" onSubmit={handleSubmit}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-neutral-700">First Name *</label>
+                    <Input 
+                      placeholder="e.g. Anand" 
+                      value={firstName} 
+                      onChange={(e) => setFirstName(e.target.value)} 
+                      required 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-neutral-700">Last Name</label>
+                    <Input 
+                      placeholder="e.g. Kumar" 
+                      value={lastName} 
+                      onChange={(e) => setLastName(e.target.value)} 
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-neutral-700">Email Address</label>
-                <Input type="email" placeholder="john@example.com" />
-              </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-neutral-700">Email Address</label>
+                  <Input 
+                    type="email" 
+                    placeholder="e.g. anand@example.com" 
+                    value={email} 
+                    onChange={(e) => setEmail(e.target.value)} 
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-neutral-700">Phone Number</label>
-                <Input type="tel" placeholder="+91 98765 43210" />
-              </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-neutral-700">Phone Number *</label>
+                  <Input 
+                    type="tel" 
+                    placeholder="+91 98765 43210" 
+                    value={phone} 
+                    onChange={(e) => setPhone(e.target.value)} 
+                    required 
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-neutral-700">Message</label>
-                <textarea 
-                  className="w-full border border-neutral-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 min-h-[120px] resize-none"
-                  placeholder="How can we help you?"
-                ></textarea>
-              </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-neutral-700">Message / Preferred Plan</label>
+                  <textarea 
+                    className="w-full border border-neutral-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 min-h-[120px] resize-none"
+                    placeholder="Tell us which plan you are interested in (Fixed, Auction, or Regular) or your target savings goal."
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                  ></textarea>
+                </div>
 
-              <Button type="button" variant="primary" className="w-full h-12">
-                Send Message
-              </Button>
-            </form>
+                <Button type="submit" variant="primary" className="w-full h-12 flex items-center justify-center gap-2">
+                  <span>Submit Plan Enquiry</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </form>
+            )}
           </div>
 
         </div>

@@ -24,7 +24,9 @@ import {
   Landmark,
   ShieldCheck,
   Search,
-  Trash2
+  Trash2,
+  Calculator,
+  Receipt
 } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip as RechartsTooltip } from 'recharts';
 import { formatCurrency, formatDate } from '../../utils/format';
@@ -69,12 +71,25 @@ export const AdminDashboard = () => {
   // Screenshot proof modal
   const [viewingScreenshot, setViewingScreenshot] = useState<any | null>(null);
 
-  // Payment requests & handovers
+  // Payment requests & receipts
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
+  const [staffReceiptsList, setStaffReceiptsList] = useState<any[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('staffReceipts') || '[]');
+    } catch {
+      return [];
+    }
+  });
   const [handovers, setHandovers] = useState<any[]>([]);
   const [pendingCustomerApprovals, setPendingCustomerApprovals] = useState<any[]>([]);
   const [paymentActionInProgress, setPaymentActionInProgress] = useState<string | null>(null);
   const [isNoticeDismissed, setIsNoticeDismissed] = useState(false);
+
+  // Partial Payments Calculations
+  const partialReceipts = staffReceiptsList.filter((r: any) => r.isPartial || r.status === 'PARTIAL');
+  const partialPaymentsCount = partialReceipts.length;
+  const partialPaymentsTotalPaid = partialReceipts.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+  const partialPaymentsTotalDue = partialReceipts.reduce((sum: number, r: any) => sum + Number(r.remainingBalance || 0), 0);
 
   // Scheme / Card Filtering State for Top KPI Cards (Groups, Fixed, Regular, Auction)
   const [selectedSchemeFilter, setSelectedSchemeFilter] = useState<'GROUPS' | 'FIXED' | 'REGULAR' | 'AUCTION' | null>(null);
@@ -436,6 +451,12 @@ export const AdminDashboard = () => {
         }
       }
       loadPaymentRequests();
+      try {
+        const freshRecs = JSON.parse(localStorage.getItem('staffReceipts') || '[]');
+        setStaffReceiptsList(Array.isArray(freshRecs) ? freshRecs : []);
+      } catch {
+        setStaffReceiptsList([]);
+      }
     };
     window.addEventListener('storage', handleStorageChange);
 
@@ -965,7 +986,7 @@ export const AdminDashboard = () => {
             </div>
           </div>
           <button
-            className="px-4 py-2 text-xs font-semibold text-white bg-[#9a6d25] hover:bg-[#855c1b] rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 active:scale-95"
+            className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 active:scale-95"
             onClick={() => {
               const defaultVal = activeGroup?.value
                 ? activeGroup.value.toString()
@@ -1054,7 +1075,7 @@ export const AdminDashboard = () => {
                             className="text-left group/cust hover:opacity-90 focus:outline-none"
                             title="Click to view due amounts, due dates, paid on dates, and autocalculated pre-chart"
                           >
-                            <div className="font-bold text-slate-900 text-xs group-hover/cust:text-[#9a6d25] group-hover/cust:underline transition-colors flex items-center gap-1.5">
+                            <div className="font-bold text-slate-900 text-xs group-hover/cust:text-blue-600 group-hover/cust:underline transition-colors flex items-center gap-1.5">
                               <span>{c.name}</span>
                             </div>
                             <div className="text-[10px] text-slate-400 font-mono group-hover/cust:text-slate-600">ID: {c.id}</div>
@@ -1094,7 +1115,7 @@ export const AdminDashboard = () => {
                           <div className="flex items-center justify-center gap-2">
                             <button
                               onClick={() => navigate(`/admin/customers/${custTargetId}/schedule?group=${encodeURIComponent(groupIdentifier)}`)}
-                              className="px-2.5 py-1.5 bg-[#9a6d25] hover:bg-[#855c1b] text-white text-xs font-bold rounded-lg shadow-2xs inline-flex items-center gap-1 transition-all active:scale-95"
+                              className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-2xs inline-flex items-center gap-1 transition-all active:scale-95"
                               title="View due amount, due date, paid on, and full schedule chart"
                             >
                               <span>Due Chart</span>
@@ -1142,7 +1163,7 @@ export const AdminDashboard = () => {
                     <div className="relative flex-1">
                       <input
                         type="text"
-                        className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#9a6d25] font-medium placeholder:text-slate-400"
+                        className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium placeholder:text-slate-400"
                         placeholder="Enter full 10-digit mobile number..."
                         value={searchMobile}
                         onChange={(e) => {
@@ -1175,7 +1196,7 @@ export const AdminDashboard = () => {
                       type="button"
                       onClick={executeCustomerSearch}
                       disabled={isSearchingCustomer || !searchMobile.trim()}
-                      className="px-4 py-2.5 bg-[#9a6d25] hover:bg-[#835a1c] text-white text-xs font-bold rounded-xl shadow-2xs transition-colors flex items-center gap-1.5 shrink-0 disabled:opacity-50 active:scale-95"
+                      className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-2xs transition-colors flex items-center gap-1.5 shrink-0 disabled:opacity-50 active:scale-95"
                     >
                       {isSearchingCustomer ? (
                         <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -1340,7 +1361,7 @@ export const AdminDashboard = () => {
                   </button>
                   <button
                     type="button"
-                    className="px-4 py-2 text-xs font-semibold text-white bg-[#9a6d25] hover:bg-[#855c1b] rounded-xl shadow-xs transition-colors disabled:opacity-50"
+                    className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition-colors disabled:opacity-50"
                     onClick={handleEnrollCustomer}
                     disabled={!foundCustomer}
                   >
@@ -1421,7 +1442,7 @@ export const AdminDashboard = () => {
                       setVerificationCustomer(null);
                       setSearchError(null);
                     }}
-                    className="w-full py-2.5 bg-[#9a6d25] hover:bg-[#835a1c] text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 active:scale-95"
+                    className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 active:scale-95"
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     <span>✓ Verify & Add Customer</span>
@@ -1689,7 +1710,7 @@ export const AdminDashboard = () => {
               <input
                 type="text"
                 autoFocus
-                className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#9a6d25] font-semibold placeholder:font-normal"
+                className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold placeholder:font-normal"
                 placeholder="e.g. Diamond Series A or Chit Group 1"
                 value={newGroupName}
                 onChange={(e) => setNewGroupName(e.target.value)}
@@ -1706,7 +1727,7 @@ export const AdminDashboard = () => {
 
             <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3.5 text-xs text-amber-950">
               <p className="font-bold flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#9a6d25]"></span>
+                <span className="w-2 h-2 rounded-full bg-blue-600"></span>
                 Flexible Mixed Schemes
               </p>
               <p className="text-[11px] text-amber-900 mt-1 leading-relaxed">
@@ -1724,7 +1745,7 @@ export const AdminDashboard = () => {
               </button>
               <button
                 type="button"
-                className="px-4 py-2 text-xs font-bold text-white bg-[#9a6d25] hover:bg-[#835a1c] rounded-xl shadow-xs disabled:opacity-50"
+                className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs disabled:opacity-50"
                 onClick={handleCreateGroup}
                 disabled={!newGroupName.trim()}
               >
@@ -1783,7 +1804,7 @@ export const AdminDashboard = () => {
                 placeholder="Search group name..."
                 value={groupSearchQuery}
                 onChange={(e) => setGroupSearchQuery(e.target.value)}
-                className="pl-8 pr-7 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#9a6d25] w-48 sm:w-56 shadow-2xs"
+                className="pl-8 pr-7 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 w-48 sm:w-56 shadow-2xs"
               />
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-3 pointer-events-none" />
               {groupSearchQuery && (
@@ -1802,7 +1823,7 @@ export const AdminDashboard = () => {
                 setNewGroupName('');
                 setIsAddGroupModalOpen(true);
               }}
-              className="px-4 py-2 bg-[#9a6d25] hover:bg-[#835a1c] text-white font-medium rounded-xl text-xs sm:text-sm shadow-xs transition-colors flex items-center gap-1.5 active:scale-95 shrink-0"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl text-xs sm:text-sm shadow-xs transition-colors flex items-center gap-1.5 active:scale-95 shrink-0"
             >
               <Plus className="w-4 h-4" />
               <span>Add Group</span>
@@ -1834,7 +1855,7 @@ export const AdminDashboard = () => {
                       >
                         <td className="px-5 py-4 text-slate-400 font-bold">{idx + 1}</td>
                         <td className="px-5 py-4">
-                          <div className="font-bold text-slate-900 group-hover:text-[#9a6d25] transition-colors text-sm">
+                          <div className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors text-sm">
                             {g.name}
                           </div>
                         </td>
@@ -1847,7 +1868,7 @@ export const AdminDashboard = () => {
                           <div className="flex items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>
                             <button
                               onClick={() => setSelectedGroup(g)}
-                              className="px-3.5 py-1.5 bg-white hover:bg-[#faf6f0] border border-[#e4d6c0] text-[#8a5d1b] text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
+                              className="px-3.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs transition-colors inline-flex items-center gap-1.5"
                             >
                               <span>View Members</span>
                               <span className="text-xs">&rarr;</span>
@@ -1879,7 +1900,7 @@ export const AdminDashboard = () => {
                                 setSelectedGroup(g);
                                 setIsAddCustomerModalOpen(true);
                               }}
-                              className="px-3 py-1.5 bg-[#9a6d25] hover:bg-[#835a1c] text-white text-xs font-semibold rounded-lg shadow-2xs transition-colors flex items-center gap-1.5 active:scale-95"
+                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-2xs transition-colors flex items-center gap-1.5 active:scale-95"
                             >
                               <Plus className="w-3.5 h-3.5" />
                               <span>Add Customer</span>
@@ -1941,7 +1962,7 @@ export const AdminDashboard = () => {
                               setNewGroupName('');
                               setIsAddGroupModalOpen(true);
                             }}
-                            className="px-4 py-2 bg-[#9a6d25] hover:bg-[#835a1c] text-white font-medium rounded-xl text-xs shadow-xs transition-colors inline-flex items-center gap-1.5 active:scale-95"
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl text-xs shadow-xs transition-colors inline-flex items-center gap-1.5 active:scale-95"
                           >
                             <Plus className="w-4 h-4" />
                             <span>Create First Group</span>
@@ -2012,7 +2033,7 @@ export const AdminDashboard = () => {
                 placeholder="Search name, phone, group..."
                 value={schemeSearchQuery}
                 onChange={(e) => setSchemeSearchQuery(e.target.value)}
-                className="pl-8 pr-7 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#9a6d25] w-48 sm:w-56 shadow-2xs"
+                className="pl-8 pr-7 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 w-48 sm:w-56 shadow-2xs"
               />
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-3 pointer-events-none" />
               {schemeSearchQuery && (
@@ -2086,7 +2107,7 @@ export const AdminDashboard = () => {
                       <td className="px-4 py-3.5 text-center">
                         <button
                           onClick={() => navigate(`/admin/customers/${c.id}`)}
-                          className="px-3 py-1.5 bg-white hover:bg-[#faf6f0] border border-[#e4d6c0] text-[#8a5d1b] text-xs font-semibold rounded-lg shadow-2xs inline-flex items-center gap-1 transition-colors"
+                          className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs inline-flex items-center gap-1 transition-colors"
                         >
                           <span>View Profile</span>
                           <span className="text-[10px]">&rarr;</span>
@@ -2144,13 +2165,23 @@ export const AdminDashboard = () => {
             </div>
           </div>
 
+          {/* Quick Action: Chit Calculator */}
+          <button
+            onClick={() => navigate('/admin/calculator')}
+            className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold rounded-xl text-xs sm:text-sm shadow-xs transition-all flex items-center gap-1.5 active:scale-95"
+            title="Open comprehensive Chit Calculator & financial modeler"
+          >
+            <Calculator className="w-4 h-4" />
+            <span>Chit Calculator</span>
+          </button>
+
           {/* Primary Action: + Add Group */}
           <button
             onClick={() => {
               setNewGroupName('');
               setIsAddGroupModalOpen(true);
             }}
-            className="px-4 py-2 bg-[#9a6d25] hover:bg-[#835a1c] text-white font-medium rounded-xl text-xs sm:text-sm shadow-xs transition-colors flex items-center gap-1.5 active:scale-95"
+            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-xl text-xs sm:text-sm shadow-xs transition-colors flex items-center gap-1.5 active:scale-95"
           >
             <Plus className="w-4 h-4" />
             <span>Add Group</span>
@@ -2162,7 +2193,7 @@ export const AdminDashboard = () => {
               setSelectedSchemeFilter('GROUPS');
               setGroupSearchQuery('');
             }}
-            className="px-4 py-2 bg-white hover:bg-[#faf6f0] text-[#8a5d1b] font-medium rounded-xl text-xs sm:text-sm border border-[#e4d6c0] shadow-2xs transition-colors flex items-center gap-1.5"
+            className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 font-medium rounded-xl text-xs sm:text-sm border border-slate-200 shadow-2xs transition-colors flex items-center gap-1.5"
           >
             <span>View All Groups</span>
             <span className="text-xs">&rarr;</span>
@@ -2178,11 +2209,11 @@ export const AdminDashboard = () => {
             setSelectedSchemeFilter('GROUPS');
             setGroupSearchQuery('');
           }}
-          className="rounded-2xl p-5 relative overflow-hidden group cursor-pointer transition-all active:scale-[0.99] select-none bg-[#fdfbf7] border border-[#f4ebd7] hover:border-[#dfc38d] hover:shadow-md"
+          className="rounded-2xl p-5 relative overflow-hidden group cursor-pointer transition-all active:scale-[0.99] select-none bg-white border border-slate-200 hover:border-blue-300 hover:shadow-md"
           title="Click to view and manage chit groups in full screen"
         >
           <div className="flex items-start gap-4 relative z-10">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform bg-[#fdecd2] text-[#926315]">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform bg-blue-50 text-blue-600">
               <Users className="w-5 h-5" />
             </div>
             <div className="flex-1 min-w-0">
@@ -2192,13 +2223,13 @@ export const AdminDashboard = () => {
               <div className="text-2xl sm:text-3xl font-bold text-slate-800 mt-0.5">
                 {chitGroups.length}
               </div>
-              <div className="text-xs font-medium text-[#926315] mt-2">
+              <div className="text-xs font-medium text-blue-700 mt-2">
                 <span>{chitGroups.length} Active Group{chitGroups.length !== 1 ? 's' : ''}</span>
               </div>
             </div>
           </div>
           {/* Subtle Watermark Decoration */}
-          <Users className="w-16 h-16 text-[#fdecd2]/60 absolute -right-1 -bottom-1 pointer-events-none group-hover:scale-110 transition-transform" />
+          <Users className="w-16 h-16 text-blue-100/50 absolute -right-1 -bottom-1 pointer-events-none group-hover:scale-110 transition-transform" />
         </div>
 
         {/* Card 2: Fixed Enrollments - Click to filter Fixed customers full screen */}
@@ -2294,7 +2325,7 @@ export const AdminDashboard = () => {
             {/* Payment Section Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-slate-100 gap-3">
               <div className="flex items-start sm:items-center gap-3">
-                <div className="p-2.5 bg-[#fef8ed] text-[#b8860b] rounded-xl border border-[#f5e6cc] shrink-0">
+                <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100 shrink-0">
                   <CreditCard className="w-5 h-5" />
                 </div>
                 <div>
@@ -2361,6 +2392,39 @@ export const AdminDashboard = () => {
                 </div>
               </div>
             </div>
+
+            {/* Partial Payments Tracking Insight Banner */}
+            {partialPaymentsCount > 0 && (
+              <div className="mb-5 p-4 bg-gradient-to-r from-amber-50/90 via-amber-50 to-orange-50/80 border border-amber-200/90 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-950 shadow-2xs animate-in fade-in duration-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 border border-amber-300 text-amber-800 flex items-center justify-center font-bold shrink-0 shadow-2xs">
+                    <Receipt className="w-5 h-5 text-amber-700" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-amber-900 text-sm">
+                        {partialPaymentsCount} Partial Payment{partialPaymentsCount !== 1 ? 's' : ''} Collected
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-900">
+                        Live Ledger Dues
+                      </span>
+                    </div>
+                    <p className="text-xs text-amber-800 font-medium mt-0.5">
+                      Collected: <strong>₹{partialPaymentsTotalPaid.toLocaleString('en-IN')}</strong> · Unpaid Balance Remaining: <strong className="text-amber-900 font-bold">₹{partialPaymentsTotalDue.toLocaleString('en-IN')}</strong>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => navigate('/admin/receipts')}
+                    className="px-3.5 py-1.5 bg-white hover:bg-amber-50 border border-amber-300 text-amber-900 font-bold text-xs rounded-xl shadow-2xs transition-colors"
+                  >
+                    Manage Receipts Desk &rarr;
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Recent Payment Requests Table */}
             <div>
@@ -2528,7 +2592,7 @@ export const AdminDashboard = () => {
                 }}
                 className="p-3 bg-[#fffbf0] hover:bg-[#fff5dc] border border-[#faecd5] rounded-xl transition-all group flex flex-col items-center justify-center gap-1.5 shadow-2xs"
               >
-                <div className="w-9 h-9 rounded-full bg-[#fef3d6] text-[#b8860b] flex items-center justify-center group-hover:scale-105 transition-transform">
+                <div className="w-9 h-9 rounded-full bg-[#fef3d6] text-blue-600 flex items-center justify-center group-hover:scale-105 transition-transform">
                   <Plus className="w-4 h-4" />
                 </div>
                 <span className="text-xs font-semibold text-slate-700 leading-tight">Add Group</span>
@@ -2593,7 +2657,7 @@ export const AdminDashboard = () => {
           <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs">
             <div className="flex items-center justify-between mb-2">
               <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                <PieChartIcon className="w-4 h-4 text-[#b8860b]" />
+                <PieChartIcon className="w-4 h-4 text-blue-600" />
                 <span>Group Overview</span>
               </h3>
               <button
@@ -2688,7 +2752,7 @@ export const AdminDashboard = () => {
                   <div className="p-1 bg-[#feeed1] text-[#926315] rounded-lg shrink-0">
                     <Megaphone className="w-4 h-4" />
                   </div>
-                  <h4 className="font-bold text-[#8a5d1b] text-xs">Important Notice</h4>
+                  <h4 className="font-bold text-slate-700 text-xs">Important Notice</h4>
                 </div>
                 <button
                   onClick={() => setIsNoticeDismissed(true)}
@@ -2810,7 +2874,7 @@ export const AdminDashboard = () => {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleApproveCustomer(cust)}
-                      className="px-3 py-1.5 bg-[#9a6d25] hover:bg-[#855c1b] text-white text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center gap-1"
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center gap-1"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       <span>Approve</span>
