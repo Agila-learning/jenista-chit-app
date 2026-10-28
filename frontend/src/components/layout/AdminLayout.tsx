@@ -40,8 +40,8 @@ export const AdminLayout = () => {
           isSidebarOpen={!isSidebarCollapsed}
         />
         
-        <main className="flex-1 overflow-y-auto bg-[#f4f6fa] h-full flex flex-col p-4 md:p-6 lg:p-8 scrollbar-thin scrollbar-thumb-slate-300">
-          <div className="flex-1 max-w-[1600px] mx-auto w-full">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-[#f4f6fa] h-full flex flex-col p-4 md:p-6 lg:p-8 scrollbar-thin scrollbar-thumb-slate-300">
+          <div className="flex-1 max-w-[1600px] mx-auto w-full min-w-0">
             <Outlet />
           </div>
         </main>

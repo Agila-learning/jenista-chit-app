@@ -1,8 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { ActionLayout } from '../../../components/layout/ActionLayout';
-import type { ActionType } from '../../../components/layout/ActionLayout';
 import { 
-  Search, 
+  Search,
   Eye, 
   Trash2, 
   Gavel, 
@@ -11,7 +9,9 @@ import {
   Edit3, 
   CheckCircle2, 
   X, 
-  Sparkles
+  Sparkles,
+  Plus,
+  Users
 } from 'lucide-react';
 import { formatCurrency } from '../../../utils/format';
 import { Link } from 'react-router-dom';
@@ -316,21 +316,52 @@ export const CustomerList = () => {
     }, 1500);
   };
 
-  const renderContent = (_action?: ActionType) => {
+  return (
+    <div className="w-full space-y-6 pb-12 min-w-0">
+      {/* Top Header & Quick Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-primary-50 text-primary-900 border border-primary-200/80 mb-2">
+            <Users className="w-3.5 h-3.5 text-primary-700" />
+            <span>Member Management</span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+            Customer Directory & Plans
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
+            Search, filter, view member profiles, and allocate chit schemes & installments.
+          </p>
+        </div>
 
-    return (
-      <div className="flex justify-center w-full">
-        <div className="w-full max-w-6xl space-y-6">
-          {/* Search Card */}
-          <div className="card p-0 overflow-hidden bg-white border border-neutral-200 shadow-sm rounded-2xl">
-            <div className="p-6 border-b border-neutral-200 bg-white">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
-                <div>
-                  <h3 className="text-lg font-bold text-neutral-800">Customer Directory & Plans</h3>
-                  <p className="text-xs text-neutral-500 mt-0.5">
-                    View, search, filter and allocate chit schemes for all registered customers.
-                  </p>
-                </div>
+        <div className="flex items-center gap-2.5">
+          <Link
+            to="/admin/customers/approvals"
+            className="px-3.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-all shadow-2xs hover:shadow-xs flex items-center gap-1.5"
+          >
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <span>Enrollment Approvals</span>
+          </Link>
+
+          <Link
+            to="/admin/customers/add"
+            className="px-4 py-2 text-xs font-bold text-white bg-primary-900 hover:bg-primary-800 rounded-xl transition-all shadow-xs flex items-center gap-1.5 active:scale-95"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ Add Customer</span>
+          </Link>
+        </div>
+      </div>
+
+      {/* Main Customers Directory Card */}
+      <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-neutral-200 bg-white">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
+            <div>
+              <h3 className="text-lg font-bold text-neutral-800">Customer Records</h3>
+              <p className="text-xs text-neutral-500 mt-0.5">
+                View, search, filter and allocate chit schemes for all registered customers.
+              </p>
+            </div>
                 
                 <div className="flex items-center gap-2">
                   <span className="px-3 py-1 rounded-full text-xs font-bold bg-primary-50 text-primary-900 border border-primary-200">
@@ -627,7 +658,6 @@ export const CustomerList = () => {
               </div>
             )}
           </div>
-        </div>
 
         {/* Modal: Assign / Change Plan for Customer */}
         {editingCustomer && (
@@ -803,17 +833,6 @@ export const CustomerList = () => {
             </div>
           </div>
         )}
-      </div>
-    );
-  };
-
-  return (
-    <ActionLayout 
-      title="Customer Details"
-      allowedActions={['VIEW']}
-      renderContent={renderContent}
-      onClear={handleClear}
-      onCancel={handleClear}
-    />
+    </div>
   );
 };

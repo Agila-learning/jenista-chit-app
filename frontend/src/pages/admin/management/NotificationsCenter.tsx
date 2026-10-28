@@ -306,6 +306,18 @@ export const NotificationsCenter: React.FC = () => {
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
+                        {isPrize && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (n.metadata?.customerId) navigate(`/admin/customers/${n.metadata.customerId}`);
+                              else navigate('/admin/ledger');
+                            }}
+                            className="px-2.5 py-1 text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 rounded-lg border border-amber-200"
+                          >
+                            View Record
+                          </button>
+                        )}
                         {isPayment && (
                           <button
                             type="button"

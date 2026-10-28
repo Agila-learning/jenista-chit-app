@@ -16,7 +16,8 @@ import {
   Clock,
   Menu,
   ArrowLeft,
-  Sparkles
+  Sparkles,
+  Award
 } from 'lucide-react';
 import { useAuth } from '../../store/AuthContext';
 import { isMockCustomer, isMockGroup } from '../../utils/cleanMockData';
@@ -369,14 +370,26 @@ export const Topbar = ({ onMenuClick }: TopbarProps = {}) => {
                         onClick={() => {
                           setIsNotificationsOpen(false);
                           if (n.type === 'NEW_LEAD') navigate('/admin/leads');
+                          else if (n.type === 'PRIZE_DISBURSED') {
+                            if (n.metadata?.customerId) navigate(`/admin/customers/${n.metadata.customerId}`);
+                            else navigate('/admin/ledger');
+                          }
                           else if (n.type.includes('PAYMENT')) navigate('/admin/payments');
                           else if (n.type === 'NEW_REGISTRATION') navigate('/admin/customers/approvals');
                           else navigate('/admin/notifications');
                         }}
                         className="p-3.5 hover:bg-amber-50/50 cursor-pointer transition-colors flex items-start gap-3"
                       >
-                        <div className="p-2 bg-purple-100 text-purple-800 rounded-xl shrink-0 mt-0.5">
-                          <Sparkles className="w-4 h-4" />
+                        <div className={`p-2 rounded-xl shrink-0 mt-0.5 ${
+                          n.type === 'PRIZE_DISBURSED' 
+                            ? 'bg-amber-100 text-amber-800' 
+                            : 'bg-purple-100 text-purple-800'
+                        }`}>
+                          {n.type === 'PRIZE_DISBURSED' ? (
+                            <Award className="w-4 h-4 text-amber-700" />
+                          ) : (
+                            <Sparkles className="w-4 h-4" />
+                          )}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-bold text-slate-800 text-xs truncate">

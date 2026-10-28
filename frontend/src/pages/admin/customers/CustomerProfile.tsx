@@ -18,6 +18,7 @@ import {
   resolveBankForPayment 
 } from '../../../utils/bankAccountsData';
 import { isMockGroup } from '../../../utils/cleanMockData';
+import { addSystemNotification } from '../../../utils/notificationsData';
 
 export const CustomerProfile = () => {
   const { id } = useParams();
@@ -501,6 +502,40 @@ export const CustomerProfile = () => {
     });
     localStorage.setItem('withdrawalRequests', JSON.stringify(updatedWReqs));
 
+    // 5b. Dispatch System Notification to Admin & Customer for Prize Disbursal
+    try {
+      addSystemNotification({
+        type: 'PRIZE_DISBURSED',
+        title: 'Prize Money Disbursed 🏆',
+        message: `Disbursed ₹${amount.toLocaleString('en-IN')} to ${displayName} for ${selectedChitForWithdraw.groupId} (${withdrawMode} Ref: ${payoutRefNo}).`,
+        targetRole: 'ADMIN',
+        metadata: {
+          customerId: displayId,
+          customerName: displayName,
+          groupId: selectedChitForWithdraw.groupId,
+          amount: amount,
+          referenceNo: payoutRefNo
+        }
+      });
+
+      addSystemNotification({
+        type: 'PRIZE_DISBURSED',
+        title: 'Prize Money Disbursed! 🏆',
+        message: `Your prize payout of ₹${amount.toLocaleString('en-IN')} for ${selectedChitForWithdraw.groupId} has been disbursed via ${withdrawMode} (Ref: ${payoutRefNo}).`,
+        targetRole: 'CUSTOMER',
+        targetUserId: displayId,
+        metadata: {
+          customerId: displayId,
+          customerName: displayName,
+          groupId: selectedChitForWithdraw.groupId,
+          amount: amount,
+          referenceNo: payoutRefNo
+        }
+      });
+    } catch (notifErr) {
+      console.warn('Could not dispatch prize disbursal notification:', notifErr);
+    }
+
     // 6. Sync to backend MongoDB
     const targetMongoId = customer.mongoId || customer.id || id;
     if (targetMongoId) {
@@ -753,9 +788,9 @@ export const CustomerProfile = () => {
   ];
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 pb-10">
+    <div className="flex flex-col lg:flex-row gap-6 pb-10 w-full min-w-0">
       {/* Left Sidebar - Profile Summary */}
-      <div className="w-full lg:w-80 shrink-0 space-y-6">
+      <div className="w-full lg:w-72 xl:w-80 shrink-0 space-y-6">
         <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
           {/* Cover Photo / Top Accent */}
           <div className="h-24 bg-gradient-to-r from-primary-900 to-primary-700"></div>
@@ -931,7 +966,7 @@ export const CustomerProfile = () => {
       </div>
 
       {/* Right Content Area */}
-      <div className="flex-1 space-y-6">
+      <div className="flex-1 min-w-0 space-y-6">
         {/* Breadcrumb & Action */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm text-neutral-500 bg-white px-5 py-4 rounded-xl shadow-sm border border-neutral-200">
           <div className="flex items-center gap-2 flex-wrap">
@@ -1101,7 +1136,7 @@ export const CustomerProfile = () => {
             )}
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3.5">
               <div className="bg-white p-5 rounded-xl shadow-sm border border-neutral-200 relative overflow-hidden group">
                 <div className="absolute right-0 top-0 w-20 h-20 bg-gradient-to-bl from-primary-50 to-transparent opacity-50 rounded-bl-full transform group-hover:scale-110 transition-transform duration-500"></div>
                 <div className="flex items-center justify-between mb-3">
