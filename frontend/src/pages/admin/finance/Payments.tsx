@@ -25,6 +25,7 @@ import {
   rejectPaymentRequestAction
 } from '../../../utils/paymentRequestsData';
 import { addSystemNotification } from '../../../utils/notificationsData';
+import { calculateFixedPlanSchedule } from '../../../utils/chitCalculations';
 
 type TabType = 'VERIFICATION' | 'WITHDRAWALS';
 
@@ -206,33 +207,48 @@ export const Payments = () => {
       );
       localStorage.setItem('withdrawalRequests', JSON.stringify(updatedWReqs));
 
-      // 1b. Dispatch System Notification to Customer & Admin
+      // 1b. Dispatch System Notification to Customer & Admin / Staff
       try {
+        const chitVal = Number(req.chitValue || 100000);
+        const reqMonth = (req as any).month || (req as any).disbursedMonth || 2;
+        const fixedSchedule = calculateFixedPlanSchedule(chitVal, 20);
+        const nextMonthRow = fixedSchedule.schedule.find(r => r.month === reqMonth + 1);
+        const baseInstallment = nextMonthRow?.due || Math.round(chitVal / 20);
+        const postInstallment = baseInstallment + Math.round((chitVal * 0.01) / 20);
+
         addSystemNotification({
           type: 'PRIZE_DISBURSED',
           title: 'Prize Money Disbursed! 🏆',
-          message: `Your prize payout of ₹${Number(req.eligibleAmount).toLocaleString('en-IN')} for ${req.groupId} has been disbursed via ${disburseModeInput} (Ref: ${payoutRefNo}).`,
+          message: `Your prize payout of ₹${Number(req.eligibleAmount).toLocaleString('en-IN')} for Group ${req.groupName || req.groupId} (Month ${reqMonth}) has been disbursed via ${disburseModeInput} (Ref: ${payoutRefNo}). Your post-disbursal monthly installment from Month ${reqMonth + 1} will be ₹${postInstallment.toLocaleString('en-IN')}/mo (includes 1% prized member fee).`,
           targetRole: 'CUSTOMER',
           targetUserId: req.customerId,
           metadata: {
             customerId: req.customerId,
             customerName: req.customerName,
             groupId: req.groupId,
+            groupName: req.groupName || req.groupId,
+            month: reqMonth,
+            ticketNumber: req.ticketNumber || '1',
             amount: Number(req.eligibleAmount),
+            postInstallment: postInstallment,
             referenceNo: payoutRefNo
           }
         });
 
         addSystemNotification({
           type: 'PRIZE_DISBURSED',
-          title: 'Prize Disbursal Completed',
-          message: `Disbursed ₹${Number(req.eligibleAmount).toLocaleString('en-IN')} to ${req.customerName} for ${req.groupId} (${disburseModeInput} Ref: ${payoutRefNo}).`,
-          targetRole: 'ADMIN',
+          title: 'Prize Disbursal Completed 🏆',
+          message: `🏆 Disbursal Complete | Group: ${req.groupName || req.groupId} | Month ${reqMonth} | Ticket #${req.ticketNumber || '1'} | Winner: ${req.customerName} | Amount: ₹${Number(req.eligibleAmount).toLocaleString('en-IN')} via ${disburseModeInput} (Ref: ${payoutRefNo}). Post-disbursal installment from Month ${reqMonth + 1}: ₹${postInstallment.toLocaleString('en-IN')}/mo.`,
+          targetRole: 'ALL',
           metadata: {
             customerId: req.customerId,
             customerName: req.customerName,
             groupId: req.groupId,
+            groupName: req.groupName || req.groupId,
+            month: reqMonth,
+            ticketNumber: req.ticketNumber || '1',
             amount: Number(req.eligibleAmount),
+            postInstallment: postInstallment,
             referenceNo: payoutRefNo
           }
         });

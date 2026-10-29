@@ -5,7 +5,7 @@
 
 export interface SystemNotification {
   id: string;
-  type: 'PAYMENT_PENDING' | 'PAYMENT_APPROVED' | 'PRIZE_CLAIM' | 'PRIZE_DISBURSED' | 'NEW_REGISTRATION' | 'NEW_LEAD' | 'ANNOUNCEMENT' | 'SYSTEM' | 'OVERDUE_ALERT';
+  type: 'PAYMENT_PENDING' | 'PAYMENT_APPROVED' | 'PAYMENT_RECEIVED' | 'PRIZE_CLAIM' | 'PRIZE_DISBURSED' | 'NEW_REGISTRATION' | 'NEW_LEAD' | 'ANNOUNCEMENT' | 'SYSTEM' | 'OVERDUE_ALERT';
   title: string;
   message: string;
   timestamp: string;
@@ -16,11 +16,20 @@ export interface SystemNotification {
     customerId?: string;
     customerName?: string;
     groupId?: string;
+    groupName?: string;
     amount?: number;
     referenceNo?: string;
     receiptNo?: string;
     leadId?: string;
     scheme?: string;
+    month?: number;
+    ticketNumber?: string;
+    postInstallment?: number;
+    txnId?: string;
+    oldAmount?: number;
+    newAmount?: number;
+    mode?: string;
+    [key: string]: any;
   };
 }
 

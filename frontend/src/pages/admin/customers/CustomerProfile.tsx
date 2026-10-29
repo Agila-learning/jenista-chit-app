@@ -6,11 +6,13 @@ import {
   User, Phone, MapPin, Building, 
   Wallet, FileText, AlertCircle, CheckCircle2,
   Calendar, Mail, CreditCard, Activity, ArrowUpRight, ArrowDownRight, Clock, Layers, X, Users, BookOpen, Download, Award,
-  Eye, ExternalLink, Printer, Landmark, Filter, UserX, UserCheck
+  Eye, ExternalLink, Printer, Landmark, Filter, UserX, UserCheck, Pencil, Check
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import { fetchClient } from '../../../api/client';
 import { printCashReceipt } from '../../../utils/receiptPrinter';
+import { downloadPassbookPDF } from '../../../utils/passbookPrinter';
+import { calculateFixedPlanSchedule } from '../../../utils/chitCalculations';
 import { 
   getStoredBankAccounts, 
   getStoredBankAssignments, 
@@ -40,12 +42,22 @@ export const CustomerProfile = () => {
   // Disburse / Withdraw Modal States
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
   const [selectedChitForWithdraw, setSelectedChitForWithdraw] = useState<any>(null);
+  const [withdrawMonth, setWithdrawMonth] = useState<number>(2);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawMode, setWithdrawMode] = useState('Bank Transfer');
   const [withdrawRef, setWithdrawRef] = useState('');
   const [withdrawNotes, setWithdrawNotes] = useState('');
   const [disbursalSuccessMsg, setDisbursalSuccessMsg] = useState<string | null>(null);
   const [selectedProofModal, setSelectedProofModal] = useState<any | null>(null);
+
+  // Edit Transaction / Payment Modal States
+  const [isEditTxnModalOpen, setIsEditTxnModalOpen] = useState(false);
+  const [editingTxn, setEditingTxn] = useState<any | null>(null);
+  const [editTxnAmount, setEditTxnAmount] = useState('');
+  const [editTxnMode, setEditTxnMode] = useState('Cash');
+  const [editTxnDate, setEditTxnDate] = useState('');
+  const [editTxnDesc, setEditTxnDesc] = useState('');
+  const [editTxnSuccessMsg, setEditTxnSuccessMsg] = useState<string | null>(null);
 
   // Bank Customization States
   const [isChangeBankModalOpen, setIsChangeBankModalOpen] = useState(false);
@@ -404,13 +416,48 @@ export const CustomerProfile = () => {
   // Open Disbursal / Withdrawal Modal
   const openWithdrawModal = (chit: any) => {
     const chitVal = Number(chit.chitValue || chit.amount || 100000);
-    const eligibleAmount = Math.round(chitVal * 0.95);
+    const isFixedScheme = String(chit.scheme || chit.groupId || chit.groupName || '').toLowerCase().includes('fix');
+    const defaultMonth = 2; // Default to Month 2 as Month 1 is Company chit
+    setWithdrawMonth(defaultMonth);
     setSelectedChitForWithdraw(chit);
-    setWithdrawAmount(String(eligibleAmount));
+
+    if (isFixedScheme) {
+      const fixedDetails = calculateFixedPlanSchedule(chitVal, 20);
+      const row = fixedDetails.schedule.find(r => r.month === defaultMonth);
+      const payout = row?.payout || Math.round(chitVal * 0.70);
+      setWithdrawAmount(String(payout));
+    } else {
+      const eligibleAmount = Math.round(chitVal * 0.95);
+      setWithdrawAmount(String(eligibleAmount));
+    }
+
     setWithdrawMode('Bank Transfer');
     setWithdrawRef('');
-    setWithdrawNotes('');
+    setWithdrawNotes(`Prize money disbursal for ${chit.groupId} - Month ${defaultMonth}`);
     setIsWithdrawModalOpen(true);
+  };
+
+  const handleWithdrawMonthChange = (m: number) => {
+    setWithdrawMonth(m);
+    if (!selectedChitForWithdraw) return;
+    const chitVal = Number(selectedChitForWithdraw.chitValue || selectedChitForWithdraw.amount || 100000);
+    const isFixedScheme = String(selectedChitForWithdraw.scheme || selectedChitForWithdraw.groupId || selectedChitForWithdraw.groupName || '').toLowerCase().includes('fix');
+
+    if (m === 1) {
+      setWithdrawAmount('0');
+      setWithdrawNotes('Month 1 is Company / Foreman Chit');
+    } else if (isFixedScheme) {
+      const fixedDetails = calculateFixedPlanSchedule(chitVal, 20);
+      const row = fixedDetails.schedule.find(r => r.month === m);
+      if (row) {
+        setWithdrawAmount(String(row.payout));
+        setWithdrawNotes(`Prize payout for Month ${m} (${(row.payoutPct * 100).toFixed(0)}%)`);
+      }
+    } else {
+      const ratio = m === 20 ? 0.95 : (0.70 + ((m - 1) / 20) * 0.25);
+      setWithdrawAmount(String(Math.round(chitVal * ratio)));
+      setWithdrawNotes(`Prize payout for Month ${m}`);
+    }
   };
 
   // Confirm Withdrawal & Disburse Prize Money
@@ -420,8 +467,18 @@ export const CustomerProfile = () => {
       return;
     }
 
+    if (withdrawMonth === 1) {
+      alert('Month 1 is reserved for Company / Foreman Chit and cannot be disbursed to members.');
+      return;
+    }
+
     const amount = Number(withdrawAmount);
     const payoutRefNo = withdrawRef.trim() || `DISB-${Date.now().toString().slice(-6)}`;
+    const chitVal = Number(selectedChitForWithdraw.chitValue || selectedChitForWithdraw.amount || 100000);
+    const fixedDetails = calculateFixedPlanSchedule(chitVal, 20);
+    const nextMonthRow = fixedDetails.schedule.find(r => r.month === withdrawMonth + 1);
+    const baseInstallment = nextMonthRow?.due || Math.round(chitVal / 20);
+    const postInstallment = baseInstallment + Math.round((chitVal * 0.01) / 20);
 
     // 1. Update customer chits
     const updatedChits = customer.chits.map((c: any) => {
@@ -433,6 +490,8 @@ export const CustomerProfile = () => {
           withdrawnAt: new Date().toISOString(),
           payoutMode: withdrawMode,
           payoutRef: payoutRefNo,
+          disbursedMonth: withdrawMonth,
+          postInstallmentDue: postInstallment,
           status: 'Withdrawn'
         };
       }
@@ -452,7 +511,7 @@ export const CustomerProfile = () => {
       id: `DISB-${Date.now().toString().slice(-6)}`,
       date: new Date().toISOString(),
       reference: `${displayId} / ${selectedChitForWithdraw.groupId}`,
-      description: `Prize Money Disbursal / Withdrawal (${withdrawMode} Ref: ${payoutRefNo})`,
+      description: `Prize Money Disbursal - Month ${withdrawMonth} (${withdrawMode} Ref: ${payoutRefNo})`,
       amount: amount,
       type: 'DEBIT',
       category: 'DISBURSAL',
@@ -480,6 +539,8 @@ export const CustomerProfile = () => {
           isWithdrawn: true,
           withdrawnAmount: amount,
           withdrawnAt: new Date().toISOString(),
+          disbursedMonth: withdrawMonth,
+          postInstallmentDue: postInstallment,
           status: 'Withdrawn'
         };
       }
@@ -495,6 +556,7 @@ export const CustomerProfile = () => {
           ...r,
           status: 'DISBURSED',
           disbursedAt: new Date().toISOString(),
+          disbursedMonth: withdrawMonth,
           disbursedRef: payoutRefNo
         };
       }
@@ -502,18 +564,22 @@ export const CustomerProfile = () => {
     });
     localStorage.setItem('withdrawalRequests', JSON.stringify(updatedWReqs));
 
-    // 5b. Dispatch System Notification to Admin & Customer for Prize Disbursal
+    // 5b. Dispatch System Notification to Admin, Staff & Customer with Full Group, Month & Post-Disbursal info
     try {
       addSystemNotification({
         type: 'PRIZE_DISBURSED',
         title: 'Prize Money Disbursed 🏆',
-        message: `Disbursed ₹${amount.toLocaleString('en-IN')} to ${displayName} for ${selectedChitForWithdraw.groupId} (${withdrawMode} Ref: ${payoutRefNo}).`,
-        targetRole: 'ADMIN',
+        message: `🏆 Disbursal Complete | Group: ${selectedChitForWithdraw.groupId} | Month ${withdrawMonth} | Ticket #${selectedChitForWithdraw.ticketNumber || '1'} | Winner: ${displayName} | Amount: ₹${amount.toLocaleString('en-IN')} via ${withdrawMode} (Ref: ${payoutRefNo}). Post-disbursal installment from Month ${withdrawMonth + 1}: ₹${postInstallment.toLocaleString('en-IN')}/mo.`,
+        targetRole: 'ALL',
         metadata: {
           customerId: displayId,
           customerName: displayName,
           groupId: selectedChitForWithdraw.groupId,
+          groupName: selectedChitForWithdraw.groupName || selectedChitForWithdraw.groupId,
+          month: withdrawMonth,
+          ticketNumber: selectedChitForWithdraw.ticketNumber || '1',
           amount: amount,
+          postInstallment: postInstallment,
           referenceNo: payoutRefNo
         }
       });
@@ -521,14 +587,17 @@ export const CustomerProfile = () => {
       addSystemNotification({
         type: 'PRIZE_DISBURSED',
         title: 'Prize Money Disbursed! 🏆',
-        message: `Your prize payout of ₹${amount.toLocaleString('en-IN')} for ${selectedChitForWithdraw.groupId} has been disbursed via ${withdrawMode} (Ref: ${payoutRefNo}).`,
+        message: `Your prize payout of ₹${amount.toLocaleString('en-IN')} for Group ${selectedChitForWithdraw.groupId} (Month ${withdrawMonth}) has been disbursed via ${withdrawMode} (Ref: ${payoutRefNo}). Your post-disbursal monthly installment from Month ${withdrawMonth + 1} will be ₹${postInstallment.toLocaleString('en-IN')}/mo (includes 1% prized member fee).`,
         targetRole: 'CUSTOMER',
         targetUserId: displayId,
         metadata: {
           customerId: displayId,
           customerName: displayName,
           groupId: selectedChitForWithdraw.groupId,
+          month: withdrawMonth,
+          ticketNumber: selectedChitForWithdraw.ticketNumber || '1',
           amount: amount,
+          postInstallment: postInstallment,
           referenceNo: payoutRefNo
         }
       });
@@ -693,6 +762,181 @@ export const CustomerProfile = () => {
       referenceNo: tx.referenceNo || tx.reference,
       collectedBy: displayAgent || 'Jenista Cash Counter'
     });
+  };
+
+  // Helper to safely format dates
+  const formatChitDate = (dateVal: any) => {
+    if (!dateVal) return 'N/A';
+    try {
+      const d = new Date(dateVal);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      }
+    } catch (e) {}
+    return String(dateVal);
+  };
+
+  // Helper to compile passbook transactions with running balance
+  const getPassbookData = () => {
+    const ledger = JSON.parse(localStorage.getItem('ledgerTransactions') || '[]');
+    let customerTxns = ledger.filter((t: any) => 
+      displayId !== 'N/A' && (t.reference?.includes(displayId) || t.description?.includes(displayId) || t.customerId === displayId)
+    ).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    if (selectedGroupScope && selectedGroupScope !== 'ALL') {
+      customerTxns = customerTxns.filter((t: any) => matchesGroupScope(t, selectedGroupScope));
+    }
+
+    let runningBalance = 0;
+    const processedTxns = customerTxns.map((t: any) => {
+      const amt = Number(t.amount) || 0;
+      if (t.type === 'CREDIT') {
+        runningBalance += amt;
+      } else {
+        runningBalance -= amt;
+      }
+      return {
+        id: t.id,
+        date: t.date,
+        description: t.description || 'Transaction',
+        reference: t.reference,
+        type: t.type as 'CREDIT' | 'DEBIT',
+        amount: amt,
+        paymentMode: t.paymentMode,
+        runningBalance: runningBalance
+      };
+    });
+
+    return { customerTxns: processedTxns, runningBalance };
+  };
+
+  // Download official Digital Passbook statement as PDF
+  const handleDownloadPassbook = () => {
+    const { customerTxns, runningBalance } = getPassbookData();
+    const totalDebits = customerTxns
+      .filter((t: any) => t.type === 'DEBIT')
+      .reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
+
+    downloadPassbookPDF({
+      customerName: displayName,
+      customerId: displayId,
+      customerMobile: displayPhone !== 'N/A' ? displayPhone : '',
+      customerEmail: displayEmail !== 'N/A' ? displayEmail : '',
+      customerAddress: displayAddress !== 'N/A' ? displayAddress : '',
+      groupScope: selectedGroupScope,
+      totalPaid: displayTotalPaid,
+      totalWithdrawn: totalDebits,
+      currentBalance: runningBalance,
+      pendingDue: scopedPending,
+      transactions: customerTxns,
+    });
+  };
+
+  // Open Edit Transaction modal
+  const handleOpenEditTxn = (txn: any) => {
+    setEditingTxn(txn);
+    setEditTxnAmount(String(txn.amount || ''));
+    setEditTxnMode(txn.paymentMode || ((txn.description || '').toLowerCase().includes('cash') ? 'Cash' : 'Bank Transfer'));
+    setEditTxnDate(txn.date ? new Date(txn.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+    setEditTxnDesc(txn.description || '');
+    setEditTxnSuccessMsg(null);
+    setIsEditTxnModalOpen(true);
+  };
+
+  // Save edited transaction
+  const handleSaveEditTxn = () => {
+    if (!editingTxn) return;
+    const newAmount = Number(editTxnAmount);
+    if (isNaN(newAmount) || newAmount <= 0) {
+      alert('Please enter a valid amount greater than 0.');
+      return;
+    }
+
+    const oldAmount = Number(editingTxn.amount) || 0;
+    const delta = newAmount - oldAmount;
+    const isCredit = editingTxn.type === 'CREDIT';
+
+    // 1. Update ledgerTransactions in localStorage
+    const ledger = JSON.parse(localStorage.getItem('ledgerTransactions') || '[]');
+    const updatedLedger = ledger.map((t: any) => {
+      if (t.id === editingTxn.id) {
+        let updatedDesc = editTxnDesc.trim();
+        if (editTxnMode.toLowerCase() === 'cash' && !updatedDesc.toLowerCase().includes('cash')) {
+          updatedDesc = updatedDesc.replace(/\((.*?)\)/, `(Cash Ref: ${t.id})`);
+          if (!updatedDesc.includes('Cash')) updatedDesc += ' (Cash)';
+        }
+        return {
+          ...t,
+          amount: newAmount,
+          description: updatedDesc,
+          date: new Date(editTxnDate).toISOString(),
+          paymentMode: editTxnMode,
+        };
+      }
+      return t;
+    });
+    localStorage.setItem('ledgerTransactions', JSON.stringify(updatedLedger));
+
+    // 2. Adjust customer totalPaid or withdrawnAmount
+    if (customer) {
+      const updatedCustomer = { ...customer };
+      if (isCredit) {
+        updatedCustomer.totalPaid = Math.max(0, (Number(customer.totalPaid) || 0) + delta);
+      } else {
+        updatedCustomer.withdrawnAmount = Math.max(0, (Number(customer.withdrawnAmount) || 0) + delta);
+      }
+      setCustomer(updatedCustomer);
+
+      const saved = localStorage.getItem('mockCustomers');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const newCustomers = parsed.map((c: any) => 
+          (c.id === displayId || c.mongoId === displayId || c.customerCode === displayId) ? updatedCustomer : c
+        );
+        localStorage.setItem('mockCustomers', JSON.stringify(newCustomers));
+      }
+
+      // Sync to MongoDB if applicable
+      const targetMongoId = customer.mongoId || customer.id || id;
+      if (targetMongoId) {
+        fetchClient(`/customers/${targetMongoId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            totalPaid: updatedCustomer.totalPaid,
+            withdrawnAmount: updatedCustomer.withdrawnAmount
+          })
+        }).catch(err => console.warn('Could not sync customer payment edit to MongoDB:', err));
+      }
+    }
+
+    // 3. Dispatch system notification for audit trail
+    try {
+      addSystemNotification({
+        type: 'PAYMENT_RECEIVED',
+        title: 'Payment Record Updated',
+        message: `Transaction ${editingTxn.id} for ${displayName} was updated: Amount changed from ₹${oldAmount.toLocaleString('en-IN')} to ₹${newAmount.toLocaleString('en-IN')} (${editTxnMode}).`,
+        targetRole: 'ADMIN',
+        metadata: {
+          customerId: displayId,
+          customerName: displayName,
+          txnId: editingTxn.id,
+          oldAmount,
+          newAmount,
+          mode: editTxnMode
+        }
+      });
+    } catch (err) {
+      console.warn('Could not add edit notification:', err);
+    }
+
+    // 4. Trigger storage event to refresh all dependent UI
+    window.dispatchEvent(new Event('storage'));
+
+    setEditTxnSuccessMsg(`Transaction updated successfully! Amount changed to ₹${newAmount.toLocaleString('en-IN')}.`);
+    setTimeout(() => {
+      setIsEditTxnModalOpen(false);
+      setEditTxnSuccessMsg(null);
+    }, 1200);
   };
 
   // Helper to test if a transaction belongs to the scoped group
@@ -1355,7 +1599,7 @@ export const CustomerProfile = () => {
                     <div className="flex flex-col md:flex-row items-center gap-6">
                       <div className="text-center md:text-right">
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Ticket / Joined</p>
-                        <p className="text-sm font-semibold text-slate-700">#{chit.ticketNumber} • {chit.joinedAt ? new Date(chit.joinedAt).toLocaleDateString('en-IN') : chit.joiningDate}</p>
+                        <p className="text-sm font-semibold text-slate-700">#{chit.ticketNumber} • {formatChitDate(chit.joinedAt || chit.joiningDate)}</p>
                       </div>
                       
                       <div className="text-center md:text-right">
@@ -1378,7 +1622,7 @@ export const CustomerProfile = () => {
                                 <p className="text-xs font-bold text-success uppercase tracking-wider mb-1">Prize Disbursed</p>
                                 <p className="text-lg font-black text-success">{formatCurrency(chit.withdrawnAmount || 0)}</p>
                                 {chit.withdrawnAt && (
-                                  <p className="text-[11px] text-neutral-400 font-medium">{new Date(chit.withdrawnAt).toLocaleDateString('en-IN')}</p>
+                                  <p className="text-[11px] text-neutral-400 font-medium">{formatChitDate(chit.withdrawnAt)}</p>
                                 )}
                               </div>
                               <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border bg-emerald-100 text-emerald-800 border-emerald-300">
@@ -1389,7 +1633,9 @@ export const CustomerProfile = () => {
                         }
 
                         const chitVal = Number(chit.chitValue || chit.amount || 100000);
-                        const eligible = Math.round(chitVal * 0.95);
+                        const isFixedScheme = String(chit.scheme || chit.groupId || '').toLowerCase().includes('fix');
+                        const fixedDetails = isFixedScheme ? calculateFixedPlanSchedule(chitVal, 20) : null;
+                        const eligible = isFixedScheme ? (fixedDetails?.minPayout || Math.round(chitVal * 0.70)) : Math.round(chitVal * 0.95);
 
                         return (
                           <div className="flex flex-col md:flex-row items-center gap-4">
@@ -1398,7 +1644,7 @@ export const CustomerProfile = () => {
                               <p className="text-lg font-black text-primary-600">
                                 {formatCurrency(eligible)}
                               </p>
-                              <p className="text-[10px] text-slate-400">95% Standard Prize</p>
+                              <p className="text-[10px] text-slate-400">{isFixedScheme ? 'M2-M8 Base Payout (70%)' : '95% Standard Prize'}</p>
                             </div>
 
                             <div className="flex flex-col items-center gap-2">
@@ -1572,9 +1818,16 @@ export const CustomerProfile = () => {
                             >
                               <Printer className="w-3.5 h-3.5" /> Print
                             </button>
+                            <button
+                              onClick={() => handleOpenEditTxn(t)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg shadow-2xs transition-all hover:scale-105"
+                              title="Edit payment amount / details"
+                            >
+                              <Pencil className="w-3.5 h-3.5 text-slate-600" /> Edit
+                            </button>
                           </div>
                         </td>
-                        <td className={`p-4 text-sm font-bold text-right ${t.type === 'CREDIT' ? 'text-success' : 'text-danger'}`}>
+                        <td className={`p-4 text-sm font-bold text-right whitespace-nowrap tabular-nums ${t.type === 'CREDIT' ? 'text-success' : 'text-danger'}`}>
                           {t.type === 'CREDIT' ? '+' : '-'}{formatCurrency(t.amount)}
                         </td>
                       </tr>
@@ -1603,21 +1856,21 @@ export const CustomerProfile = () => {
               </div>
               <div className="text-right">
                 <p className="text-sm text-primary-200 mb-1">Current Balance</p>
-                <p className="text-2xl font-bold text-white">{formatCurrency(displayTotalPaid - scopedPending)}</p>
+                <p className="text-2xl font-bold text-white whitespace-nowrap tabular-nums">{formatCurrency(displayTotalPaid - scopedPending)}</p>
               </div>
             </div>
             
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+            <div className="overflow-x-auto w-full">
+              <table className="w-full text-left border-collapse min-w-[760px]">
                 <thead className="bg-neutral-100/80 text-xs font-bold text-neutral-500 uppercase tracking-wider border-b border-neutral-200">
                   <tr>
-                    <th className="p-4 border-r border-neutral-200">Date</th>
-                    <th className="p-4 border-r border-neutral-200">Particulars</th>
-                    <th className="p-4 border-r border-neutral-200">Ref / Txn ID</th>
-                    <th className="p-4 border-r border-neutral-200 text-right">Debit (-)</th>
-                    <th className="p-4 border-r border-neutral-200 text-right">Credit (+)</th>
-                    <th className="p-4 border-r border-neutral-200 text-right">Balance</th>
-                    <th className="p-4 text-center">Receipt</th>
+                    <th className="p-4 border-r border-neutral-200 whitespace-nowrap">Date</th>
+                    <th className="p-4 border-r border-neutral-200 min-w-[200px]">Particulars</th>
+                    <th className="p-4 border-r border-neutral-200 whitespace-nowrap">Ref / Txn ID</th>
+                    <th className="p-4 border-r border-neutral-200 text-right whitespace-nowrap">Debit (-)</th>
+                    <th className="p-4 border-r border-neutral-200 text-right whitespace-nowrap">Credit (+)</th>
+                    <th className="p-4 border-r border-neutral-200 text-right whitespace-nowrap">Balance</th>
+                    <th className="p-4 text-center whitespace-nowrap">Receipt / Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100 bg-white">
@@ -1650,9 +1903,9 @@ export const CustomerProfile = () => {
                     let runningBalance = 0;
                     return customerTxns.map((t: any, idx: number) => {
                       if (t.type === 'CREDIT') {
-                        runningBalance += t.amount;
+                        runningBalance += Number(t.amount) || 0;
                       } else {
-                        runningBalance -= t.amount;
+                        runningBalance -= Number(t.amount) || 0;
                       }
                       const isCash = (t.description || '').toLowerCase().includes('cash');
 
@@ -1671,34 +1924,45 @@ export const CustomerProfile = () => {
                               )}
                             </div>
                           </td>
-                          <td className="p-4 text-xs font-mono text-neutral-500 border-r border-neutral-100">
+                          <td className="p-4 text-xs font-mono text-neutral-600 border-r border-neutral-100 whitespace-nowrap">
                             {t.id}
                           </td>
-                          <td className="p-4 text-sm font-medium text-danger text-right border-r border-neutral-100">
+                          <td className="p-4 text-sm font-medium text-danger text-right border-r border-neutral-100 whitespace-nowrap tabular-nums">
                             {t.type === 'DEBIT' ? formatCurrency(t.amount) : '-'}
                           </td>
-                          <td className="p-4 text-sm font-medium text-success text-right border-r border-neutral-100">
+                          <td className="p-4 text-sm font-medium text-success text-right border-r border-neutral-100 whitespace-nowrap tabular-nums">
                             {t.type === 'CREDIT' ? formatCurrency(t.amount) : '-'}
                           </td>
-                          <td className="p-4 text-sm font-bold text-primary-900 text-right bg-neutral-50/30 border-r border-neutral-100">
-                            {formatCurrency(runningBalance)}
+                          <td className="p-4 text-sm font-bold text-right bg-neutral-50/30 border-r border-neutral-100 whitespace-nowrap tabular-nums">
+                            <span className={runningBalance < 0 ? 'text-danger inline-block whitespace-nowrap' : 'text-primary-900 inline-block whitespace-nowrap'}>
+                              {formatCurrency(runningBalance)}
+                            </span>
                           </td>
                           <td className="p-4 text-center whitespace-nowrap">
-                            {t.type === 'CREDIT' ? (
+                            <div className="flex items-center justify-center gap-1.5">
+                              {t.type === 'CREDIT' ? (
+                                <button
+                                  onClick={() => handlePrintReceiptSlip(t)}
+                                  className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border shadow-2xs transition-all hover:scale-105 ${
+                                    isCash
+                                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600'
+                                      : 'bg-neutral-50 hover:bg-neutral-100 text-neutral-700 border-neutral-300'
+                                  }`}
+                                  title="Print Payment Receipt"
+                                >
+                                  <Printer className="w-3 h-3" /> Print
+                                </button>
+                              ) : (
+                                <span className="text-neutral-300 text-xs px-2">—</span>
+                              )}
                               <button
-                                onClick={() => handlePrintReceiptSlip(t)}
-                                className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border shadow-2xs transition-all hover:scale-105 ${
-                                  isCash
-                                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600'
-                                    : 'bg-neutral-50 hover:bg-neutral-100 text-neutral-700 border-neutral-300'
-                                }`}
-                                title="Print Payment Receipt"
+                                onClick={() => handleOpenEditTxn(t)}
+                                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg shadow-2xs transition-all hover:scale-105"
+                                title="Edit payment amount / details"
                               >
-                                <Printer className="w-3 h-3" /> Print
+                                <Pencil className="w-3 h-3 text-slate-600" /> Edit
                               </button>
-                            ) : (
-                              <span className="text-neutral-300 text-xs">—</span>
-                            )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1709,7 +1973,10 @@ export const CustomerProfile = () => {
             </div>
             <div className="p-4 border-t border-neutral-200 bg-neutral-50 flex justify-between items-center text-sm text-neutral-500">
               <p>Generated on {new Date().toLocaleString('en-IN')}</p>
-              <button className="flex items-center text-primary-600 font-bold hover:text-primary-800 transition-colors">
+              <button 
+                onClick={handleDownloadPassbook}
+                className="flex items-center text-primary-600 font-bold hover:text-primary-800 transition-colors cursor-pointer hover:underline"
+              >
                 <Download className="w-4 h-4 mr-2" /> Download PDF
               </button>
             </div>
@@ -1850,27 +2117,31 @@ export const CustomerProfile = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider mb-1.5">
-                  Disbursal Amount (₹) <span className="text-danger">*</span>
-                </label>
-                <input 
-                  type="number"
-                  className="w-full border border-neutral-300 rounded-lg px-3.5 py-2.5 text-sm font-bold text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-sm"
-                  value={withdrawAmount}
-                  onChange={(e) => setWithdrawAmount(e.target.value)}
-                  placeholder="e.g. 95000"
-                />
-                <p className="text-[11px] text-neutral-500 mt-1">Calculated as 95% of chit pool (foreman commission 5% deducted per standard norms).</p>
-              </div>
-
+              {/* Disbursal Month Selector */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider mb-1.5">
+                    Disbursal Month <span className="text-danger">*</span>
+                  </label>
+                  <select
+                    className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white shadow-xs"
+                    value={withdrawMonth}
+                    onChange={(e) => handleWithdrawMonthChange(Number(e.target.value))}
+                  >
+                    {Array.from({ length: 20 }, (_, idx) => idx + 1).map((m) => (
+                      <option key={m} value={m}>
+                        Month {m} {m === 1 ? '(Company Chit)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider mb-1.5">
                     Payout Mode
                   </label>
                   <select 
-                    className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white shadow-sm"
+                    className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white shadow-xs"
                     value={withdrawMode}
                     onChange={(e) => setWithdrawMode(e.target.value)}
                   >
@@ -1880,19 +2151,82 @@ export const CustomerProfile = () => {
                     <option value="Cash">Cash</option>
                   </select>
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider mb-1.5">
-                    UTR / Cheque / Txn Ref No.
-                  </label>
-                  <input 
-                    type="text"
-                    className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-sm"
-                    value={withdrawRef}
-                    onChange={(e) => setWithdrawRef(e.target.value)}
-                    placeholder="e.g. UTR129849204"
-                  />
-                </div>
+              {/* Dynamic Month Payout & Post-Disbursal Calculation Box */}
+              {(() => {
+                const chitVal = Number(selectedChitForWithdraw.chitValue || selectedChitForWithdraw.amount || 100000);
+                const fixedSchedule = calculateFixedPlanSchedule(chitVal, 20);
+                const monthRow = fixedSchedule.schedule.find(r => r.month === withdrawMonth);
+                const nextMonthRow = fixedSchedule.schedule.find(r => r.month === Math.min(20, withdrawMonth + 1));
+                const standardInstallment = nextMonthRow?.due || Math.round(chitVal / 20);
+                const postInstallment = standardInstallment + Math.round((chitVal * 0.01) / 20);
+
+                if (withdrawMonth === 1) {
+                  return (
+                    <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 space-y-1">
+                      <p className="font-bold flex items-center gap-1.5">
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                        Month 1 is Reserved for Company / Foreman Chit
+                      </p>
+                      <p className="text-neutral-600 text-[11px] leading-relaxed">
+                        Company collects the full chit pool in Month 1 per standard chit norms. Member prize disbursal is eligible starting Month 2.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2 text-xs">
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-blue-900">Available Prize for Month {withdrawMonth}:</span>
+                      <span className="font-black text-sm text-blue-950">
+                        {formatCurrency(monthRow?.payout || Number(withdrawAmount) || 0)}
+                        <span className="text-[11px] font-semibold text-blue-700 ml-1">
+                          ({((monthRow?.payoutPct || 0.70) * 100).toFixed(0)}%)
+                        </span>
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center border-t border-blue-200/60 pt-2 text-neutral-700">
+                      <span>Post-Disbursal Monthly Installment:</span>
+                      <span className="font-bold text-neutral-900">
+                        {formatCurrency(postInstallment)} / mo
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-blue-800 italic leading-snug">
+                      *From Month {withdrawMonth + 1} to Month 20, member pays {formatCurrency(postInstallment)}/month (includes base installment + 1% prized member fee).
+                    </p>
+                  </div>
+                );
+              })()}
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider mb-1.5">
+                  Disbursal Amount (₹) <span className="text-danger">*</span>
+                </label>
+                <input 
+                  type="number"
+                  className="w-full border border-neutral-300 rounded-lg px-3.5 py-2.5 text-sm font-bold text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-sm"
+                  value={withdrawAmount}
+                  onChange={(e) => setWithdrawAmount(e.target.value)}
+                  placeholder="e.g. 70000"
+                />
+                <p className="text-[11px] text-neutral-500 mt-1">
+                  {withdrawMonth === 1 ? 'Month 1 is Company Chit' : `Auto-calculated according to Month ${withdrawMonth} payout schedule.`}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider mb-1.5">
+                  UTR / Cheque / Txn Ref No.
+                </label>
+                <input 
+                  type="text"
+                  className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-sm"
+                  value={withdrawRef}
+                  onChange={(e) => setWithdrawRef(e.target.value)}
+                  placeholder="e.g. UTR129849204"
+                />
               </div>
 
               <div>
@@ -1904,7 +2238,7 @@ export const CustomerProfile = () => {
                   className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-sm"
                   value={withdrawNotes}
                   onChange={(e) => setWithdrawNotes(e.target.value)}
-                  placeholder="e.g. Month 1 auction prize money disbursed"
+                  placeholder="e.g. Month 2 prize money disbursed"
                 />
               </div>
 
@@ -1916,12 +2250,149 @@ export const CustomerProfile = () => {
                   Cancel
                 </button>
                 <button 
-                  className="bg-primary-900 hover:bg-primary-950 text-white px-5 py-2 rounded-lg text-xs font-bold shadow-sm transition-colors flex items-center gap-1.5"
+                  className="bg-primary-900 hover:bg-primary-950 text-white px-5 py-2 rounded-lg text-xs font-bold shadow-sm transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={handleConfirmWithdrawal}
-                  disabled={!withdrawAmount || Number(withdrawAmount) <= 0}
+                  disabled={!withdrawAmount || Number(withdrawAmount) <= 0 || withdrawMonth === 1}
                 >
                   <Award className="w-4 h-4 text-amber-300" />
                   Confirm & Disburse Prize
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Payment / Transaction Modal */}
+      {isEditTxnModalOpen && editingTxn && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-[100] p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-neutral-200 overflow-hidden">
+            <div className="p-5 border-b border-neutral-100 flex justify-between items-center bg-slate-50">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-primary-100 text-primary-800 rounded-xl">
+                  <Pencil className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-neutral-900">Edit Payment / Transaction</h2>
+                  <p className="text-xs text-neutral-500">Modify amount, mode, or reference for {displayName}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsEditTxnModalOpen(false)}
+                className="text-neutral-400 hover:text-neutral-700 p-1.5 rounded-lg hover:bg-neutral-200 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {editTxnSuccessMsg && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-800 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{editTxnSuccessMsg}</span>
+                </div>
+              )}
+
+              {/* Transaction Meta Card */}
+              <div className="bg-neutral-50 border border-neutral-200/80 rounded-xl p-3.5 space-y-2 text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="text-neutral-500">Transaction ID / Ref:</span>
+                  <span className="font-mono font-bold text-primary-900">{editingTxn.id}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-neutral-500">Type:</span>
+                  <span className={`font-bold px-2 py-0.5 rounded text-[10px] uppercase ${editingTxn.type === 'CREDIT' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
+                    {editingTxn.type === 'CREDIT' ? 'Credit (Customer Payment)' : 'Debit (Prize Disbursal)'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-neutral-500">Original Entered Amount:</span>
+                  <span className="font-bold text-neutral-800">{formatCurrency(editingTxn.amount)}</span>
+                </div>
+              </div>
+
+              {/* Editable Amount */}
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider mb-1.5">
+                  Updated Amount (₹) <span className="text-danger">*</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-neutral-400">₹</span>
+                  <input
+                    type="number"
+                    className="w-full pl-8 pr-3.5 py-2.5 border border-neutral-300 rounded-xl text-base font-black text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-xs"
+                    value={editTxnAmount}
+                    onChange={(e) => setEditTxnAmount(e.target.value)}
+                    placeholder="e.g. 5500"
+                    autoFocus
+                  />
+                </div>
+                <p className="text-[11px] text-neutral-500 mt-1">
+                  Example: If 5000 was entered by mistake but customer actually paid 5500, enter 5500 here.
+                </p>
+              </div>
+
+              {/* Mode and Date */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider mb-1.5">
+                    Payment Mode
+                  </label>
+                  <select
+                    className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white shadow-xs"
+                    value={editTxnMode}
+                    onChange={(e) => setEditTxnMode(e.target.value)}
+                  >
+                    <option value="Cash">Cash</option>
+                    <option value="UPI">UPI / GPay / PhonePe</option>
+                    <option value="Bank Transfer">Bank Transfer (NEFT/IMPS)</option>
+                    <option value="Cheque">Cheque</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider mb-1.5">
+                    Payment Date
+                  </label>
+                  <input
+                    type="date"
+                    className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-xs"
+                    value={editTxnDate}
+                    onChange={(e) => setEditTxnDate(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Description / Particulars */}
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 uppercase tracking-wider mb-1.5">
+                  Particulars / Description
+                </label>
+                <input
+                  type="text"
+                  className="w-full border border-neutral-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-xs"
+                  value={editTxnDesc}
+                  onChange={(e) => setEditTxnDesc(e.target.value)}
+                  placeholder="e.g. Installment Payment (Cash)"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-neutral-100">
+                <button
+                  type="button"
+                  className="px-4 py-2 text-xs font-bold text-neutral-600 hover:bg-neutral-100 rounded-xl transition-colors"
+                  onClick={() => setIsEditTxnModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="px-5 py-2 text-xs font-bold text-white bg-primary-900 hover:bg-primary-950 rounded-xl shadow-sm transition-all flex items-center gap-1.5"
+                  onClick={handleSaveEditTxn}
+                  disabled={!editTxnAmount || Number(editTxnAmount) <= 0}
+                >
+                  <Check className="w-4 h-4" />
+                  Save Changes
                 </button>
               </div>
             </div>
