@@ -17,11 +17,12 @@ import {
   Menu,
   ArrowLeft,
   Sparkles,
-  Award
+  Award,
+  AlertCircle
 } from 'lucide-react';
 import { useAuth } from '../../store/AuthContext';
 import { isMockCustomer, isMockGroup } from '../../utils/cleanMockData';
-import { getStoredNotifications, onNotificationSync } from '../../utils/notificationsData';
+import { getStoredNotifications, onNotificationSync, syncOverdueAndDisbursementAlerts } from '../../utils/notificationsData';
 import { formatDate } from '../../utils/format';
 
 interface TopbarProps {
@@ -67,6 +68,8 @@ export const Topbar = ({ onMenuClick }: TopbarProps = {}) => {
 
   const loadNotificationsData = () => {
     try {
+      syncOverdueAndDisbursementAlerts();
+
       const reqs = JSON.parse(localStorage.getItem('paymentRequests') || '[]');
       const filteredReqs = reqs.filter((r: any) => r.status === 'PENDING_VERIFICATION' || r.status === 'PENDING');
       setPendingPayments(filteredReqs);
@@ -75,7 +78,7 @@ export const Topbar = ({ onMenuClick }: TopbarProps = {}) => {
       const filteredCusts = custs.filter((c: any) => c.status === 'PENDING_APPROVAL' && !isMockCustomer(c));
       setPendingApprovals(filteredCusts);
 
-      const notifs = getStoredNotifications().filter(n => !n.isRead && (n.targetRole === 'ADMIN' || n.targetRole === 'ALL'));
+      const notifs = getStoredNotifications().filter(n => !n.isRead && (n.targetRole === 'ADMIN' || n.targetRole === 'STAFF' || n.targetRole === 'ALL'));
       setSystemNotifs(notifs);
     } catch {
       setPendingPayments([]);
@@ -370,9 +373,14 @@ export const Topbar = ({ onMenuClick }: TopbarProps = {}) => {
                         onClick={() => {
                           setIsNotificationsOpen(false);
                           if (n.type === 'NEW_LEAD') navigate('/admin/leads');
+                          else if (n.type === 'PRIZE_CLAIM') navigate('/admin/payments?tab=WITHDRAWALS');
                           else if (n.type === 'PRIZE_DISBURSED') {
                             if (n.metadata?.customerId) navigate(`/admin/customers/${n.metadata.customerId}`);
                             else navigate('/admin/ledger');
+                          }
+                          else if (n.type === 'OVERDUE_ALERT') {
+                            if (n.metadata?.customerId) navigate(`/admin/customers/${n.metadata.customerId}`);
+                            else navigate('/admin/customers');
                           }
                           else if (n.type.includes('PAYMENT')) navigate('/admin/payments');
                           else if (n.type === 'NEW_REGISTRATION') navigate('/admin/customers/approvals');
@@ -381,12 +389,16 @@ export const Topbar = ({ onMenuClick }: TopbarProps = {}) => {
                         className="p-3.5 hover:bg-amber-50/50 cursor-pointer transition-colors flex items-start gap-3"
                       >
                         <div className={`p-2 rounded-xl shrink-0 mt-0.5 ${
-                          n.type === 'PRIZE_DISBURSED' 
+                          n.type === 'PRIZE_CLAIM' || n.type === 'PRIZE_DISBURSED'
                             ? 'bg-amber-100 text-amber-800' 
+                            : n.type === 'OVERDUE_ALERT'
+                            ? 'bg-rose-100 text-rose-800'
                             : 'bg-purple-100 text-purple-800'
                         }`}>
-                          {n.type === 'PRIZE_DISBURSED' ? (
+                          {n.type === 'PRIZE_CLAIM' || n.type === 'PRIZE_DISBURSED' ? (
                             <Award className="w-4 h-4 text-amber-700" />
+                          ) : n.type === 'OVERDUE_ALERT' ? (
+                            <AlertCircle className="w-4 h-4 text-rose-700" />
                           ) : (
                             <Sparkles className="w-4 h-4" />
                           )}

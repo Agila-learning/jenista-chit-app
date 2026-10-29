@@ -13,7 +13,12 @@ import {
   CreditCard, 
   RotateCcw,
   Download,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Clock,
+  Pencil,
+  Trash2,
+  CheckCircle2,
+  X
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '../../../utils/format';
 import { printCashReceipt } from '../../../utils/receiptPrinter';
@@ -32,6 +37,113 @@ export const Ledger: React.FC = () => {
   const [groupFilter, setGroupFilter] = useState<string>('ALL');
   const [schemeFilter, setSchemeFilter] = useState<string>('ALL');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(true);
+
+  // Edit Transaction Modal state
+  const [editingTxn, setEditingTxn] = useState<any | null>(null);
+  const [editAmount, setEditAmount] = useState<string>('');
+  const [editMode, setEditMode] = useState<string>('Cash');
+  const [editDate, setEditDate] = useState<string>('');
+  const [editRef, setEditRef] = useState<string>('');
+  const [editDesc, setEditDesc] = useState<string>('');
+
+  const handleOpenEditLedger = (txn: any) => {
+    setEditingTxn(txn);
+    setEditAmount(String(txn.amount || ''));
+    setEditMode(txn.paymentMode || txn.method || (txn.description?.toLowerCase().includes('upi') ? 'UPI' : 'Cash'));
+    const isoDate = txn.date ? new Date(txn.date).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16);
+    setEditDate(isoDate);
+    setEditRef(txn.referenceNo || txn.reference || '');
+    setEditDesc(txn.description || '');
+  };
+
+  const handleSaveEditLedger = () => {
+    if (!editingTxn || !editAmount || Number(editAmount) <= 0) return;
+
+    const newAmount = Number(editAmount);
+    const oldAmount = Number(editingTxn.amount) || 0;
+    const diff = newAmount - oldAmount;
+    const newIsoDate = editDate ? new Date(editDate).toISOString() : editingTxn.date;
+
+    const saved = localStorage.getItem('ledgerTransactions');
+    const txns: any[] = saved ? JSON.parse(saved) : [];
+
+    const updatedTxns = txns.map((t: any) => {
+      if (t.id === editingTxn.id) {
+        return {
+          ...t,
+          amount: newAmount,
+          paymentMode: editMode,
+          method: editMode,
+          referenceNo: editRef,
+          reference: editRef || t.reference,
+          description: editDesc || t.description,
+          date: newIsoDate,
+          lastEditedAt: new Date().toISOString()
+        };
+      }
+      return t;
+    });
+
+    localStorage.setItem('ledgerTransactions', JSON.stringify(updatedTxns));
+    setTransactions(updatedTxns);
+
+    const custId = editingTxn.customerId || editingTxn.reference?.split('/')?.[0]?.trim();
+    if (custId) {
+      const custsRaw = localStorage.getItem('mockCustomers');
+      if (custsRaw) {
+        const custs = JSON.parse(custsRaw);
+        const updatedCusts = custs.map((c: any) => {
+          if (c.id === custId || c.customerCode === custId || c.mongoId === custId) {
+            return {
+              ...c,
+              totalPaid: Math.max(0, (Number(c.totalPaid) || 0) + diff),
+              pending: Math.max(0, (Number(c.pending) || 0) - diff)
+            };
+          }
+          return c;
+        });
+        localStorage.setItem('mockCustomers', JSON.stringify(updatedCusts));
+      }
+    }
+
+    window.dispatchEvent(new Event('storage'));
+    setEditingTxn(null);
+  };
+
+  const handleDeleteLedgerTxn = (txnId: string) => {
+    if (!window.confirm(`Are you sure you want to void / delete transaction ${txnId}? This will reverse the payment entry.`)) return;
+
+    const saved = localStorage.getItem('ledgerTransactions');
+    const txns: any[] = saved ? JSON.parse(saved) : [];
+    const target = txns.find((t: any) => t.id === txnId);
+    const removedAmount = target ? Number(target.amount) || 0 : 0;
+
+    const updatedTxns = txns.filter((t: any) => t.id !== txnId);
+    localStorage.setItem('ledgerTransactions', JSON.stringify(updatedTxns));
+    setTransactions(updatedTxns);
+
+    const custId = target?.customerId || target?.reference?.split('/')?.[0]?.trim();
+    if (custId && target?.type === 'CREDIT') {
+      const custsRaw = localStorage.getItem('mockCustomers');
+      if (custsRaw) {
+        const custs = JSON.parse(custsRaw);
+        const updatedCusts = custs.map((c: any) => {
+          if (c.id === custId || c.customerCode === custId || c.mongoId === custId) {
+            return {
+              ...c,
+              totalPaid: Math.max(0, (Number(c.totalPaid) || 0) - removedAmount),
+              pending: (Number(c.pending) || 0) + removedAmount
+            };
+          }
+          return c;
+        });
+        localStorage.setItem('mockCustomers', JSON.stringify(updatedCusts));
+      }
+    }
+
+    window.dispatchEvent(new Event('storage'));
+    setEditingTxn(null);
+  };
 
   useEffect(() => {
     // 1. Load transactions from localStorage
@@ -702,12 +814,18 @@ export const Ledger: React.FC = () => {
 
                   return (
                     <tr key={txn.id} className="hover:bg-slate-50/80 transition-colors">
-                      {/* TXN ID & Date */}
+                      {/* TXN ID & Date + Exact Time */}
                       <td className="py-3.5 px-4">
                         <div className="font-mono font-bold text-slate-900">{txn.id}</div>
-                        <div className="text-[11px] text-slate-400 mt-0.5">
+                        <div className="text-[11px] text-slate-600 font-medium mt-0.5">
                           {txn.date ? formatDate(new Date(txn.date)) : '—'}
                         </div>
+                        {txn.date && (
+                          <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1 mt-0.5">
+                            <Clock className="w-2.5 h-2.5 text-slate-400" />
+                            <span>{new Date(txn.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Customer / Member Name (HIGHLIGHTED) */}
@@ -765,29 +883,40 @@ export const Ledger: React.FC = () => {
                         )}
                       </td>
 
-                      {/* Receipt */}
+                      {/* Receipt & Edit Actions */}
                       <td className="py-3.5 px-4 text-right whitespace-nowrap">
                         {txn.type === 'CREDIT' ? (
-                          <button 
-                            type="button"
-                            onClick={() => printCashReceipt({
-                              receiptNo: txn.id,
-                              date: txn.date,
-                              customerName: cust.name,
-                              customerId: cust.id,
-                              groupName: groupDisplay,
-                              paymentMode: method,
-                              amount: txn.amount,
-                              description: txn.description,
-                              referenceNo: txn.reference,
-                              collectedBy: 'Jenista Accounts'
-                            })}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 shadow-2xs transition-all"
-                            title="Print Official Slip"
-                          >
-                            <Printer className="w-3.5 h-3.5 text-slate-500" />
-                            <span>Slip</span>
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button 
+                              type="button"
+                              onClick={() => printCashReceipt({
+                                receiptNo: txn.id,
+                                date: txn.date,
+                                customerName: cust.name,
+                                customerId: cust.id,
+                                groupName: groupDisplay,
+                                paymentMode: method,
+                                amount: txn.amount,
+                                description: txn.description,
+                                referenceNo: txn.reference,
+                                collectedBy: 'Jenista Accounts'
+                              })}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 shadow-2xs transition-all cursor-pointer"
+                              title="Print Official Slip"
+                            >
+                              <Printer className="w-3.5 h-3.5 text-slate-500" />
+                              <span>Slip</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditLedger(txn)}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-bold rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 shadow-2xs transition-all cursor-pointer"
+                              title="Edit Price Amount, Mode, Date & Remarks"
+                            >
+                              <Pencil className="w-3.5 h-3.5 text-amber-700" />
+                              <span>Edit</span>
+                            </button>
+                          </div>
                         ) : (
                           <span className="text-slate-300 text-xs">—</span>
                         )}
@@ -800,6 +929,146 @@ export const Ledger: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Edit Transaction Modal */}
+      {editingTxn && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="px-5 py-4 bg-[#1f1a14] text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-bold flex items-center gap-2">
+                  <Pencil className="w-4 h-4 text-amber-400" />
+                  <span>Edit Payment Transaction</span>
+                </h3>
+                <p className="text-[11px] text-amber-200/80 font-mono mt-0.5">
+                  {editingTxn.id} · {editingTxn.customerName || resolveCustomer(editingTxn).name}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingTxn(null)}
+                className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              {/* Amount */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Payment Amount (₹) *
+                </label>
+                <input
+                  type="number"
+                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2 font-bold text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#9a6d25]"
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(e.target.value)}
+                />
+              </div>
+
+              {/* Payment Mode */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Payment Mode *
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['Cash', 'UPI', 'Bank Transfer'] as const).map(mode => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setEditMode(mode)}
+                      className={`py-2 px-2.5 text-xs font-bold rounded-xl border text-center transition-all ${
+                        editMode.toLowerCase() === mode.toLowerCase()
+                          ? 'bg-[#9a6d25] text-white border-[#9a6d25] shadow-xs'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Date & Time Picker */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-[#9a6d25]" />
+                  <span>Payment Date & Time *</span>
+                </label>
+                <input
+                  type="datetime-local"
+                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2 font-mono text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#9a6d25]"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Exact timestamp when payment was recorded or made. Backdating to past years/months supported.
+                </p>
+              </div>
+
+              {/* Reference / UTR */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Reference / UTR / Counter Notes
+                </label>
+                <input
+                  type="text"
+                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2 font-mono text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#9a6d25]"
+                  value={editRef}
+                  onChange={(e) => setEditRef(e.target.value)}
+                  placeholder="e.g. UTR or Cash counter ref..."
+                />
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Description
+                </label>
+                <input
+                  type="text"
+                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#9a6d25]"
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  placeholder="Transaction description..."
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => handleDeleteLedgerTxn(editingTxn.id)}
+                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs border border-rose-200 flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Delete Entry</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingTxn(null)}
+                    className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveEditLedger}
+                    disabled={!editAmount || Number(editAmount) <= 0}
+                    className="px-4 py-1.5 bg-[#9a6d25] hover:bg-[#855c1b] text-white font-bold rounded-xl text-xs shadow-xs disabled:opacity-50 transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Save Changes</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

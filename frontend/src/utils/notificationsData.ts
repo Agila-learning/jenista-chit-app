@@ -5,7 +5,7 @@
 
 export interface SystemNotification {
   id: string;
-  type: 'PAYMENT_PENDING' | 'PAYMENT_APPROVED' | 'PRIZE_CLAIM' | 'PRIZE_DISBURSED' | 'NEW_REGISTRATION' | 'NEW_LEAD' | 'ANNOUNCEMENT' | 'SYSTEM';
+  type: 'PAYMENT_PENDING' | 'PAYMENT_APPROVED' | 'PRIZE_CLAIM' | 'PRIZE_DISBURSED' | 'NEW_REGISTRATION' | 'NEW_LEAD' | 'ANNOUNCEMENT' | 'SYSTEM' | 'OVERDUE_ALERT';
   title: string;
   message: string;
   timestamp: string;
@@ -198,6 +198,117 @@ export const markAllNotificationsAsRead = (userId?: string, role?: string): void
   window.dispatchEvent(new Event('storage'));
   window.dispatchEvent(new CustomEvent('notificationSync', { detail: { markAll: true } }));
 };
+
+/**
+ * Synchronizes pending prize disbursement requests and overdue installment alerts
+ * for Admin and Staff. Clears notifications automatically when dues are settled.
+ */
+export const syncOverdueAndDisbursementAlerts = (): void => {
+  try {
+    let notifications = getStoredNotifications();
+    let hasChanged = false;
+
+    // 1. Sync Pending Prize Disbursement Requests
+    const wRaw = localStorage.getItem('withdrawalRequests');
+    if (wRaw) {
+      const wRequests: any[] = JSON.parse(wRaw);
+      const pendingClaims = wRequests.filter((w: any) => w.status === 'PENDING_ADMIN_DISBURSAL');
+      
+      pendingClaims.forEach((w: any) => {
+        const notifId = `NOTIF-CLAIM-${w.id}`;
+        const existing = notifications.find(n => n.id === notifId || (n.type === 'PRIZE_CLAIM' && n.metadata?.leadId === w.id));
+        if (!existing) {
+          notifications.unshift({
+            id: notifId,
+            type: 'PRIZE_CLAIM',
+            title: `🏆 Prize Disbursement Requested: ${w.customerName || 'Customer'}`,
+            message: `${w.customerName || 'Member'} (${w.customerId || ''}) requested prize payout of ₹${Number(w.eligibleAmount || 0).toLocaleString('en-IN')} for Group ${w.groupName || w.groupId} via ${w.payoutMethod || 'Bank Transfer'}. Approval required.`,
+            timestamp: w.requestedAt || new Date().toISOString(),
+            isRead: false,
+            targetRole: 'ALL',
+            metadata: {
+              customerId: w.customerId,
+              customerName: w.customerName,
+              groupId: w.groupId,
+              amount: Number(w.eligibleAmount || 0),
+              leadId: w.id
+            }
+          });
+          hasChanged = true;
+        }
+      });
+
+      const nonPendingIds = new Set(wRequests.filter((w: any) => w.status !== 'PENDING_ADMIN_DISBURSAL').map((w: any) => w.id));
+      notifications = notifications.map(n => {
+        if (n.type === 'PRIZE_CLAIM' && n.metadata?.leadId && nonPendingIds.has(n.metadata.leadId) && !n.isRead) {
+          hasChanged = true;
+          return { ...n, isRead: true };
+        }
+        return n;
+      });
+    }
+
+    // 2. Sync Pending Overdue Installments
+    const cRaw = localStorage.getItem('mockCustomers');
+    if (cRaw) {
+      const customers: any[] = JSON.parse(cRaw);
+      const overdueCustomers = customers.filter((c: any) => Number(c.pending) > 0 && c.status !== 'REJECTED');
+      const clearedCustomerIds = new Set(customers.filter((c: any) => !c.pending || Number(c.pending) <= 0).map((c: any) => c.id));
+
+      overdueCustomers.forEach((c: any) => {
+        const notifId = `NOTIF-OVERDUE-${c.id}`;
+        const existingIdx = notifications.findIndex(n => n.id === notifId);
+        const amount = Number(c.pending || 0);
+
+        if (existingIdx === -1) {
+          notifications.unshift({
+            id: notifId,
+            type: 'OVERDUE_ALERT',
+            title: `⚠️ Pending Overdue Alert: ${c.name || 'Member'}`,
+            message: `Member ${c.name || 'Customer'} (${c.id || c.customerCode || ''}) has overdue installment balance of ₹${amount.toLocaleString('en-IN')}. Follow-up required until dues are cleared.`,
+            timestamp: new Date().toISOString(),
+            isRead: false,
+            targetRole: 'ALL',
+            metadata: {
+              customerId: c.id,
+              customerName: c.name,
+              amount: amount
+            }
+          });
+          hasChanged = true;
+        } else if (notifications[existingIdx].isRead || notifications[existingIdx].metadata?.amount !== amount) {
+          notifications[existingIdx] = {
+            ...notifications[existingIdx],
+            isRead: false,
+            message: `Member ${c.name || 'Customer'} (${c.id || c.customerCode || ''}) has overdue installment balance of ₹${amount.toLocaleString('en-IN')}. Follow-up required until dues are cleared.`,
+            metadata: {
+              ...notifications[existingIdx].metadata,
+              amount: amount
+            }
+          };
+          hasChanged = true;
+        }
+      });
+
+      notifications = notifications.filter(n => {
+        if (n.type === 'OVERDUE_ALERT' && n.metadata?.customerId && clearedCustomerIds.has(n.metadata.customerId)) {
+          hasChanged = true;
+          return false;
+        }
+        return true;
+      });
+    }
+
+    if (hasChanged) {
+      localStorage.setItem('systemNotifications', JSON.stringify(notifications));
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent('notificationSync', { detail: { syncAlerts: true } }));
+    }
+  } catch (err) {
+    console.warn('Could not sync overdue and disbursement alerts:', err);
+  }
+};
+
 
 // --- Announcements Operations ---
 

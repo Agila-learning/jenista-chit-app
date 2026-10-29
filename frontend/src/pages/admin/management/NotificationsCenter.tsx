@@ -12,7 +12,8 @@ import {
   Trash2, 
   X, 
   Search,
-  CheckCircle2
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { Button } from '../../../components/common/Button';
 import { Input } from '../../../components/common/Input';
@@ -23,6 +24,7 @@ import {
   getStoredAnnouncements, 
   addAnnouncement, 
   onNotificationSync,
+  syncOverdueAndDisbursementAlerts,
   type SystemNotification,
   type Announcement
 } from '../../../utils/notificationsData';
@@ -49,6 +51,7 @@ export const NotificationsCenter: React.FC = () => {
   const [winnerAmount, setWinnerAmount] = useState('');
 
   const loadData = () => {
+    syncOverdueAndDisbursementAlerts();
     setNotifications(getStoredNotifications());
     setAnnouncements(getStoredAnnouncements());
   };
@@ -108,6 +111,7 @@ export const NotificationsCenter: React.FC = () => {
   const filteredNotifications = notifications.filter(n => {
     if (filterType === 'PAYMENTS' && !n.type.includes('PAYMENT')) return false;
     if (filterType === 'PRIZES' && !n.type.includes('PRIZE')) return false;
+    if (filterType === 'OVERDUES' && n.type !== 'OVERDUE_ALERT') return false;
     if (filterType === 'LEADS' && n.type !== 'NEW_LEAD') return false;
     if (filterType === 'REGISTRATIONS' && n.type !== 'NEW_REGISTRATION') return false;
 
@@ -220,7 +224,7 @@ export const NotificationsCenter: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
-                {(['ALL', 'PAYMENTS', 'PRIZES', 'LEADS', 'REGISTRATIONS'] as const).map(type => (
+                {(['ALL', 'PAYMENTS', 'PRIZES', 'OVERDUES', 'LEADS', 'REGISTRATIONS'] as const).map(type => (
                   <button
                     key={type}
                     onClick={() => setFilterType(type)}
@@ -242,12 +246,13 @@ export const NotificationsCenter: React.FC = () => {
                 <div className="py-16 text-center text-slate-400">
                   <Check className="w-10 h-10 mx-auto mb-2 text-emerald-500" />
                   <p className="font-bold text-slate-700 text-sm">No notifications found</p>
-                  <p className="text-xs text-slate-500 mt-0.5">Operational payments, approvals, and leads will appear here.</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Operational payments, approvals, prize claims, and overdues will appear here.</p>
                 </div>
               ) : (
                 filteredNotifications.map(n => {
                   const isPayment = n.type.includes('PAYMENT');
                   const isPrize = n.type.includes('PRIZE');
+                  const isOverdue = n.type === 'OVERDUE_ALERT';
                   const isLead = n.type === 'NEW_LEAD';
                   const isReg = n.type === 'NEW_REGISTRATION';
 
@@ -255,19 +260,25 @@ export const NotificationsCenter: React.FC = () => {
                     <div 
                       key={n.id}
                       className={`p-4 sm:p-5 flex items-start justify-between gap-4 transition-colors ${
-                        !n.isRead ? 'bg-amber-50/30 hover:bg-amber-50/50' : 'hover:bg-slate-50'
+                        isOverdue 
+                          ? 'bg-rose-50/40 hover:bg-rose-50/60' 
+                          : !n.isRead 
+                          ? 'bg-amber-50/30 hover:bg-amber-50/50' 
+                          : 'hover:bg-slate-50'
                       }`}
                     >
                       <div className="flex items-start gap-3.5 flex-1 min-w-0">
                         <div className={`p-2.5 rounded-2xl shrink-0 mt-0.5 ${
                           isPayment ? 'bg-emerald-100 text-emerald-800' :
                           isPrize ? 'bg-amber-100 text-amber-800' :
+                          isOverdue ? 'bg-rose-100 text-rose-800' :
                           isLead ? 'bg-blue-100 text-blue-800' :
                           isReg ? 'bg-purple-100 text-purple-800' :
                           'bg-slate-100 text-slate-700'
                         }`}>
                           {isPayment ? <CreditCard className="w-5 h-5" /> :
                            isPrize ? <Award className="w-5 h-5" /> :
+                           isOverdue ? <AlertCircle className="w-5 h-5 text-rose-700" /> :
                            isLead ? <Sparkles className="w-5 h-5" /> :
                            isReg ? <UserCheck className="w-5 h-5" /> :
                            <Bell className="w-5 h-5" />}
@@ -277,7 +288,7 @@ export const NotificationsCenter: React.FC = () => {
                           <div className="flex items-center gap-2 flex-wrap">
                             <h4 className="font-bold text-slate-900 text-sm">{n.title}</h4>
                             {!n.isRead && (
-                              <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                              <span className={`w-2 h-2 rounded-full ${isOverdue ? 'bg-rose-500' : 'bg-amber-500'}`}></span>
                             )}
                             <span className="text-[11px] text-slate-400 flex items-center gap-1 font-mono">
                               <Clock className="w-3 h-3" />
@@ -295,7 +306,9 @@ export const NotificationsCenter: React.FC = () => {
                                 <span className="text-slate-700">Member: {n.metadata.customerName}</span>
                               )}
                               {n.metadata.amount && (
-                                <span className="text-emerald-700">Amount: ₹{Number(n.metadata.amount).toLocaleString('en-IN')}</span>
+                                <span className={isOverdue ? 'text-rose-700 font-bold' : 'text-emerald-700 font-bold'}>
+                                  Amount: ₹{Number(n.metadata.amount).toLocaleString('en-IN')}
+                                </span>
                               )}
                               {n.metadata.groupId && (
                                 <span className="text-slate-600 font-mono">Chit: {n.metadata.groupId}</span>
@@ -310,12 +323,25 @@ export const NotificationsCenter: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => {
-                              if (n.metadata?.customerId) navigate(`/admin/customers/${n.metadata.customerId}`);
+                              if (n.type === 'PRIZE_CLAIM') navigate('/admin/payments?tab=WITHDRAWALS');
+                              else if (n.metadata?.customerId) navigate(`/admin/customers/${n.metadata.customerId}`);
                               else navigate('/admin/ledger');
                             }}
                             className="px-2.5 py-1 text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 rounded-lg border border-amber-200"
                           >
-                            View Record
+                            {n.type === 'PRIZE_CLAIM' ? 'Disburse Prize' : 'View Record'}
+                          </button>
+                        )}
+                        {isOverdue && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (n.metadata?.customerId) navigate(`/admin/customers/${n.metadata.customerId}`);
+                              else navigate('/admin/customers');
+                            }}
+                            className="px-2.5 py-1 text-xs font-bold bg-rose-50 text-rose-800 hover:bg-rose-100 rounded-lg border border-rose-200"
+                          >
+                            Collect Dues
                           </button>
                         )}
                         {isPayment && (

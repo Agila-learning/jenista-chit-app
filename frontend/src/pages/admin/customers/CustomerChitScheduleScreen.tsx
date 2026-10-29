@@ -9,8 +9,17 @@ import {
   AlertCircle, 
   Award, 
   Printer, 
-  TrendingUp, 
-  Wallet
+  Wallet,
+  Users,
+  QrCode,
+  Landmark,
+  Copy,
+  Check,
+  Lock,
+  Upload,
+  Info,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 import { formatCurrency } from '../../../utils/format';
 import { printCashReceipt } from '../../../utils/receiptPrinter';
@@ -21,6 +30,8 @@ import {
   type DueInstallmentRow
 } from '../../../utils/customerChitSchedule';
 import { fetchClient } from '../../../api/client';
+import { resolveBankForPayment, generateUpiQrBadge, getStoredBankAccounts } from '../../../utils/bankAccountsData';
+import { savePaymentRequest } from '../../../utils/paymentRequestsData';
 
 export const CustomerChitScheduleScreen = () => {
   const { id: customerIdParam } = useParams<{ id: string }>();
@@ -34,9 +45,19 @@ export const CustomerChitScheduleScreen = () => {
 
   // Quick Payment Modal state
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
+  const [selectedMonthForPay, setSelectedMonthForPay] = useState<DueInstallmentRow | null>(null);
+  const [selectedMonthNumber, setSelectedMonthNumber] = useState(1);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingTxnId, setEditingTxnId] = useState<string | null>(null);
+  const [paymentDateTime, setPaymentDateTime] = useState('');
   const [payAmount, setPayAmount] = useState('');
-  const [payMode, setPayMode] = useState('Cash');
+  const [payMode, setPayMode] = useState('UPI');
   const [payRef, setPayRef] = useState('');
+  const [payScreenshot, setPayScreenshot] = useState('');
+  const [screenshotName, setScreenshotName] = useState('');
+  const [paySuccessMsg, setPaySuccessMsg] = useState('');
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [chitGroups, setChitGroups] = useState<any[]>([]);
 
   const loadData = async () => {
     try {
@@ -86,6 +107,7 @@ export const CustomerChitScheduleScreen = () => {
       let targetGroup: any = null;
       try {
         const groups = JSON.parse(localStorage.getItem('mockChitGroups') || '[]');
+        setChitGroups(groups);
         targetGroup = groups.find((g: any) => {
           const gId = String(g.id || '').toLowerCase();
           const gCode = String(g.code || '').toLowerCase();
@@ -211,49 +233,309 @@ export const CustomerChitScheduleScreen = () => {
     };
   }, [customerIdParam, groupParam]);
 
-  // Handle Cash or Direct Installment Payment Recording
-  const handleRecordPayment = () => {
-    if (!payAmount || Number(payAmount) <= 0 || !scheduleData) return;
-
-    const amount = Number(payAmount);
-    const ledger = JSON.parse(localStorage.getItem('ledgerTransactions') || '[]');
-    const nextReceiptNo = `REC-${Date.now().toString().slice(-6)}`;
-
-    const newTxn = {
-      id: nextReceiptNo,
-      date: new Date().toISOString(),
-      type: 'CREDIT',
-      category: 'INSTALLMENT',
-      amount: amount,
-      reference: `${scheduleData.customerId} / ${scheduleData.groupId}`,
-      description: `Installment Payment (${payMode}${payRef ? ` Ref: ${payRef}` : ''})`,
-      customerName: scheduleData.customerName,
-      customerId: scheduleData.customerId,
-      groupId: scheduleData.groupId,
-      paymentMode: payMode,
-      referenceNo: payRef,
-      status: 'VERIFIED',
-      collectedBy: user?.name || 'Staff User'
-    };
-
-    localStorage.setItem('ledgerTransactions', JSON.stringify([newTxn, ...ledger]));
-
-    // Also update customer and membership status
-    const customers = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
-    const updatedCustomers = customers.map((c: any) => {
-      if (c.id === scheduleData.customerId || c.customerCode === scheduleData.customerId || c.mongoId === scheduleData.customerId) {
-        return {
-          ...c,
-          totalPaid: (Number(c.totalPaid) || 0) + amount,
-          pending: Math.max(0, (Number(c.pending) || 0) - amount)
-        };
-      }
-      return c;
+  const getGroupDetails = (groupId?: string, groupName?: string) => {
+    const cleanId = String(groupId || '').toLowerCase();
+    const cleanName = String(groupName || '').toLowerCase();
+    const g = chitGroups.find((grp: any) => {
+      const gId = String(grp.id || '').toLowerCase();
+      const gCode = String(grp.code || '').toLowerCase();
+      const gName = String(grp.name || '').toLowerCase();
+      return (
+        (cleanId && (gId === cleanId || gCode === cleanId || gName === cleanId)) ||
+        (cleanName && (gName === cleanName || gId === cleanName || gCode === cleanName))
+      );
     });
-    localStorage.setItem('mockCustomers', JSON.stringify(updatedCustomers));
+    const totalMembers = Number(g?.totalMembers || g?.members || g?.duration || g?.months || 20);
+    const directEnrolled = Array.isArray(g?.enrolledMembers) ? g.enrolledMembers.length : 0;
+    const filledCount = Number(g?.filled || directEnrolled || 0);
+    const enrolledCount = Math.max(directEnrolled, filledCount);
+    return {
+      group: g,
+      totalMembers,
+      enrolledCount: enrolledCount > 0 ? enrolledCount : totalMembers
+    };
+  };
+
+  const handleOpenPayForMonth = (row: DueInstallmentRow) => {
+    setIsEditMode(false);
+    setEditingTxnId(null);
+    setSelectedMonthForPay(row);
+    setSelectedMonthNumber(row.monthNumber);
+    const remainingDue = row.revisedDue - (row.amountPaid || 0);
+    setPayAmount(String(remainingDue > 0 ? remainingDue : row.revisedDue));
+    setPayMode('UPI');
+    setPayRef('');
+    setPaymentDateTime(new Date().toISOString().slice(0, 16));
+    setPayScreenshot('');
+    setScreenshotName('');
+    setPaySuccessMsg('');
+    setIsPayModalOpen(true);
+  };
+
+  const handleOpenEditForMonth = (row: DueInstallmentRow) => {
+    setIsEditMode(true);
+    setEditingTxnId(row.transactionId || null);
+    setSelectedMonthForPay(row);
+    setSelectedMonthNumber(row.monthNumber);
+    setPayAmount(String(row.amountPaid || row.revisedDue));
+    setPayMode(row.paymentMode || 'Cash');
+    setPayRef(row.referenceNo || '');
+    setPaymentDateTime(row.paidOnIso ? row.paidOnIso.slice(0, 16) : new Date().toISOString().slice(0, 16));
+    setPayScreenshot('');
+    setScreenshotName('');
+    setPaySuccessMsg('');
+    setIsPayModalOpen(true);
+  };
+
+  const handleOpenCustomEntry = () => {
+    setIsEditMode(false);
+    setEditingTxnId(null);
+    const firstUnpaid = scheduleData?.schedule.find(r => r.status !== 'PAID') || scheduleData?.schedule[0];
+    const targetRow = firstUnpaid || null;
+    setSelectedMonthForPay(targetRow);
+    setSelectedMonthNumber(targetRow?.monthNumber || 1);
+    setPayAmount(String(targetRow?.revisedDue || 5000));
+    setPayMode('Cash');
+    setPayRef('');
+    setPaymentDateTime(new Date().toISOString().slice(0, 16));
+    setPayScreenshot('');
+    setScreenshotName('');
+    setPaySuccessMsg('');
+    setIsPayModalOpen(true);
+  };
+
+  const handleMonthChange = (monthNum: number) => {
+    setSelectedMonthNumber(monthNum);
+    if (!scheduleData) return;
+    const targetRow = scheduleData.schedule.find(r => r.monthNumber === monthNum);
+    if (targetRow) {
+      setSelectedMonthForPay(targetRow);
+      if (!isEditMode) {
+        const remaining = targetRow.revisedDue - (targetRow.amountPaid || 0);
+        setPayAmount(String(remaining > 0 ? remaining : targetRow.revisedDue));
+      }
+    }
+  };
+
+  const handleDeletePayment = () => {
+    if (!editingTxnId && !selectedMonthForPay) return;
+    const confirmMsg = `Are you sure you want to void / delete this payment record of ${formatCurrency(Number(payAmount) || 0)} for Month ${selectedMonthNumber}? This will revert the cleared status and restore dues.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    const ledger: any[] = JSON.parse(localStorage.getItem('ledgerTransactions') || '[]');
+    let removedAmount = Number(payAmount) || 0;
+    
+    const updatedLedger = ledger.filter((t: any) => {
+      if (editingTxnId && t.id === editingTxnId) {
+        removedAmount = Number(t.amount) || removedAmount;
+        return false;
+      }
+      const matchesCust = t.customerId === scheduleData?.customerId;
+      const matchesGroup = t.groupId === scheduleData?.groupId;
+      const matchesMonth = t.monthNumber === selectedMonthNumber || (t.description && t.description.toLowerCase().includes(`month ${selectedMonthNumber}`));
+      if (matchesCust && matchesGroup && matchesMonth) {
+        removedAmount = Number(t.amount) || removedAmount;
+        return false;
+      }
+      return true;
+    });
+
+    localStorage.setItem('ledgerTransactions', JSON.stringify(updatedLedger));
+
+    if (scheduleData) {
+      const customers: any[] = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
+      const updatedCustomers = customers.map((c: any) => {
+        if (c.id === scheduleData.customerId || c.customerCode === scheduleData.customerId || c.mongoId === scheduleData.customerId) {
+          return {
+            ...c,
+            totalPaid: Math.max(0, (Number(c.totalPaid) || 0) - removedAmount),
+            pending: (Number(c.pending) || 0) + removedAmount
+          };
+        }
+        return c;
+      });
+      localStorage.setItem('mockCustomers', JSON.stringify(updatedCustomers));
+    }
 
     window.dispatchEvent(new Event('storage'));
     setIsPayModalOpen(false);
+    setSelectedMonthForPay(null);
+    setIsEditMode(false);
+    setEditingTxnId(null);
+    loadData();
+  };
+
+  const handleScreenshotUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload an image file (PNG, JPG, JPEG, WEBP).');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image file size must be less than 5MB.');
+      return;
+    }
+    setScreenshotName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setPayScreenshot(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Handle Cash or Direct Installment Payment Recording / Submission
+  const handleRecordPayment = async () => {
+    if (!payAmount || Number(payAmount) <= 0 || !scheduleData) return;
+
+    const amount = Number(payAmount);
+    const isCustomerUser = user?.role === 'CUSTOMER';
+    const assignedBankResult = resolveBankForPayment(scheduleData.customerId, scheduleData.groupId, scheduleData.groupName);
+    const b = assignedBankResult.bank;
+
+    if (isCustomerUser) {
+      const newReq = {
+        id: `PAY-${Date.now().toString().slice(-6)}`,
+        customerId: scheduleData.customerId,
+        customerName: scheduleData.customerName,
+        mobile: scheduleData.mobile || user?.phone || '',
+        groupId: scheduleData.groupId,
+        groupName: scheduleData.groupName || scheduleData.groupId,
+        ticketNumber: scheduleData.ticketNumber || '',
+        amount: amount,
+        paymentMode: payMode,
+        referenceNo: payMode === 'Cash' ? (payRef.trim() || `CASH-${Date.now().toString().slice(-6)}`) : payRef.trim(),
+        bankAccountId: b?.id,
+        bankName: b?.bankName,
+        paymentScreenshot: payScreenshot || undefined,
+        screenshotUrl: payScreenshot || undefined,
+        submittedAt: paymentDateTime ? new Date(paymentDateTime).toISOString() : new Date().toISOString(),
+        status: 'PENDING_VERIFICATION' as const,
+        remarks: `[Month ${selectedMonthNumber} Installment] Paid via ${payMode} to ${b?.bankName || 'Company Bank'}`
+      };
+
+      await savePaymentRequest(newReq);
+      setPaySuccessMsg('Payment submitted successfully! Admin will verify and update your receipt.');
+      setTimeout(() => {
+        setIsPayModalOpen(false);
+        setSelectedMonthForPay(null);
+        setPayRef('');
+        setPayScreenshot('');
+        setScreenshotName('');
+        setPaySuccessMsg('');
+        loadData();
+      }, 2000);
+      return;
+    }
+
+    // Admin or Staff direct recording / editing:
+    const ledger: any[] = JSON.parse(localStorage.getItem('ledgerTransactions') || '[]');
+    const customers: any[] = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
+    const txnIsoDate = paymentDateTime ? new Date(paymentDateTime).toISOString() : new Date().toISOString();
+
+    if (isEditMode) {
+      let oldAmount = 0;
+      let txnFound = false;
+
+      const updatedLedger = ledger.map((t: any) => {
+        const isTarget = (editingTxnId && t.id === editingTxnId) ||
+          (!editingTxnId && t.customerId === scheduleData.customerId && (t.monthNumber === selectedMonthNumber || t.description?.includes(`Month ${selectedMonthNumber}`)));
+        
+        if (isTarget && !txnFound) {
+          txnFound = true;
+          oldAmount = Number(t.amount) || 0;
+          return {
+            ...t,
+            amount: amount,
+            paymentMode: payMode,
+            referenceNo: payRef,
+            date: txnIsoDate,
+            monthNumber: selectedMonthNumber,
+            description: `Month ${selectedMonthNumber} Installment Payment (${payMode}${payRef ? ` Ref: ${payRef}` : ''})`,
+            lastEditedAt: new Date().toISOString(),
+            lastEditedBy: user?.name || 'Admin'
+          };
+        }
+        return t;
+      });
+
+      if (!txnFound) {
+        const newTxn = {
+          id: `REC-${Date.now().toString().slice(-6)}`,
+          date: txnIsoDate,
+          type: 'CREDIT',
+          category: 'INSTALLMENT',
+          amount: amount,
+          monthNumber: selectedMonthNumber,
+          reference: `${scheduleData.customerId} / ${scheduleData.groupId}`,
+          description: `Month ${selectedMonthNumber} Installment Payment (${payMode}${payRef ? ` Ref: ${payRef}` : ''})`,
+          customerName: scheduleData.customerName,
+          customerId: scheduleData.customerId,
+          groupId: scheduleData.groupId,
+          paymentMode: payMode,
+          referenceNo: payRef,
+          status: 'VERIFIED',
+          collectedBy: user?.name || 'Staff User'
+        };
+        updatedLedger.unshift(newTxn);
+      }
+
+      localStorage.setItem('ledgerTransactions', JSON.stringify(updatedLedger));
+
+      const amountDiff = amount - oldAmount;
+      const updatedCustomers = customers.map((c: any) => {
+        if (c.id === scheduleData.customerId || c.customerCode === scheduleData.customerId || c.mongoId === scheduleData.customerId) {
+          return {
+            ...c,
+            totalPaid: Math.max(0, (Number(c.totalPaid) || 0) + amountDiff),
+            pending: Math.max(0, (Number(c.pending) || 0) - amountDiff)
+          };
+        }
+        return c;
+      });
+      localStorage.setItem('mockCustomers', JSON.stringify(updatedCustomers));
+    } else {
+      const nextReceiptNo = `REC-${Date.now().toString().slice(-6)}`;
+      const newTxn = {
+        id: nextReceiptNo,
+        date: txnIsoDate,
+        type: 'CREDIT',
+        category: 'INSTALLMENT',
+        amount: amount,
+        monthNumber: selectedMonthNumber,
+        reference: `${scheduleData.customerId} / ${scheduleData.groupId}`,
+        description: `Month ${selectedMonthNumber} Installment Payment (${payMode}${payRef ? ` Ref: ${payRef}` : ''})`,
+        customerName: scheduleData.customerName,
+        customerId: scheduleData.customerId,
+        groupId: scheduleData.groupId,
+        paymentMode: payMode,
+        referenceNo: payRef,
+        status: 'VERIFIED',
+        collectedBy: user?.name || 'Staff User'
+      };
+
+      localStorage.setItem('ledgerTransactions', JSON.stringify([newTxn, ...ledger]));
+
+      const updatedCustomers = customers.map((c: any) => {
+        if (c.id === scheduleData.customerId || c.customerCode === scheduleData.customerId || c.mongoId === scheduleData.customerId) {
+          return {
+            ...c,
+            totalPaid: (Number(c.totalPaid) || 0) + amount,
+            pending: Math.max(0, (Number(c.pending) || 0) - amount)
+          };
+        }
+        return c;
+      });
+      localStorage.setItem('mockCustomers', JSON.stringify(updatedCustomers));
+    }
+
+    window.dispatchEvent(new Event('storage'));
+    setIsPayModalOpen(false);
+    setSelectedMonthForPay(null);
+    setIsEditMode(false);
+    setEditingTxnId(null);
     setPayRef('');
     loadData();
   };
@@ -323,24 +605,34 @@ export const CustomerChitScheduleScreen = () => {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                {scheduleData.customerName}
-              </h1>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#fef5e6] text-[#8c601c] border border-[#edd7b6]">
-                {scheduleData.groupId} (Ticket #{scheduleData.ticketNumber})
-              </span>
-              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                scheduleData.scheme === 'Fixed'
-                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                  : scheduleData.scheme === 'Auction'
-                    ? 'bg-purple-50 text-purple-800 border border-purple-200'
-                    : 'bg-blue-50 text-blue-800 border border-blue-200'
-              }`}>
-                {scheduleData.scheme} Scheme ({scheduleData.totalDurationMonths}M)
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-2 flex-wrap">
+            {(() => {
+              const gDetails = getGroupDetails(scheduleData.groupId, scheduleData.groupName);
+              return (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                    {scheduleData.customerName}
+                  </h1>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#fef5e6] text-[#8c601c] border border-[#edd7b6]">
+                    Group: {scheduleData.groupName || scheduleData.groupId} (Ticket #{scheduleData.ticketNumber})
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-900 border border-amber-300 flex items-center gap-1.5 shadow-2xs">
+                    <Users className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Total Members: <strong>{gDetails.totalMembers}</strong></span>
+                    <span className="text-amber-700/80 font-medium">({gDetails.enrolledCount} Enrolled)</span>
+                  </span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                    scheduleData.scheme === 'Fixed'
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                      : scheduleData.scheme === 'Auction'
+                        ? 'bg-purple-50 text-purple-800 border border-purple-200'
+                        : 'bg-blue-50 text-blue-800 border border-blue-200'
+                  }`}>
+                    {scheduleData.scheme} Scheme ({scheduleData.totalDurationMonths}M)
+                  </span>
+                </div>
+              );
+            })()}
+            <p className="text-xs text-slate-500 font-medium mt-1 flex items-center gap-2 flex-wrap">
               <span>Customer ID: <strong className="font-mono text-slate-700">{scheduleData.customerId}</strong></span>
               <span>•</span>
               <span>Mobile: <strong className="font-mono text-slate-700">{scheduleData.mobile}</strong></span>
@@ -353,12 +645,15 @@ export const CustomerChitScheduleScreen = () => {
         <div className="flex items-center gap-2.5 self-end sm:self-auto">
           {/* Receive Payment / Bill Paid Entry */}
           <button
-            onClick={() => setIsPayModalOpen(true)}
-            className="px-4 py-2 bg-[#9a6d25] hover:bg-[#855c1b] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 active:scale-95"
+            onClick={() => {
+              setSelectedMonthForPay(null);
+              setIsPayModalOpen(true);
+            }}
+            className="px-4 py-2 bg-[#9a6d25] hover:bg-[#855c1b] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
             title="Record received installment payment and entry bill paid"
           >
             <CreditCard className="w-4 h-4" />
-            <span>Receive Payment</span>
+            <span>{isStaffOrAdmin ? 'Receive Payment' : 'Pay Online'}</span>
           </button>
 
           {/* Full Customer Profile Navigation (for Admin/Staff if needed) */}
@@ -468,38 +763,148 @@ export const CustomerChitScheduleScreen = () => {
         </div>
       </div>
 
-      {/* Scheme Calculation Notice Banner */}
-      <div className="bg-[#fdf9ee] border border-[#f5e6c4] rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-950">
-        <div className="flex items-start gap-2.5">
-          <TrendingUp className="w-4 h-4 text-[#8c601c] shrink-0 mt-0.5" />
-          <div>
-            <p className="font-bold text-slate-900">
-              Scheme Pre-Chart Dynamics ({scheduleData.scheme} Chit Plan):
-            </p>
-            <p className="text-slate-600 mt-0.5 leading-relaxed">
-              {scheduleData.scheme === 'Fixed' ? (
-                scheduleData.isWithdrawn
-                  ? 'Customer has withdrawn prize money. Post-draw monthly fee (+1% of chit value) is automatically added to all future dues.'
-                  : 'Installments are due on the 15th. Payout increases by 1% for every month not claimed (Month 1: 95% → Month 20: 114%).'
-              ) : scheduleData.scheme === 'Auction' ? (
-                scheduleData.isWithdrawn
-                  ? 'Customer has won the auction and claimed prize money. Standard gross installment is due without dividend relief.'
-                  : 'Monthly installment reflects the dividend deduction computed from the monthly reverse auction discount.'
-              ) : (
-                scheduleData.isWithdrawn
-                  ? 'Prize money disbursed. Post-disbursal fee (+1% of chit value) is added to the monthly installment dues.'
-                  : 'Standard 20-month regular chit brochure terms apply. Installments due on the 15th of each month.'
-              )}
-            </p>
-          </div>
-        </div>
+      {/* Comprehensive Payment & Disbursal Interest Calculation Card */}
+      {(() => {
+        const chitVal = Number(scheduleData.chitValue || 100000);
+        const duration = Number(scheduleData.totalDurationMonths || 20);
+        const baseMonthlyDue = Math.round(chitVal / duration);
+        const monthlyInterest = Math.round(chitVal * 0.01); // 1% per month post-disbursal fee/interest
+        const postDrawMonthlyDue = baseMonthlyDue + monthlyInterest;
 
-        <div className="text-right shrink-0">
-          <span className="inline-block px-3 py-1 bg-white border border-[#edd7b6] text-[#8c601c] font-black rounded-lg text-xs">
-            Chit Pool: {formatCurrency(scheduleData.chitValue)}
-          </span>
-        </div>
-      </div>
+        const isDisbursed = Boolean(scheduleData.isWithdrawn);
+        const disbursedAmount = Number(scheduleData.withdrawnAmount || Math.round(chitVal * 0.95));
+
+        const totalPaid = Number(scheduleData.totalPaidAmount || 0);
+        const totalPayableWithInterest = Number(scheduleData.totalDueAmount || 0);
+        const remainingToPay = Number(scheduleData.remainingBalanceDue || 0);
+        const completedMonths = Number(scheduleData.completedMonthsCount || 0);
+        const remainingMonths = Math.max(0, duration - completedMonths);
+
+        return (
+          <div className="bg-gradient-to-br from-amber-50/60 via-white to-slate-50/70 p-5 rounded-2xl border border-amber-200/80 shadow-2xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-amber-200/60">
+              <div className="flex items-center gap-2.5">
+                <div className={`p-2 rounded-xl shrink-0 ${isDisbursed ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
+                  <Award className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-black text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
+                    <span>{isDisbursed ? 'Prize Disbursed & Repayment Calculation (With Interest)' : 'Prize Disbursal & Installment Repayment Structure'}</span>
+                  </h4>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {isDisbursed 
+                      ? 'Prize money has been disbursed. Post-draw monthly repayments reflect 1% monthly interest/charge.'
+                      : 'Transparent chit fund breakdown of price disbursed, interest rates, and dues.'}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                {isDisbursed ? (
+                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Disbursed ✓
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-900 border border-blue-300">
+                    Eligible for Disbursal
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* 5 Key Metric Financial Tiles */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {/* Tile 1: Disbursed Amount */}
+              <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                  {isDisbursed ? 'Price Disbursed' : 'Net Prize on Disbursal'}
+                </span>
+                <p className="text-lg font-black text-slate-900 mt-0.5">
+                  {formatCurrency(disbursedAmount)}
+                </p>
+                <span className="text-[10px] text-slate-400 font-medium">
+                  {isDisbursed ? 'Disbursed to Member' : '95% Pool (5% foreman fee)'}
+                </span>
+              </div>
+
+              {/* Tile 2: Monthly Due with Interest */}
+              <div className={`p-3.5 rounded-xl border shadow-2xs ${isDisbursed ? 'bg-amber-50/70 border-amber-300' : 'bg-white border-slate-200'}`}>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 block">
+                  {isDisbursed ? 'Monthly Due (With Interest)' : 'Post-Draw Monthly Due'}
+                </span>
+                <p className={`text-lg font-black mt-0.5 ${isDisbursed ? 'text-amber-900' : 'text-slate-900'}`}>
+                  {formatCurrency(postDrawMonthlyDue)} <span className="text-[10px] font-normal text-slate-500">/mo</span>
+                </p>
+                <span className="text-[10px] text-amber-800 font-semibold block truncate" title={`${formatCurrency(baseMonthlyDue)} base + ${formatCurrency(monthlyInterest)} (1% interest)`}>
+                  {formatCurrency(baseMonthlyDue)} base + {formatCurrency(monthlyInterest)} (1% fee)
+                </span>
+              </div>
+
+              {/* Tile 3: Total Payable With Interest */}
+              <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                  Total Payable (With Interest)
+                </span>
+                <p className="text-lg font-black text-slate-900 mt-0.5">
+                  {formatCurrency(totalPayableWithInterest)}
+                </p>
+                <span className="text-[10px] text-slate-400 font-medium">
+                  Across {duration} Months
+                </span>
+              </div>
+
+              {/* Tile 4: Total Amount Paid */}
+              <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">
+                  Total Amount Paid
+                </span>
+                <p className="text-lg font-black text-emerald-700 mt-0.5">
+                  {formatCurrency(totalPaid)}
+                </p>
+                <span className="text-[10px] text-slate-500 font-medium">
+                  {completedMonths} of {duration} Months Cleared
+                </span>
+              </div>
+
+              {/* Tile 5: Remaining Balance to Pay */}
+              <div className="bg-white p-3.5 rounded-xl border border-rose-200 shadow-2xs col-span-2 sm:col-span-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 block">
+                  Remaining Balance
+                </span>
+                <p className="text-lg font-black text-rose-700 mt-0.5">
+                  {formatCurrency(remainingToPay)}
+                </p>
+                <span className="text-[10px] text-rose-600 font-medium">
+                  {remainingMonths} Installments Left
+                </span>
+              </div>
+            </div>
+
+            {/* Explanatory Note */}
+            <div className="bg-white/95 p-3 rounded-xl border border-amber-200/80 text-xs text-slate-700 flex items-start gap-2.5">
+              <Info className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+              <div className="text-[11px] leading-relaxed">
+                <strong>Financial Calculation Details: </strong>
+                {isDisbursed ? (
+                  <span>
+                    Prize money of <strong className="text-slate-900 font-bold">{formatCurrency(disbursedAmount)}</strong> has been disbursed. 
+                    Under chit terms, post-disbursal monthly installment is <strong className="text-slate-900 font-bold">{formatCurrency(postDrawMonthlyDue)}</strong>, 
+                    comprising the base monthly installment of <strong className="text-slate-800">{formatCurrency(baseMonthlyDue)}</strong> plus 1% post-draw interest/fee of <strong className="text-slate-800">{formatCurrency(monthlyInterest)}</strong>. 
+                    You have paid <strong className="text-emerald-700 font-bold">{formatCurrency(totalPaid)}</strong> ({completedMonths} months cleared), 
+                    with a remaining balance of <strong className="text-rose-700 font-bold">{formatCurrency(remainingToPay)}</strong> over {remainingMonths} remaining months.
+                  </span>
+                ) : (
+                  <span>
+                    Net prize pool available on withdrawal is <strong className="text-slate-900 font-bold">{formatCurrency(disbursedAmount)}</strong> (95% of {formatCurrency(chitVal)} chit value after 5% foreman commission). 
+                    Your pre-draw installment is <strong className="text-slate-900 font-bold">{formatCurrency(baseMonthlyDue)}/month</strong>. 
+                    When you claim and disburse your prize, a standard 1% monthly interest/charge (<strong className="text-slate-800">{formatCurrency(monthlyInterest)}/mo</strong>) will be added to future monthly dues (<strong className="text-slate-900">{formatCurrency(postDrawMonthlyDue)}/mo</strong>).
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Complete Month-by-Month Pre-Chart Table */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
@@ -514,7 +919,18 @@ export const CustomerChitScheduleScreen = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {isStaffOrAdmin && (
+              <button
+                type="button"
+                onClick={handleOpenCustomEntry}
+                className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95"
+                title="Record or customize cash/UPI payments for past months and years"
+              >
+                <Calendar className="w-3.5 h-3.5 text-amber-700" />
+                <span>+ Custom / Past Month Payment</span>
+              </button>
+            )}
             <span className="text-xs font-semibold text-slate-500">
               {scheduleData.completedMonthsCount} of {scheduleData.totalDurationMonths} Paid
             </span>
@@ -537,9 +953,9 @@ export const CustomerChitScheduleScreen = () => {
                 <th className="py-3 px-4 text-right">Eligible Prize Value</th>
                 <th className="py-3 px-4 text-center">Status</th>
                 <th className="py-3 px-4 text-right">Amount Paid</th>
-                <th className="py-3 px-4">Paid On</th>
+                <th className="py-3 px-4">Paid On & Time</th>
                 <th className="py-3 px-4">Mode / Ref</th>
-                <th className="py-3 px-4 text-center">Receipt</th>
+                <th className="py-3 px-4 text-center">Action / Receipt</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -562,11 +978,21 @@ export const CustomerChitScheduleScreen = () => {
                   >
                     {/* Month # */}
                     <td className="py-3.5 px-4 font-bold text-slate-900 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-700 font-black text-[11px] flex items-center justify-center">
                           {row.monthNumber}
                         </span>
                         <span>{row.monthName}</span>
+                        {row.isDisbursalMonth && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-900 border border-purple-200">
+                            Disbursed Month
+                          </span>
+                        )}
+                        {row.isPostDisbursalMonth && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-300" title="Extra 1% monthly fee added after prize disbursal">
+                            +1% Fee Active
+                          </span>
+                        )}
                       </div>
                     </td>
 
@@ -581,6 +1007,9 @@ export const CustomerChitScheduleScreen = () => {
                     {/* Due Amount */}
                     <td className="py-3.5 px-4 text-right font-black text-slate-900 whitespace-nowrap">
                       <span className="text-sm">{formatCurrency(row.revisedDue)}</span>
+                      {row.isPostDisbursalMonth && (
+                        <span className="block text-[10px] text-amber-800 font-semibold">(+1% post-draw fee)</span>
+                      )}
                     </td>
 
                     {/* Eligible Prize Value */}
@@ -623,9 +1052,21 @@ export const CustomerChitScheduleScreen = () => {
                       </span>
                     </td>
 
-                    {/* Paid On */}
+                    {/* Paid On & Exact Time */}
                     <td className="py-3.5 px-4 whitespace-nowrap text-slate-600 font-medium">
-                      {row.paidOn || '—'}
+                      {row.paidOn ? (
+                        <div>
+                          <div className="text-xs font-bold text-slate-800">{row.paidDateOnly || row.paidOn}</div>
+                          {row.paidTimeOnly && (
+                            <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
+                              <Clock className="w-2.5 h-2.5 text-slate-400" />
+                              <span>{row.paidTimeOnly}</span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
                     </td>
 
                     {/* Mode / Ref */}
@@ -646,19 +1087,74 @@ export const CustomerChitScheduleScreen = () => {
                       )}
                     </td>
 
-                    {/* Receipt Print */}
+                    {/* Action / Receipt */}
                     <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                      {isPaid || (row.amountPaid && row.amountPaid > 0) ? (
-                        <button
-                          onClick={() => handlePrintSlip(row)}
-                          className="p-1.5 rounded-lg border bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200 transition-all shadow-2xs active:scale-95"
-                          title="Print Payment Receipt Voucher"
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                        </button>
-                      ) : (
-                        <span className="text-slate-300 text-xs font-semibold" title="No payment completed">—</span>
-                      )}
+                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                        {isPaid && (
+                          <>
+                            <button
+                              onClick={() => handlePrintSlip(row)}
+                              className="p-1.5 rounded-lg border bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200 transition-all shadow-2xs active:scale-95 inline-flex items-center gap-1 text-[11px] font-bold cursor-pointer"
+                              title="Print Payment Receipt Voucher"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                              <span>Receipt</span>
+                            </button>
+                            {isStaffOrAdmin && (
+                              <button
+                                onClick={() => handleOpenEditForMonth(row)}
+                                className="p-1.5 rounded-lg border bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300 transition-all shadow-2xs active:scale-95 inline-flex items-center gap-1 text-[11px] font-bold cursor-pointer"
+                                title="Edit Cash / UPI Amount & Payment Details"
+                              >
+                                <Pencil className="w-3.5 h-3.5 text-amber-700" />
+                                <span>Edit</span>
+                              </button>
+                            )}
+                          </>
+                        )}
+
+                        {isPartial && (
+                          <>
+                            <button
+                              onClick={() => handlePrintSlip(row)}
+                              className="p-1.5 rounded-lg border bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200 transition-all shadow-2xs active:scale-95 inline-flex items-center gap-1 text-[11px] font-bold cursor-pointer"
+                              title="Print Partial Payment Receipt"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                              <span>Receipt</span>
+                            </button>
+                            {isStaffOrAdmin && (
+                              <button
+                                onClick={() => handleOpenEditForMonth(row)}
+                                className="p-1.5 rounded-lg border bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300 transition-all shadow-2xs active:scale-95 inline-flex items-center gap-1 text-[11px] font-bold cursor-pointer"
+                                title="Edit Partial Payment Amount / Details"
+                              >
+                                <Pencil className="w-3.5 h-3.5 text-amber-700" />
+                                <span>Edit</span>
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleOpenPayForMonth(row)}
+                              className="px-2.5 py-1.5 rounded-lg bg-linear-to-r from-amber-600 to-[#9a6d25] hover:from-amber-700 hover:to-[#855c1b] text-white text-[11px] font-bold shadow-xs inline-flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+                              title={`Pay Remaining Due (${formatCurrency(row.revisedDue - (row.amountPaid || 0))})`}
+                            >
+                              <QrCode className="w-3.5 h-3.5" />
+                              <span>Pay Due</span>
+                            </button>
+                          </>
+                        )}
+
+                        {!isPaid && !isPartial && (
+                          <button
+                            onClick={() => handleOpenPayForMonth(row)}
+                            className="px-3 py-1.5 rounded-lg bg-linear-to-r from-amber-600 to-[#9a6d25] hover:from-amber-700 hover:to-[#855c1b] text-white text-[11px] font-bold shadow-xs inline-flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer"
+                            title={`Pay Month ${row.monthNumber} Installment (${formatCurrency(row.revisedDue)})`}
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span>Pay Now</span>
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -668,86 +1164,395 @@ export const CustomerChitScheduleScreen = () => {
         </div>
       </div>
 
-      {/* MODAL: Quick Receive Payment (Admin & Staff) */}
+      {/* MODAL: Installment Payment with Admin Bank Details & QR Code */}
       {isPayModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200 animate-in zoom-in-95 duration-150">
-            <div className="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-slate-200 flex flex-col overflow-hidden max-h-[92vh] animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-[#1f1a14] text-white flex justify-between items-center shrink-0">
               <div>
-                <h3 className="text-base font-bold text-slate-900">Record Installment Payment</h3>
-                <p className="text-xs text-slate-500">
-                  Customer: <strong>{scheduleData.customerName}</strong> ({scheduleData.groupId})
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  {isEditMode ? <Pencil className="w-4 h-4 text-amber-400" /> : <CreditCard className="w-4 h-4 text-amber-400" />}
+                  <span>
+                    {isEditMode
+                      ? `Edit Month ${selectedMonthNumber} Payment Record`
+                      : selectedMonthForPay
+                      ? `Pay Month ${selectedMonthForPay.monthNumber} (${selectedMonthForPay.monthName}) Installment`
+                      : `Record Installment Payment - Month ${selectedMonthNumber}`}
+                  </span>
+                </h3>
+                <p className="text-xs text-amber-200/80 mt-0.5">
+                  Customer: <strong>{scheduleData.customerName}</strong> · Group: <strong>{scheduleData.groupName || scheduleData.groupId}</strong>
                 </p>
               </div>
-              <button onClick={() => setIsPayModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+              <button 
+                onClick={() => {
+                  setIsPayModalOpen(false);
+                  setSelectedMonthForPay(null);
+                  setIsEditMode(false);
+                  setEditingTxnId(null);
+                }} 
+                className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+              >
                 ✕
               </button>
             </div>
 
-            <div className="space-y-4 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Payment Amount (₹) *
-                </label>
-                <input
-                  type="number"
-                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#9a6d25]"
-                  value={payAmount}
-                  onChange={(e) => setPayAmount(e.target.value)}
-                  placeholder="Enter amount..."
-                />
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Payment will automatically be credited to the earliest pending month dues.
-                </p>
+            {paySuccessMsg ? (
+              <div className="p-8 text-center space-y-3">
+                <div className="w-14 h-14 mx-auto rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-2xl font-bold">
+                  ✓
+                </div>
+                <h4 className="text-lg font-bold text-slate-800">Payment Submitted!</h4>
+                <p className="text-sm text-slate-600">{paySuccessMsg}</p>
               </div>
+            ) : (
+              <div className="p-5 sm:p-6 space-y-4 overflow-y-auto min-h-0 flex-1">
+                {/* Due Amount Highlight Banner */}
+                <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/70 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-amber-800">
+                      {isEditMode 
+                        ? `Editing Payment for Month ${selectedMonthNumber}`
+                        : selectedMonthForPay
+                        ? `Month ${selectedMonthForPay.monthNumber} Due Amount (with interest)`
+                        : 'Installment Payable Amount'}
+                    </p>
+                    <p className="text-2xl font-black text-slate-900 mt-0.5">
+                      {formatCurrency(Number(payAmount) || 0)}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs font-bold px-2.5 py-1 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+                      {selectedMonthForPay ? `Due: ${selectedMonthForPay.dueDate}` : 'Immediate Due'}
+                    </span>
+                  </div>
+                </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Payment Mode *
-                </label>
-                <select
-                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#9a6d25] bg-white"
-                  value={payMode}
-                  onChange={(e) => setPayMode(e.target.value)}
-                >
-                  <option value="Cash">Cash</option>
-                  <option value="UPI">UPI / GPay / PhonePe</option>
-                  <option value="Bank Transfer">Bank Transfer (IMPS/NEFT)</option>
-                  <option value="Cheque">Cheque</option>
-                </select>
-              </div>
+                {/* Chit Installment Month Selection for Historical / Past Year Payments */}
+                {isStaffOrAdmin && (
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-[#9a6d25]" />
+                      <span>Chit Installment Month Period *</span>
+                    </label>
+                    <select
+                      value={selectedMonthNumber}
+                      onChange={(e) => handleMonthChange(Number(e.target.value))}
+                      className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#9a6d25]"
+                    >
+                      {scheduleData.schedule.map((m) => (
+                        <option key={m.monthNumber} value={m.monthNumber}>
+                          Month {m.monthNumber} ({m.monthName}) — Due: {formatCurrency(m.revisedDue)} {m.status === 'PAID' ? '(PAID ✓)' : m.status === 'PARTIALLY_PAID' ? '(PARTIALLY PAID)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Choose which historical or current installment period this transaction applies to.
+                    </p>
+                  </div>
+                )}
 
-              <div>
-                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Reference No / UTR / Remarks
-                </label>
-                <input
-                  type="text"
-                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#9a6d25]"
-                  placeholder="e.g. UTR102938491 or Cash received at counter"
-                  value={payRef}
-                  onChange={(e) => setPayRef(e.target.value)}
-                />
-              </div>
+                {/* Payment Date & Time Input (Custom past years/months & exact record creation time) */}
+                {isStaffOrAdmin && (
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-[#9a6d25]" />
+                      <span>Payment Date & Time (Record Creation Timestamp) *</span>
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={paymentDateTime}
+                      onChange={(e) => setPaymentDateTime(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-mono font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#9a6d25]"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Exact date and time stamp. You can select past years (e.g. 2024, 2025) or previous months to add backdated records.
+                    </p>
+                  </div>
+                )}
 
-              <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsPayModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRecordPayment}
-                  disabled={!payAmount || Number(payAmount) <= 0}
-                  className="px-4 py-2 bg-[#9a6d25] hover:bg-[#855c1b] text-white font-bold rounded-xl shadow-xs disabled:opacity-50"
-                >
-                  Save & Update Chart
-                </button>
+                {/* Amount to Pay */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Amount Paid (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#9a6d25]"
+                    value={payAmount}
+                    onChange={(e) => setPayAmount(e.target.value)}
+                    placeholder="Enter amount..."
+                  />
+                </div>
+
+                {/* Payment Mode Selector */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                    Payment Mode *
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['UPI', 'Bank Transfer', 'Cash'] as const).map(mode => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setPayMode(mode)}
+                        className={`py-2 px-3 text-xs font-bold rounded-xl border text-center transition-all ${
+                          payMode === mode
+                            ? 'bg-[#9a6d25] text-white border-[#9a6d25] shadow-xs'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {mode === 'UPI' && 'UPI / QR'}
+                        {mode === 'Bank Transfer' && 'Bank Transfer'}
+                        {mode === 'Cash' && 'Cash'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Admin Designated Company Bank Details & QR Code */}
+                {(() => {
+                  const activeCompanyBanks = getStoredBankAccounts().filter(b => b.status === 'ACTIVE');
+                  const assignedBankResult = resolveBankForPayment(scheduleData.customerId, scheduleData.groupId, scheduleData.groupName);
+                  const b = assignedBankResult.bank || activeCompanyBanks[0];
+
+                  if (!b) return null;
+
+                  return (
+                    <div className="space-y-3">
+                      {/* Fixed & Read-only Designated Bank Account */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                            <Landmark className="w-3.5 h-3.5 text-[#9a6d25]" />
+                            <span>Receiving Bank Account</span>
+                          </label>
+                          <span className="text-[10px] text-amber-900 font-bold bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <Lock className="w-2.5 h-2.5 text-amber-800" /> Admin Assigned
+                          </span>
+                        </div>
+                        <div className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-[#9a6d25] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
+                              {b.bankName.slice(0, 2).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-900 truncate">
+                                {b.bankName} <span className="font-mono text-slate-500 font-medium">(A/C •••• {b.accountNumber.slice(-4)})</span>
+                              </p>
+                              <p className="text-[10px] text-slate-500 truncate">
+                                {b.accountHolderName} · {b.accountType} A/C
+                              </p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-medium text-slate-400 bg-slate-200/60 px-2 py-0.5 rounded-md shrink-0 ml-2">
+                            Locked
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* UPI QR Code Block */}
+                      {payMode === 'UPI' && (
+                        <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3.5 space-y-3">
+                          <div className="flex items-center justify-between pb-2 border-b border-amber-200">
+                            <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                              <QrCode className="w-4 h-4 text-amber-700" /> Scan UPI QR or Pay to UPI ID
+                            </span>
+                            <span className="text-[10px] bg-amber-200/70 text-amber-900 font-bold px-2 py-0.5 rounded-full">
+                              {b.bankName}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <div className="w-24 h-24 bg-white p-1 rounded-lg border border-amber-200 shrink-0 shadow-2xs">
+                              <img 
+                                src={b.qrCodeUrl || generateUpiQrBadge(b.upiId, b.accountHolderName, Number(payAmount) || undefined)} 
+                                alt="UPI QR" 
+                                className="w-full h-full object-contain"
+                              />
+                            </div>
+                            <div className="overflow-hidden flex-1 space-y-1.5">
+                              <p className="text-[11px] font-bold text-slate-800">{b.accountHolderName}</p>
+                              <div className="flex items-center justify-between bg-white px-2.5 py-1 rounded-md border border-amber-200">
+                                <span className="font-mono text-xs font-bold text-amber-950 truncate">{b.upiId}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(b.upiId);
+                                    setCopiedKey('modal-upi');
+                                    setTimeout(() => setCopiedKey(null), 2000);
+                                  }}
+                                  className="text-amber-800 hover:text-amber-950 p-1 rounded transition-colors shrink-0"
+                                  title="Copy UPI ID"
+                                >
+                                  {copiedKey === 'modal-upi' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                                </button>
+                              </div>
+                              <p className="text-[10px] text-amber-800">
+                                Scan using GPay, PhonePe, Paytm, or BHIM UPI app.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Bank Transfer Details Block */}
+                      {payMode === 'Bank Transfer' && (
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2.5">
+                          <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                            <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                              <Landmark className="w-4 h-4 text-[#9a6d25]" /> Designated Bank Transfer Details
+                            </span>
+                            <span className="text-[10px] bg-slate-200 text-slate-800 font-bold px-2 py-0.5 rounded-full">
+                              {b.bankName}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="bg-white p-2 rounded-lg border border-slate-200">
+                              <span className="text-[10px] text-slate-500 uppercase font-bold block">Account Number</span>
+                              <div className="flex items-center justify-between mt-0.5">
+                                <span className="font-mono font-bold text-slate-900 text-[11px] truncate">{b.accountNumber}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(b.accountNumber);
+                                    setCopiedKey('modal-acc');
+                                    setTimeout(() => setCopiedKey(null), 2000);
+                                  }}
+                                  className="text-slate-400 hover:text-slate-700 p-0.5 rounded transition-colors shrink-0"
+                                  title="Copy Account Number"
+                                >
+                                  {copiedKey === 'modal-acc' ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="bg-white p-2 rounded-lg border border-slate-200">
+                              <span className="text-[10px] text-slate-500 uppercase font-bold block">IFSC Code</span>
+                              <div className="flex items-center justify-between mt-0.5">
+                                <span className="font-mono font-bold text-slate-900 text-[11px]">{b.ifscCode}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(b.ifscCode);
+                                    setCopiedKey('modal-ifsc');
+                                    setTimeout(() => setCopiedKey(null), 2000);
+                                  }}
+                                  className="text-slate-400 hover:text-slate-700 p-0.5 rounded transition-colors shrink-0"
+                                  title="Copy IFSC"
+                                >
+                                  {copiedKey === 'modal-ifsc' ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="text-[10px] text-slate-500 pt-1 space-y-0.5">
+                            <p><strong>Beneficiary:</strong> {b.accountHolderName}</p>
+                            <p><strong>Branch:</strong> {b.branch || 'Main Branch'} · {b.accountType} Account</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Reference Number / UTR */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    {payMode === 'Cash' ? 'Cash Receipt / Officer Notes' : 'Transaction Reference / UTR Number *'}
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#9a6d25]"
+                    placeholder={payMode === 'Cash' ? 'e.g. Received at counter by branch manager' : 'e.g. 12-digit UTR: 429182749102'}
+                    value={payRef}
+                    onChange={(e) => setPayRef(e.target.value)}
+                  />
+                </div>
+
+                {/* Screenshot Upload for Online / UPI / Bank Transfer */}
+                {payMode !== 'Cash' && (
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                      Upload Payment Proof Screenshot (Optional)
+                    </label>
+                    <div className="border border-dashed border-slate-300 hover:border-[#9a6d25] rounded-xl p-3 bg-slate-50 transition-colors">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        id="modal-proof-upload"
+                        onChange={handleScreenshotUpload}
+                        className="hidden"
+                      />
+                      <label 
+                        htmlFor="modal-proof-upload"
+                        className="flex items-center justify-center gap-2 cursor-pointer text-xs font-bold text-[#9a6d25] hover:text-[#7d561a]"
+                      >
+                        <Upload className="w-4 h-4" />
+                        <span>{screenshotName ? `Selected: ${screenshotName}` : 'Click to select screenshot (Max 5MB)'}</span>
+                      </label>
+                      {payScreenshot && (
+                        <div className="mt-2 text-center">
+                          <img 
+                            src={payScreenshot} 
+                            alt="Payment Proof" 
+                            className="max-h-24 mx-auto rounded-lg border border-slate-200 object-contain shadow-2xs" 
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex items-center justify-between gap-2.5 pt-3 border-t border-slate-100">
+                  {isEditMode && isStaffOrAdmin ? (
+                    <button
+                      type="button"
+                      onClick={handleDeletePayment}
+                      className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs border border-rose-200 transition-colors flex items-center gap-1 cursor-pointer"
+                      title="Void and delete this payment record"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Void / Delete</span>
+                    </button>
+                  ) : <div />}
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsPayModalOpen(false);
+                        setSelectedMonthForPay(null);
+                        setIsEditMode(false);
+                        setEditingTxnId(null);
+                      }}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRecordPayment}
+                      disabled={!payAmount || Number(payAmount) <= 0}
+                      className="px-5 py-2 bg-[#9a6d25] hover:bg-[#855c1b] text-white font-bold rounded-xl text-xs shadow-xs disabled:opacity-50 transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>
+                        {isEditMode 
+                          ? 'Update Payment Record' 
+                          : user?.role === 'CUSTOMER' 
+                          ? 'Submit Payment Proof' 
+                          : 'Save & Update Chart'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}

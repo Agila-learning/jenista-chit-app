@@ -13,14 +13,21 @@ export interface DueInstallmentRow {
   revisedDue: number;       // Adjusted due (e.g. after post-draw or dividend)
   eligiblePayout: number;   // Prize / withdrawal money eligible if claimed in this month
   isWithdrawn: boolean;     // Whether chit was already claimed / withdrawn
+  isDisbursalMonth?: boolean;     // The exact month of disbursal
+  isPostDisbursalMonth?: boolean; // Whether 1% post-draw fee applies
   status: 'PAID' | 'DUE' | 'PARTIALLY_PAID' | 'OVERDUE';
   amountPaid: number;       // Cumulative amount credited towards this month's installment
-  paidOn?: string;          // Date when payment was completed
+  paidOn?: string;          // Formatted Date & Time e.g. "15 Nov 2024 · 02:30 PM"
+  paidOnIso?: string;       // ISO date string
+  paidDateOnly?: string;    // "15 Nov 2024"
+  paidTimeOnly?: string;    // "02:30 PM"
+  recordCreatedAt?: string; // Timestamp when record was created
   paymentMode?: string;     // Cash / UPI / Bank Transfer
   receiptNo?: string;
   referenceNo?: string;
   dividend?: number;
   notes?: string;
+  transactionId?: string;
 }
 
 export interface CustomerChitScheduleSummary {
@@ -65,9 +72,10 @@ export interface CustomerChitScheduleSummary {
  *        - If already withdrawn: post-draw monthly due = Gross due + 1% of chitValue
  *    - AUCTION:
  *        - Reverse auction dividend schedule computes netDue and payout per month
- *        - If withdrawn: no further dividend relief, pays full grossDue
+ *        - If withdrawn: no further dividend relief; from NEXT month, 1% post-draw fee is added
  *    - REGULAR:
  *        - Standard 20M brochure table with dividends and payouts
+ *        - From NEXT month of disbursal, 1% post-draw fee is added
  *
  * 2. Due Date Calculation:
  *    - Uses the group's designated due day (default 15).
@@ -77,8 +85,7 @@ export interface CustomerChitScheduleSummary {
  * 3. Payment Allocation ("Added to the last not completed dues"):
  *    - All credits recorded in ledgerTransactions for this customer and group
  *      are allocated sequentially to the earliest unpaid installment.
- *    - If partial payment is made, row reflects PARTIALLY_PAID. Once target due is met,
- *      marked PAID with the latest payment date.
+ *    - Explicit month-tagged payments map directly to their target month.
  */
 export const buildCustomerChitSchedule = (params: {
   customer: any;
@@ -111,7 +118,6 @@ export const buildCustomerChitSchedule = (params: {
   const joiningDateIso = chit?.joiningDate || chit?.createdAt || new Date().toISOString();
   const startDate = new Date(joiningDateIso);
   if (isNaN(startDate.getTime())) {
-    // fallback if invalid date string
     startDate.setTime(Date.now());
   }
 
@@ -146,10 +152,35 @@ export const buildCustomerChitSchedule = (params: {
         disbursalMonthIndex = 1;
       }
     } else {
-      // If marked withdrawn but no date available, treat Month 1 as disbursal month
       disbursalMonthIndex = 1;
     }
   }
+
+  // Check withdrawal requests from localStorage for any disbursed claim
+  try {
+    const rawW = localStorage.getItem('withdrawalRequests');
+    if (rawW) {
+      const parsedW = JSON.parse(rawW);
+      const matchedW = parsedW.find((w: any) => 
+        (w.status === 'DISBURSED' || w.status === 'APPROVED') &&
+        (w.customerId === customerId || w.mobile === mobile) &&
+        (String(w.groupId).toLowerCase() === String(groupId).toLowerCase() || String(w.groupName).toLowerCase() === String(groupName).toLowerCase())
+      );
+      if (matchedW) {
+        if (matchedW.disbursedMonth) {
+          disbursalMonthIndex = Number(matchedW.disbursedMonth);
+        } else if (matchedW.monthNumber) {
+          disbursalMonthIndex = Number(matchedW.monthNumber);
+        } else if (matchedW.disbursedAt || matchedW.requestedAt) {
+          const wDate = new Date(matchedW.disbursedAt || matchedW.requestedAt);
+          if (!isNaN(wDate.getTime())) {
+            const diffMonths = (wDate.getFullYear() - startDate.getFullYear()) * 12 + (wDate.getMonth() - startDate.getMonth()) + 1;
+            disbursalMonthIndex = Math.max(1, Math.min(totalDurationMonths, diffMonths));
+          }
+        }
+      }
+    }
+  } catch {}
 
   // 1. Fetch pre-calculated scheme schedules from calculations utility
   const fixedDetails = scheme === 'Fixed' ? calculateFixedPlanSchedule(chitValue, totalDurationMonths) : null;
@@ -164,30 +195,6 @@ export const buildCustomerChitSchedule = (params: {
       return [];
     }
   })();
-
-  // Also check ledgerTransactions for DEBIT DISBURSAL if withdrawnAt wasn't explicitly given
-  if (isWithdrawn && !withdrawnAt && rawLedger.length > 0) {
-    const cleanMobile = mobile.replace(/\D/g, '');
-    const groupIdentifierLower = groupId.toLowerCase();
-    const groupNameLower = groupName.toLowerCase();
-    const disbursalTx = rawLedger.find((t: any) => {
-      if (t.type !== 'DEBIT' && t.category !== 'DISBURSAL') return false;
-      const ref = String(t.reference || '').toLowerCase();
-      const desc = String(t.description || '').toLowerCase();
-      const tCustId = String(t.customerId || '').toLowerCase();
-      const tGroupId = String(t.groupId || '').toLowerCase();
-      const matchesCust = tCustId === customerId.toLowerCase() || ref.includes(customerId.toLowerCase()) || (cleanMobile && (ref.includes(cleanMobile) || desc.includes(cleanMobile)));
-      const matchesGrp = tGroupId === groupIdentifierLower || tGroupId === groupNameLower || ref.includes(groupIdentifierLower) || ref.includes(groupNameLower);
-      return matchesCust && matchesGrp;
-    });
-    if (disbursalTx && disbursalTx.date) {
-      const dDate = new Date(disbursalTx.date);
-      if (!isNaN(dDate.getTime())) {
-        const diff = (dDate.getFullYear() - startDate.getFullYear()) * 12 + (dDate.getMonth() - startDate.getMonth()) + 1;
-        disbursalMonthIndex = Math.max(1, Math.min(totalDurationMonths, diff));
-      }
-    }
-  }
 
   const cleanMobile = mobile.replace(/\D/g, '');
   const groupIdentifierLower = groupId.toLowerCase();
@@ -221,16 +228,43 @@ export const buildCustomerChitSchedule = (params: {
     .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   let totalCreditAvailable = matchedPayments.reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
-  const totalPaidAmount = totalCreditAvailable;
 
   // If customer object already recorded higher totalPaid, use it
   if (chit?.paymentStatus === 'PAID' && totalCreditAvailable === 0) {
     totalCreditAvailable = Number(chit?.monthlyInstallment || chitValue / totalDurationMonths);
   }
 
+  // Separate month-specific payments vs general unallocated payments
+  const monthSpecificPaymentsMap: Record<number, any[]> = {};
+  const unassignedPayments: any[] = [];
+
+  matchedPayments.forEach((t: any) => {
+    let targetM: number | null = null;
+    if (t.monthNumber && Number(t.monthNumber) >= 1 && Number(t.monthNumber) <= totalDurationMonths) {
+      targetM = Number(t.monthNumber);
+    } else if (t.description) {
+      const match = String(t.description).match(/Month\s+(\d+)/i);
+      if (match && match[1]) {
+        const num = parseInt(match[1], 10);
+        if (num >= 1 && num <= totalDurationMonths) targetM = num;
+      }
+    }
+
+    if (targetM !== null) {
+      if (!monthSpecificPaymentsMap[targetM]) monthSpecificPaymentsMap[targetM] = [];
+      monthSpecificPaymentsMap[targetM].push(t);
+    } else {
+      unassignedPayments.push(t);
+    }
+  });
+
+  let remainingUnassignedPool = unassignedPayments.reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
+  if (chit?.paymentStatus === 'PAID' && totalCreditAvailable > 0 && remainingUnassignedPool === 0 && Object.keys(monthSpecificPaymentsMap).length === 0) {
+    remainingUnassignedPool = totalCreditAvailable;
+  }
+
   // 3. Generate 1..totalDurationMonths Rows
   const schedule: DueInstallmentRow[] = [];
-  let remainingPaidPool = totalCreditAvailable;
   let totalDueAmount = 0;
   let completedMonthsCount = 0;
   let currentDueMonthIndex = 1;
@@ -255,6 +289,7 @@ export const buildCustomerChitSchedule = (params: {
     // Check if 1% post-disbursal addition applies for this specific month:
     // User requirement: from NEXT month of disbursed, the 1% is added, NOT on the current/disbursed month.
     const isPostDisbursalMonth = isWithdrawn && disbursalMonthIndex > 0 && m > disbursalMonthIndex;
+    const isDisbursalMonth = isWithdrawn && disbursalMonthIndex === m;
 
     if (scheme === 'Fixed' && fixedDetails) {
       const fixedRow = fixedDetails.schedule[m - 1];
@@ -272,8 +307,11 @@ export const buildCustomerChitSchedule = (params: {
       eligiblePayout = aucRow?.payout || chitValue - (aucRow?.totalDiscount || 0);
       dividend = aucRow?.dividend || 0;
 
-      // If already withdrawn, winner pays full gross due (no dividend deduction)
-      if (isWithdrawn && m >= disbursalMonthIndex) {
+      // If already withdrawn: winner pays gross due in disbursal month, and grossDue + 1% interest starting next month!
+      if (isPostDisbursalMonth) {
+        const postDrawFee = Math.round(chitValue * 0.01);
+        revisedDue = grossDue + postDrawFee;
+      } else if (isWithdrawn && m >= disbursalMonthIndex) {
         revisedDue = grossDue;
       } else {
         revisedDue = Math.max(0, grossDue - dividend);
@@ -296,26 +334,26 @@ export const buildCustomerChitSchedule = (params: {
 
     totalDueAmount += revisedDue;
 
-    // Apply available payments sequentially ("added to the last not completed dues")
-    let amountPaidForThisMonth = 0;
-    let rowStatus: DueInstallmentRow['status'] = 'DUE';
-    let paidOn: string | undefined = undefined;
-    let paymentMode: string | undefined = undefined;
-    let receiptNo: string | undefined = undefined;
-    let referenceNo: string | undefined = undefined;
+    // Apply payments for this month:
+    // First, check if specific payments exist for Month m
+    const specificTxs = monthSpecificPaymentsMap[m] || [];
+    let amountPaidForThisMonth = specificTxs.reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
 
-    if (remainingPaidPool >= revisedDue) {
-      amountPaidForThisMonth = revisedDue;
-      remainingPaidPool -= revisedDue;
+    // If specific paid is less than revisedDue, draw from unassigned pool
+    if (amountPaidForThisMonth < revisedDue && remainingUnassignedPool > 0) {
+      const needed = revisedDue - amountPaidForThisMonth;
+      const take = Math.min(needed, remainingUnassignedPool);
+      amountPaidForThisMonth += take;
+      remainingUnassignedPool -= take;
+    }
+
+    let rowStatus: DueInstallmentRow['status'] = 'DUE';
+    if (amountPaidForThisMonth >= revisedDue) {
       rowStatus = 'PAID';
       completedMonthsCount++;
-    } else if (remainingPaidPool > 0) {
-      amountPaidForThisMonth = remainingPaidPool;
-      remainingPaidPool = 0;
+    } else if (amountPaidForThisMonth > 0) {
       rowStatus = 'PARTIALLY_PAID';
     } else {
-      amountPaidForThisMonth = 0;
-      // Check if past due date
       const today = new Date();
       if (today.getTime() > rowDate.getTime() + 86400000) {
         rowStatus = 'OVERDUE';
@@ -324,16 +362,34 @@ export const buildCustomerChitSchedule = (params: {
       }
     }
 
-    // Attach transaction info if paid
-    if (amountPaidForThisMonth > 0 && matchedPayments.length > 0) {
-      const latestTx = matchedPayments[Math.min(m - 1, matchedPayments.length - 1)];
-      if (latestTx) {
-        paidOn = latestTx.date
-          ? new Date(latestTx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-          : undefined;
-        paymentMode = latestTx.paymentMode || ((latestTx.description || '').toLowerCase().includes('cash') ? 'CASH' : 'Online / UPI');
-        receiptNo = latestTx.id;
-        referenceNo = latestTx.reference;
+    // Determine latest transaction details for this month
+    const latestTx = specificTxs.length > 0
+      ? specificTxs[specificTxs.length - 1]
+      : (matchedPayments[Math.min(m - 1, matchedPayments.length - 1)] || null);
+
+    let paidOn: string | undefined = undefined;
+    let paidDateOnly: string | undefined = undefined;
+    let paidTimeOnly: string | undefined = undefined;
+    let paidOnIso: string | undefined = undefined;
+    let recordCreatedAt: string | undefined = undefined;
+    let transactionId: string | undefined = undefined;
+    let paymentMode: string | undefined = undefined;
+    let receiptNo: string | undefined = undefined;
+    let referenceNo: string | undefined = undefined;
+
+    if (amountPaidForThisMonth > 0 && latestTx) {
+      paidOnIso = latestTx.date;
+      transactionId = latestTx.id;
+      recordCreatedAt = latestTx.createdAt || latestTx.recordedAt;
+      paymentMode = latestTx.paymentMode || ((latestTx.description || '').toLowerCase().includes('cash') ? 'CASH' : 'Online / UPI');
+      receiptNo = latestTx.id;
+      referenceNo = latestTx.referenceNo || latestTx.reference;
+
+      const txDateObj = new Date(latestTx.date);
+      if (!isNaN(txDateObj.getTime())) {
+        paidDateOnly = txDateObj.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+        paidTimeOnly = txDateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+        paidOn = `${paidDateOnly} · ${paidTimeOnly}`;
       }
     }
 
@@ -346,9 +402,16 @@ export const buildCustomerChitSchedule = (params: {
       revisedDue,
       eligiblePayout,
       isWithdrawn,
+      isDisbursalMonth,
+      isPostDisbursalMonth,
       status: rowStatus,
       amountPaid: amountPaidForThisMonth,
       paidOn,
+      paidOnIso,
+      paidDateOnly,
+      paidTimeOnly,
+      recordCreatedAt,
+      transactionId,
       paymentMode,
       receiptNo,
       referenceNo,
@@ -365,6 +428,7 @@ export const buildCustomerChitSchedule = (params: {
   const currentMonthRow = schedule[currentDueMonthIndex - 1] || schedule[0];
   const currentEligiblePrizeAmount = isWithdrawn ? 0 : (currentMonthRow?.eligiblePayout || Math.round(chitValue * 0.95));
 
+  const totalPaidAmount = schedule.reduce((sum, r) => sum + r.amountPaid, 0);
   const remainingBalanceDue = Math.max(0, totalDueAmount - totalPaidAmount);
 
   return {

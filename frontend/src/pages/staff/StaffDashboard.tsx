@@ -17,7 +17,8 @@ import {
   RotateCw,
   Layers,
   Calendar,
-  Calculator
+  Calculator,
+  Award
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '../../utils/format';
 import { printCashReceipt } from '../../utils/receiptPrinter';
@@ -25,6 +26,7 @@ import { useAuth } from '../../store/AuthContext';
 import { fetchClient } from '../../api/client';
 import { isMockCustomer, isMockGroup } from '../../utils/cleanMockData';
 import { onPaymentSync } from '../../utils/paymentRequestsData';
+import { syncOverdueAndDisbursementAlerts } from '../../utils/notificationsData';
 
 export const StaffDashboard = () => {
   const navigate = useNavigate();
@@ -40,6 +42,7 @@ export const StaffDashboard = () => {
   const [staffReceipts, setStaffReceipts] = useState<any[]>([]);
   const [myRegistrations, setMyRegistrations] = useState<any[]>([]);
   const [handovers, setHandovers] = useState<any[]>([]);
+  const [pendingWithdrawals, setPendingWithdrawals] = useState<any[]>([]);
 
   // Handover Modal State
   const [isHandoverModalOpen, setIsHandoverModalOpen] = useState(false);
@@ -119,6 +122,20 @@ export const StaffDashboard = () => {
     // 4. Load Handovers
     const ho = localStorage.getItem('staffHandovers');
     if (ho) setHandovers(JSON.parse(ho));
+
+    // 5. Load Pending Prize Disbursement Requests
+    try {
+      syncOverdueAndDisbursementAlerts();
+      const rawW = localStorage.getItem('withdrawalRequests');
+      if (rawW) {
+        const parsedW = JSON.parse(rawW);
+        setPendingWithdrawals(Array.isArray(parsedW) ? parsedW.filter((w: any) => w.status === 'PENDING_ADMIN_DISBURSAL') : []);
+      } else {
+        setPendingWithdrawals([]);
+      }
+    } catch {
+      setPendingWithdrawals([]);
+    }
 
     // Also sync live from backend if online
     fetchClient('/customers')
@@ -327,6 +344,82 @@ export const StaffDashboard = () => {
         </div>
       </div>
 
+      {/* Prize Disbursement Claim Alerts Banner for Staff */}
+      {pendingWithdrawals.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-500/15 via-amber-50 to-amber-100/60 border-2 border-amber-400/90 rounded-2xl p-4 sm:p-5 shadow-xs animate-in fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-amber-500 text-white rounded-xl shadow-xs shrink-0 mt-0.5">
+                <Award className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-black text-amber-950 text-sm tracking-tight">
+                    🏆 Prize Disbursement Requested ({pendingWithdrawals.length} Member{pendingWithdrawals.length > 1 ? 's' : ''})
+                  </h4>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-900 animate-pulse">
+                    Action Needed
+                  </span>
+                </div>
+                <p className="text-xs text-amber-900/80 mt-0.5">
+                  The following member(s) have requested prize payouts. Verification and disbursal approval required by Admin & Staff:
+                </p>
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  {pendingWithdrawals.map((w: any) => (
+                    <div key={w.id} className="bg-white/90 border border-amber-300 rounded-xl px-3 py-1.5 flex items-center gap-2 text-xs">
+                      <span className="font-bold text-slate-800">{w.customerName || 'Member'}</span>
+                      <span className="font-mono text-amber-800 font-bold">₹{Number(w.eligibleAmount || 0).toLocaleString('en-IN')}</span>
+                      <span className="text-[10px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded font-medium">{w.groupName || w.groupId}</span>
+                      <span className="text-[10px] text-slate-500">via {w.payoutMethod || 'Bank'}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => navigate('/admin/payments?tab=WITHDRAWALS')}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-xs shrink-0 transition-all cursor-pointer self-start sm:self-center"
+            >
+              View Prize Claims
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Overdue Installment Notifications Banner */}
+      {dueCustomers.length > 0 && (
+        <div className="bg-rose-50/70 border border-rose-300 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-rose-500 text-white rounded-xl shrink-0">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="font-bold text-rose-950 text-xs sm:text-sm">
+                  ⚠️ Overdue Collections Alert: {dueCustomers.length} Member{dueCustomers.length > 1 ? 's' : ''} Pending Payment
+                </h4>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-200 text-rose-900">
+                  Active until cleared
+                </span>
+              </div>
+              <p className="text-[11px] text-rose-800 mt-0.5">
+                Total pending overdue installment balance: <strong>{formatCurrency(dueCustomers.reduce((sum, c) => sum + (Number(c.pending) || 0), 0))}</strong> across active groups.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setActiveTab('dues');
+              const el = document.getElementById('dues-table-section');
+              el?.scrollIntoView({ behavior: 'smooth' });
+            }}
+            className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-2xs shrink-0 transition-all cursor-pointer self-start sm:self-center"
+          >
+            Collect Dues Now
+          </button>
+        </div>
+      )}
+
       {/* Top Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Metric 1: Total Collections Today */}
@@ -455,7 +548,7 @@ export const StaffDashboard = () => {
       </div>
 
       {/* Main Interactive Workspaces */}
-      <div className="bg-white rounded-2xl border border-neutral-200 shadow-xs overflow-hidden">
+      <div id="dues-table-section" className="bg-white rounded-2xl border border-neutral-200 shadow-xs overflow-hidden">
         {/* Workspace Tab Headers */}
         <div className="flex border-b border-neutral-200 bg-neutral-50/70 p-2 gap-2 overflow-x-auto">
           <button

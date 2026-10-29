@@ -79,15 +79,15 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
   const [showQrModal, setShowQrModal] = useState<any | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  // Scheme Schedules selected category state
   const [selectedRegularCat, setSelectedRegularCat] = useState<number>(100000);
   const [selectedFixedCat, setSelectedFixedCat] = useState<number>(100000);
   const [selectedAuctionCat, setSelectedAuctionCat] = useState<number>(100000);
+  const [chitGroups, setChitGroups] = useState<any[]>([]);
 
   const fetchCustomerProfile = async () => {
     try {
       if (!user) return;
-      const [allCustomers, banks, ledgerRaw, reqsRaw, wReqsRaw, notifs, anns] = await Promise.all([
+      const [allCustomers, banks, ledgerRaw, reqsRaw, wReqsRaw, notifs, anns, groups] = await Promise.all([
         DataSyncManager.getCustomers(),
         DataSyncManager.getBankAccounts(),
         secureStorage.getItem('synced_ledger'),
@@ -95,10 +95,14 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
         secureStorage.getItem('withdrawal_requests'),
         MobileNotificationsManager.getNotificationsForUser(user?.id, 'CUSTOMER'),
         MobileNotificationsManager.getAnnouncements(),
+        DataSyncManager.getChitGroups().catch(() => []),
       ]);
 
       setNotifications(notifs || []);
       setAnnouncements(anns || []);
+      if (groups && groups.length > 0) {
+        setChitGroups(groups);
+      }
 
       if (banks && banks.length > 0) {
         setAllCompanyBanks(banks);
@@ -183,6 +187,24 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
       setLoading(false);
       setRefreshing(false);
     }
+  };
+
+  const getGroupDetails = (groupId?: string, groupName?: string) => {
+    const cleanId = String(groupId || '').toLowerCase().trim();
+    const cleanName = String(groupName || '').toLowerCase().trim();
+    const g = chitGroups.find((grp: any) => {
+      const gId = String(grp.id || '').toLowerCase().trim();
+      const gName = String(grp.name || '').toLowerCase().trim();
+      const gCode = String(grp.code || '').toLowerCase().trim();
+      return (
+        (cleanId && (gId === cleanId || gName === cleanId || gCode === cleanId)) ||
+        (cleanName && (gName === cleanName || gId === cleanName || gCode === cleanName))
+      );
+    });
+    const totalMembers = Number(g?.totalMembers || g?.members || g?.duration || 20);
+    const directEnrolled = Array.isArray(g?.enrolledMembers) ? g.enrolledMembers.length : 0;
+    const enrolledCount = Math.max(directEnrolled, Number(g?.filled || 0)) || totalMembers;
+    return { group: g, totalMembers, enrolledCount };
   };
 
   useEffect(() => {
@@ -568,6 +590,11 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
                 const targetRow = firstUnpaidRow || scheduleSummary.schedule[scheduleSummary.schedule.length - 1];
                 const nextDueStr = targetRow ? targetRow.dueDate : (item as any)?.dueDate || '15 Oct, 2026';
                 const amountDueForChit = targetRow ? targetRow.revisedDue : item.monthlyInstallment || 5000;
+                const gDetails = getGroupDetails(item.groupId, item.groupName);
+                const duration = Number(item.duration || scheduleSummary.totalDurationMonths || 20);
+                const baseMonthlyDue = Math.round(chitVal / duration);
+                const monthlyInterest = Math.round(chitVal * 0.01); // 1% per month post-disbursal fee
+                const postDrawDue = baseMonthlyDue + monthlyInterest;
 
                 return (
                   <View key={idx} style={styles.chitCard}>
@@ -583,8 +610,16 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
                           )}
                         </View>
                         <Text style={styles.ticketSubtitle}>
-                          Ticket #{item.ticketNumber} • {item.scheme || 'Auction'} Plan (20M)
+                          Ticket #{item.ticketNumber} • {item.scheme || 'Auction'} Plan ({duration}M)
                         </Text>
+                        
+                        {/* Group Total Members Badge */}
+                        <View style={styles.groupMembersPill}>
+                          <Ionicons name="people" size={11} color="#92400e" />
+                          <Text style={styles.groupMembersPillText}>
+                            Total Members: {gDetails.totalMembers} ({gDetails.enrolledCount} Enrolled)
+                          </Text>
+                        </View>
                       </View>
                       <View style={[styles.activePlanBadge, isCurrentMonthPaid && { backgroundColor: '#d1fae5' }]}>
                         <Text style={[styles.activePlanText, isCurrentMonthPaid && { color: '#065f46' }]}>
@@ -595,21 +630,42 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
 
                     <View style={styles.cardDivider} />
 
-                    {/* Stats Row */}
-                    <View style={styles.statsRow}>
-                      <View>
-                        <Text style={styles.subLabel}>CHIT VALUE</Text>
-                        <Text style={styles.mainVal}>{formatCurrency(item.chitValue)}</Text>
+                    {/* Disbursed Prize & 1% Interest Repayment Breakdown Box */}
+                    <View style={styles.disbursalCardMobile}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View>
+                          <Text style={styles.disbursalLabel}>
+                            {isDisbursed ? 'DISBURSED PRIZE (95%)' : 'ELIGIBLE PRIZE (95%)'}
+                          </Text>
+                          <Text style={styles.disbursalValGold}>{formatCurrency(prizeVal)}</Text>
+                          <Text style={styles.disbursalNote}>Net after 5% foreman fee</Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={styles.disbursalLabel}>REPAYMENT (+1% INT)</Text>
+                          <Text style={styles.disbursalValWhite}>{formatCurrency(postDrawDue)}/mo</Text>
+                          <Text style={styles.disbursalNote}>Base due + 1% interest</Text>
+                        </View>
                       </View>
-                      <View>
-                        <Text style={styles.subLabel}>
-                          {isCurrentMonthPaid ? 'ADVANCE DUE' : 'MONTHLY DUE'}
-                        </Text>
-                        <Text style={styles.mainVal}>{formatCurrency(amountDueForChit)}</Text>
-                      </View>
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={styles.subLabel}>NET PRIZE (95%)</Text>
-                        <Text style={[styles.mainVal, { color: Colors.gold.dark }]}>{formatCurrency(prizeVal)}</Text>
+
+                      <View style={styles.disbursalSubDivider} />
+
+                      <View style={styles.disbursalSubRow}>
+                        <View>
+                          <Text style={styles.disbursalSubLabel}>TOTAL PAYABLE</Text>
+                          <Text style={styles.disbursalSubVal}>{formatCurrency(scheduleSummary.totalDueAmount)}</Text>
+                        </View>
+                        <View style={{ alignItems: 'center' }}>
+                          <Text style={styles.disbursalSubLabel}>TOTAL PAID</Text>
+                          <Text style={[styles.disbursalSubVal, { color: '#059669' }]}>
+                            {formatCurrency(scheduleSummary.totalPaidAmount)}
+                          </Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={styles.disbursalSubLabel}>REMAINING BALANCE</Text>
+                          <Text style={[styles.disbursalSubVal, { color: '#dc2626' }]}>
+                            {formatCurrency(scheduleSummary.remainingBalanceDue)}
+                          </Text>
+                        </View>
                       </View>
                     </View>
 
@@ -1166,16 +1222,85 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
                   </>
                 )}
 
-                {/* Company Destination Bank Info */}
-                <View style={styles.modalBankBox}>
-                  <Text style={styles.modalBankBoxTitle}>Pay To Company Account:</Text>
-                  <Text style={styles.modalBankBoxVal}>
-                    {companyBank?.bankName} • A/C: {companyBank?.accountNumber}
-                  </Text>
-                  <Text style={styles.modalBankBoxVal}>
-                    IFSC: {companyBank?.ifscCode || companyBank?.ifsc} • UPI: {companyBank?.upiId}
-                  </Text>
-                </View>
+                {/* Admin-Configured Receiving Bank Account & QR */}
+                {companyBank && (
+                  <View style={styles.modalBankBox}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8, paddingBottom: 6, borderBottomWidth: 1, borderColor: Colors.borderLight }}>
+                      <Ionicons name="shield-checkmark" size={15} color={Colors.navy.primary} />
+                      <Text style={styles.modalBankBoxTitle}>Receiving Company Bank Account (Admin Configured)</Text>
+                    </View>
+
+                    {/* UPI QR Display */}
+                    {payMode === 'UPI' && (
+                      <View style={{ alignItems: 'center', paddingVertical: 8 }}>
+                        {companyBank.qrCodeUrl || companyBank.qrCode ? (
+                          <Image
+                            source={{ uri: companyBank.qrCodeUrl || companyBank.qrCode }}
+                            style={{ width: 140, height: 140, borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#FFFFFF' }}
+                            resizeMode="contain"
+                          />
+                        ) : (
+                          <View style={{ width: 110, height: 110, backgroundColor: '#f1f5f9', borderRadius: 10, alignItems: 'center', justifyContent: 'center' }}>
+                            <Ionicons name="qr-code" size={54} color={Colors.navy.primary} />
+                          </View>
+                        )}
+                        <Text style={{ fontSize: 10, color: Colors.textSecondary, marginTop: 6 }}>
+                          Scan UPI QR via GPay, PhonePe, Paytm, or BHIM
+                        </Text>
+
+                        {/* UPI ID with Copy */}
+                        <TouchableOpacity
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#fde68a', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, marginTop: 6 }}
+                          onPress={() => copyToClipboard(companyBank.upiId || 'jenistachits@hdfcbank', 'modal-upi')}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '800', color: '#92400e' }}>
+                            {companyBank.upiId || 'jenistachits@hdfcbank'}
+                          </Text>
+                          <Ionicons name="copy-outline" size={13} color={Colors.gold.dark} />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
+                    {/* Bank Transfer Details with Copy */}
+                    <View style={{ gap: 4, marginTop: 4 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: Colors.textSecondary }}>BANK</Text>
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: Colors.text }}>{companyBank?.bankName}</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: Colors.textSecondary }}>A/C NUMBER</Text>
+                        <TouchableOpacity
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                          onPress={() => copyToClipboard(companyBank?.accountNumber, 'modal-acc')}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '800', fontFamily: 'monospace', color: Colors.navy.primary }}>
+                            {companyBank?.accountNumber}
+                          </Text>
+                          <Ionicons name="copy-outline" size={12} color={Colors.navy.primary} />
+                        </TouchableOpacity>
+                      </View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: Colors.textSecondary }}>IFSC</Text>
+                        <TouchableOpacity
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                          onPress={() => copyToClipboard(companyBank?.ifscCode || companyBank?.ifsc, 'modal-ifsc')}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '800', fontFamily: 'monospace', color: Colors.navy.primary }}>
+                            {companyBank?.ifscCode || companyBank?.ifsc}
+                          </Text>
+                          <Ionicons name="copy-outline" size={12} color={Colors.navy.primary} />
+                        </TouchableOpacity>
+                      </View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: Colors.textSecondary }}>BENEFICIARY</Text>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.text }}>
+                          {companyBank?.accountHolderName || 'Jenista Chits Pvt Ltd'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
 
                 <TouchableOpacity
                   style={[styles.submitActionBtn, paySubmitting && { opacity: 0.6 }]}
@@ -2613,6 +2738,73 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: Colors.textMuted,
     marginTop: 4,
+  },
+  groupMembersPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#fef3c7',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginTop: 5,
+    alignSelf: 'flex-start',
+  },
+  groupMembersPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#92400e',
+  },
+  disbursalCardMobile: {
+    backgroundColor: '#1e293b',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+  },
+  disbursalLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#94a3b8',
+    letterSpacing: 0.5,
+  },
+  disbursalValGold: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#fbbf24',
+    marginTop: 2,
+  },
+  disbursalValWhite: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    marginTop: 2,
+  },
+  disbursalNote: {
+    fontSize: 9,
+    color: '#64748b',
+    marginTop: 1,
+  },
+  disbursalSubDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    marginVertical: 10,
+  },
+  disbursalSubRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  disbursalSubLabel: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: '#94a3b8',
+  },
+  disbursalSubVal: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginTop: 1,
   },
 });
 

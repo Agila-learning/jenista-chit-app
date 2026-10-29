@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Layers, CreditCard, TrendingUp, Bell, History, Calendar, ArrowRight, Copy, Table, 
   Gavel, Award, Building2, Wallet, CheckCircle2, Upload, Printer, X, Search, FileText, 
-  Landmark, QrCode, Check, Lock, ArrowLeft, Megaphone, Gift, Clock 
+  Landmark, QrCode, Check, Lock, ArrowLeft, Megaphone, Gift, Clock, Users, ChevronDown, ChevronUp, Info 
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '../../utils/format';
 import { printCashReceipt } from '../../utils/receiptPrinter';
@@ -46,6 +46,12 @@ export const CustomerDashboard = () => {
 
   // Payment states
   const [paymentModalChit, setPaymentModalChit] = useState<any | null>(null);
+  const [selectedMonthForPay, setSelectedMonthForPay] = useState<{
+    monthNumber: number;
+    monthName: string;
+    dueDate: string;
+    dueAmount: number;
+  } | null>(null);
   const [isAdvancePayment, setIsAdvancePayment] = useState(false);
   const [payAmount, setPayAmount] = useState<string>('');
   const [payMode, setPayMode] = useState<'UPI' | 'Bank Transfer' | 'Cash'>('UPI');
@@ -55,6 +61,8 @@ export const CustomerDashboard = () => {
   const [paySubmitting, setPaySubmitting] = useState(false);
   const [paySuccessMsg, setPaySuccessMsg] = useState('');
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [chitGroups, setChitGroups] = useState<any[]>([]);
+  const [expandedScheduleChit, setExpandedScheduleChit] = useState<Record<string, boolean>>({});
 
   // Company Banks Modal / QR Preview
   const [enlargedQrBank, setEnlargedQrBank] = useState<BankAccount | null>(null);
@@ -139,6 +147,7 @@ export const CustomerDashboard = () => {
         });
 
         const groups = JSON.parse(localStorage.getItem('mockChitGroups') || '[]');
+        setChitGroups(groups);
         const groupEnrolledChits: any[] = [];
         groups.forEach((g: any) => {
           if (isMockGroup(g)) return;
@@ -323,8 +332,79 @@ export const CustomerDashboard = () => {
     }
   };
 
+  const getGroupDetails = (groupId?: string, groupName?: string) => {
+    const cleanId = String(groupId || '').toLowerCase();
+    const cleanName = String(groupName || '').toLowerCase();
+    const g = chitGroups.find((grp: any) => {
+      const gId = String(grp.id || '').toLowerCase();
+      const gCode = String(grp.code || '').toLowerCase();
+      const gName = String(grp.name || '').toLowerCase();
+      return (
+        (cleanId && (gId === cleanId || gCode === cleanId || gName === cleanId)) ||
+        (cleanName && (gName === cleanName || gId === cleanName || gCode === cleanName))
+      );
+    });
+    const totalMembers = Number(g?.totalMembers || g?.members || g?.duration || g?.months || 20);
+    const directEnrolled = Array.isArray(g?.enrolledMembers) ? g.enrolledMembers.length : 0;
+    const filledCount = Number(g?.filled || directEnrolled || 0);
+    const enrolledCount = Math.max(directEnrolled, filledCount);
+    return {
+      group: g,
+      totalMembers,
+      enrolledCount: enrolledCount > 0 ? enrolledCount : totalMembers,
+      scheme: g?.scheme || g?.type || 'Chit Plan'
+    };
+  };
+
+  const toggleScheduleView = (groupId: string) => {
+    setExpandedScheduleChit(prev => ({
+      ...prev,
+      [groupId]: prev[groupId] === false ? true : false
+    }));
+  };
+
+  const handlePayMonth = (chit: any, row: any) => {
+    setPaymentModalChit(chit);
+    setSelectedMonthForPay({
+      monthNumber: row.monthNumber,
+      monthName: row.monthName,
+      dueDate: row.dueDate,
+      dueAmount: row.revisedDue
+    });
+    const remainingDue = row.revisedDue - (row.amountPaid || 0);
+    setPayAmount(String(remainingDue > 0 ? remainingDue : row.revisedDue));
+    setIsAdvancePayment(row.monthNumber > 1 && row.status !== 'OVERDUE');
+    setPayMode('UPI');
+    setPayRefNo('');
+    setPayScreenshot('');
+    setScreenshotFileName('');
+    setPaySuccessMsg('');
+  };
+
+  const handlePrintSlip = (row: any, chit: any) => {
+    if (row.status !== 'PAID' && !(row.amountPaid && row.amountPaid > 0)) {
+      alert('Receipt cannot be generated because payment has not been completed for this month.');
+      return;
+    }
+    printCashReceipt({
+      receiptNo: row.receiptNo || `REC-M${row.monthNumber}-${chit?.ticketNumber || '1'}`,
+      date: row.paidOn || new Date().toISOString().split('T')[0],
+      customerName: user?.name || 'Customer',
+      customerId: user?.id || 'CUST',
+      customerMobile: user?.phone || '',
+      groupName: chit?.groupName || chit?.groupId || 'Chit Fund Group',
+      ticketNumber: chit?.ticketNumber || '1',
+      paymentMode: row.paymentMode || 'CASH',
+      amount: row.amountPaid || row.revisedDue,
+      description: `Month ${row.monthNumber} (${row.monthName}) Chit Installment Payment Receipt`,
+      referenceNo: row.referenceNo || row.receiptNo || 'Official Record',
+      collectedBy: 'Jenista Chit Funds'
+    });
+  };
+
   const handlePayNow = (chit: any, isAdvance: boolean = false, suggestedAmount?: number) => {
     setPaymentModalChit(chit);
+    setSelectedMonthForPay(null);
     setIsAdvancePayment(isAdvance);
     setPayAmount(String(suggestedAmount || chit.monthlyInstallment || 15000));
     setPayMode('UPI');
@@ -387,8 +467,8 @@ export const CustomerDashboard = () => {
       submittedAt: new Date().toISOString(),
       status: 'PENDING_VERIFICATION',
       remarks: payMode === 'Cash' 
-        ? `${isAdvancePayment ? '[Advance Payment] ' : ''}Direct Cash payment submission for ₹${Number(payAmount).toLocaleString('en-IN')}`
-        : `${isAdvancePayment ? '[Advance Payment] ' : ''}Paid via ${payMode} to ${resolvedBank?.bankName || 'Company Bank'}`
+        ? `${selectedMonthForPay ? `[Month ${selectedMonthForPay.monthNumber} Installment] ` : ''}${isAdvancePayment ? '[Advance Payment] ' : ''}Direct Cash payment submission for ₹${Number(payAmount).toLocaleString('en-IN')}`
+        : `${selectedMonthForPay ? `[Month ${selectedMonthForPay.monthNumber} Installment] ` : ''}${isAdvancePayment ? '[Advance Payment] ' : ''}Paid via ${payMode} to ${resolvedBank?.bankName || 'Company Bank'}`
     };
 
     setPaySubmitting(true);
@@ -400,6 +480,7 @@ export const CustomerDashboard = () => {
       setPaySuccessMsg('Payment request submitted successfully! Admin will verify and update your receipt.');
       setTimeout(() => {
         setPaymentModalChit(null);
+        setSelectedMonthForPay(null);
         setPayScreenshot('');
         setScreenshotFileName('');
         setPaySuccessMsg('');
@@ -489,8 +570,9 @@ export const CustomerDashboard = () => {
         type: 'PRIZE_CLAIM',
         title: 'New Prize Money Claim Submitted',
         message: `${user?.name || 'Customer'} (${user?.id || ''}) requested prize money claim of ₹${Number(newWReq.eligibleAmount || 0).toLocaleString('en-IN')} for ${newWReq.groupName || newWReq.groupId} via ${withdrawPayoutMethod}.`,
-        targetRole: 'ADMIN',
+        targetRole: 'ALL',
         metadata: {
+          leadId: newWReq.id,
           customerId: user?.id,
           customerName: user?.name,
           groupId: newWReq.groupId,
@@ -1260,16 +1342,34 @@ export const CustomerDashboard = () => {
                   
                   // Target next due row
                   const targetRow = firstUnpaidRow || scheduleSummary.schedule[scheduleSummary.schedule.length - 1];
+                  const amountDueForChit = targetRow ? targetRow.revisedDue : (chit.monthlyInstallment || 5000);
                   const dueDay = chit.dueDate ? parseInt(chit.dueDate.split('-')[2], 10) : (targetRow?.dueDate ? parseInt(targetRow.dueDate.split(' ')[0], 10) : 15);
                   const nextDueStr = targetRow ? targetRow.dueDate : (chit.dueDate 
                     ? new Date(chit.dueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) 
                     : '15 Oct, 2026');
-                  const amountDueForChit = targetRow ? targetRow.revisedDue : (chit.monthlyInstallment || 15000);
                   const lastPaidRow = [...scheduleSummary.schedule].reverse().find(r => r.status === 'PAID' && r.paidOn);
+                  const gDetails = getGroupDetails(chit.groupId, chit.groupName);
+                  const chitVal = Number(chit.chitValue || chit.amount || 100000);
+                  const duration = Number(chit.months || chit.duration || scheduleSummary.totalDurationMonths || 20);
+                  const baseMonthlyDue = Math.round(chitVal / duration);
+                  const monthlyInterest = Math.round(chitVal * 0.01); // 1% per month post-disbursal fee/interest
+                  const postDrawMonthlyDue = baseMonthlyDue + monthlyInterest;
+
+                  const wReq = pendingWithdrawals.find((w: any) => w.groupId === chit.groupId);
+                  const isDisbursed = Boolean(chit.isWithdrawn || chit.status === 'Withdrawn' || (wReq && wReq.status === 'DISBURSED'));
+                  const isPendingDisbursal = Boolean(wReq && wReq.status === 'PENDING_ADMIN_DISBURSAL');
+                  const disbursedAmount = Number(chit.withdrawnAmount || (wReq?.eligibleAmount) || Math.round(chitVal * 0.95));
+
+                  const totalPaid = Number(scheduleSummary.totalPaidAmount || 0);
+                  const totalPayableWithInterest = Number(scheduleSummary.totalDueAmount || 0);
+                  const remainingToPay = Number(scheduleSummary.remainingBalanceDue || 0);
+                  const completedMonths = Number(scheduleSummary.completedMonthsCount || 0);
+                  const remainingMonths = Math.max(0, duration - completedMonths);
                     
                   return (
-                  <div key={index} className="card p-0 overflow-hidden hover:shadow-md transition-shadow">
-                    <div className="p-5 border-b border-neutral-100 flex justify-between items-start bg-white">
+                  <div key={index} className="card p-0 overflow-hidden hover:shadow-md transition-shadow border border-slate-200 rounded-2xl">
+                    {/* 1. Group Header & Total Members */}
+                    <div className="p-5 border-b border-neutral-100 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white">
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <h4 className="font-bold text-lg text-primary-900">{chit.groupName || chit.groupId}</h4>
@@ -1280,32 +1380,40 @@ export const CustomerDashboard = () => {
                                 ? 'bg-purple-100 text-purple-800 border border-purple-300'
                                 : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
                           }`}>
-                            {scheduleSummary.scheme} Chit Plan ({chit.months || chit.duration || scheduleSummary.totalDurationMonths || 20}M)
+                            {scheduleSummary.scheme} Chit Plan ({duration}M)
                           </span>
+
+                          {/* Total Members Badge */}
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
+                            <Users className="w-3.5 h-3.5 text-amber-700" />
+                            <span>Total Members: <strong>{gDetails.totalMembers}</strong></span>
+                            <span className="text-amber-700/80 font-medium">({gDetails.enrolledCount} Enrolled)</span>
+                          </span>
+
                           {isCurrentMonthPaid && (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
                               ✓ CURRENT MONTH PAID
                             </span>
                           )}
                         </div>
-                        <p className="text-sm text-neutral-500 mt-1">Ticket Number: <span className="font-bold text-neutral-700">#{chit.ticketNumber}</span></p>
-                        {chit.dueDate && (
-                          <p className="text-xs text-neutral-400 mt-1">
-                            Installments due on the <strong>{dueDay}{dueDay === 1 ? 'st' : dueDay === 2 ? 'nd' : dueDay === 3 ? 'rd' : 'th'}</strong> of every month.
-                          </p>
-                        )}
+                        <p className="text-sm text-neutral-500 mt-1 flex items-center gap-2 flex-wrap">
+                          <span>Ticket Number: <strong className="font-mono text-neutral-800 font-bold">#{chit.ticketNumber}</strong></span>
+                          <span>•</span>
+                          <span>Due Date: <strong>Every {dueDay}{dueDay === 1 ? 'st' : dueDay === 2 ? 'nd' : dueDay === 3 ? 'rd' : 'th'}</strong> of the month</span>
+                        </p>
                       </div>
-                      <div className="text-right">
-                        <span className={`inline-flex px-2 py-1 font-bold text-[10px] uppercase tracking-wider rounded-full ${
+                      <div className="text-left md:text-right">
+                        <span className={`inline-flex px-2.5 py-1 font-bold text-[10px] uppercase tracking-wider rounded-full ${
                           isCurrentMonthPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-success-light text-success'
                         }`}>
                           {isCurrentMonthPaid ? 'Advance Eligible' : (chit.status || 'Active')}
                         </span>
-                        <p className="text-sm font-bold text-primary-900 mt-2">Value: {formatCurrency(chit.chitValue || chit.amount || 500000)}</p>
+                        <p className="text-sm font-bold text-primary-900 mt-1">Chit Value: {formatCurrency(chitVal)}</p>
                       </div>
                     </div>
                     
-                    <div className="bg-neutral-50 p-5 grid grid-cols-2 md:grid-cols-4 gap-4 items-center">
+                    {/* Quick Stats Summary Bar */}
+                    <div className="bg-neutral-50/80 p-4 sm:p-5 grid grid-cols-2 md:grid-cols-4 gap-4 items-center border-b border-neutral-100">
                       <div>
                         <p className="text-xs text-neutral-500 uppercase tracking-wider font-semibold mb-1">Last Paid Date</p>
                         <p className="text-sm font-medium text-neutral-800">{lastPaidRow?.paidOn || 'N/A'}</p>
@@ -1320,7 +1428,7 @@ export const CustomerDashboard = () => {
                         <p className="text-xs text-neutral-500 uppercase tracking-wider font-semibold mb-1">
                           {isCurrentMonthPaid ? 'Advance Amount' : 'Amount Due'}
                         </p>
-                        <p className="text-sm font-medium text-neutral-800">{formatCurrency(amountDueForChit)}</p>
+                        <p className="text-sm font-black text-neutral-900">{formatCurrency(amountDueForChit)}</p>
                       </div>
                       <div className="text-right">
                         {(() => {
@@ -1339,91 +1447,330 @@ export const CustomerDashboard = () => {
                           return (
                             <button 
                               onClick={() => handlePayNow(chit, isCurrentMonthPaid, amountDueForChit)}
-                              className={`px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-colors flex items-center justify-center w-full md:w-auto ml-auto text-white ${
+                              className={`px-4 py-2 rounded-xl text-sm font-bold shadow-xs transition-all flex items-center justify-center w-full md:w-auto ml-auto text-white active:scale-95 ${
                                 isCurrentMonthPaid 
                                   ? 'bg-amber-600 hover:bg-amber-700' 
                                   : 'bg-primary-600 hover:bg-primary-700'
                               }`}
                             >
-                              {isCurrentMonthPaid ? 'Pay in Advance' : 'Pay Now'} <ArrowRight className="w-4 h-4 ml-1" />
+                              <CreditCard className="w-4 h-4 mr-1.5" />
+                              <span>{isCurrentMonthPaid ? 'Pay in Advance' : 'Pay Now'}</span>
+                              <ArrowRight className="w-4 h-4 ml-1" />
                             </button>
                           );
                         })()}
                       </div>
                     </div>
 
-                    {/* Prize Money & Withdrawal Eligibility Card Section */}
-                    <div className="border-t border-neutral-200/70 p-4 bg-gradient-to-r from-amber-50/50 via-white to-amber-50/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      {(() => {
-                        const chitVal = chit.chitValue || chit.amount || 100000;
-                        const prizeVal = chitVal * 0.95;
-                        const wReq = pendingWithdrawals.find((w: any) => w.groupId === chit.groupId);
-                        const isDisbursed = chit.isWithdrawn || (wReq && wReq.status === 'DISBURSED');
-                        const isPending = wReq && wReq.status === 'PENDING_ADMIN_DISBURSAL';
+                    {/* 2. Comprehensive Payment & Disbursal Interest Calculation Card */}
+                    <div className="p-4 sm:p-5 bg-gradient-to-br from-amber-50/50 via-white to-slate-50/60 space-y-3.5 border-b border-neutral-200/80">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-amber-200/60">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`p-2 rounded-xl shrink-0 ${isDisbursed ? 'bg-emerald-100 text-emerald-800' : isPendingDisbursal ? 'bg-amber-100 text-amber-800' : 'bg-amber-100 text-amber-900'}`}>
+                            <Award className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h5 className="font-black text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
+                              <span>{isDisbursed ? 'Prize Disbursed & Repayment Calculation (With Interest)' : 'Prize Disbursal & Installment Repayment Structure'}</span>
+                            </h5>
+                            <p className="text-[11px] text-slate-500 font-medium">
+                              {isDisbursed 
+                                ? 'Prize money disbursed. Post-draw monthly repayment reflects 1% monthly interest/charge.'
+                                : 'Transparent chit fund breakdown of price disbursed, interest rates, and dues.'}
+                            </p>
+                          </div>
+                        </div>
 
-                        return (
-                          <>
-                            <div className="flex items-center gap-3">
-                              <div className={`p-2.5 rounded-xl shrink-0 ${isDisbursed ? 'bg-emerald-100 text-emerald-700' : isPending ? 'bg-amber-100 text-amber-700' : 'bg-amber-100/70 text-amber-800'}`}>
-                                <Award className="w-5 h-5" />
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs font-bold uppercase tracking-wider text-neutral-600">Chit Prize Money (Withdrawal)</span>
-                                  {isDisbursed ? (
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                                      Disbursed ✓
-                                    </span>
-                                  ) : isPending ? (
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 flex items-center gap-1">
-                                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                                      Claim Submitted
-                                    </span>
-                                  ) : (
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
-                                      Eligible to Withdraw
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-sm font-semibold text-neutral-800 mt-0.5">
-                                  Net Prize: <span className="text-primary-900 font-black">{formatCurrency(prizeVal)}</span>
-                                  <span className="text-xs font-normal text-neutral-400 ml-1.5">(95% pool after 5% foreman fee)</span>
-                                </p>
-                              </div>
-                            </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {isDisbursed ? (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Disbursed ✓
+                            </span>
+                          ) : isPendingDisbursal ? (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse mr-1"></span>
+                              Claim In Review
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleOpenWithdraw(chit)}
+                              className="bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5"
+                            >
+                              <Award className="w-3.5 h-3.5" /> Claim Prize / Withdraw
+                            </button>
+                          )}
 
-                            <div className="flex items-center gap-2 sm:self-center flex-wrap">
-                              <button
-                                onClick={() => navigate(`/customer/chits/${encodeURIComponent(chit.groupId)}/schedule?group=${encodeURIComponent(chit.groupId)}`)}
-                                className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-3.5 py-1.5 rounded-lg text-xs font-bold shadow-2xs transition-colors flex items-center gap-1.5"
-                                title="View 20-month due amounts, due dates, paid on dates, and payment status"
-                              >
-                                <Calendar className="w-3.5 h-3.5 text-amber-700" />
-                                <span>Due Chart & Schedule</span>
-                              </button>
+                          <button
+                            onClick={() => navigate(`/customer/chits/${encodeURIComponent(chit.groupId)}/schedule?group=${encodeURIComponent(chit.groupId)}`)}
+                            className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-3.5 py-1.5 rounded-lg text-xs font-bold shadow-2xs transition-colors flex items-center gap-1.5"
+                            title="Open full dedicated 20-month schedule screen"
+                          >
+                            <Calendar className="w-3.5 h-3.5 text-amber-700" />
+                            <span>Full Pre-Chart Page</span>
+                          </button>
+                        </div>
+                      </div>
 
-                              {isDisbursed ? (
-                                <span className="inline-flex items-center text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
-                                  <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                                  Paid to A/C {wReq?.disbursedRef ? `(${wReq.disbursedRef})` : ''}
-                                </span>
-                              ) : isPending ? (
-                                <span className="inline-flex items-center text-xs font-semibold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200">
-                                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse mr-1.5"></span>
-                                  Pending Admin Disbursal ({wReq.payoutMethod})
-                                </span>
-                              ) : (
-                                <button
-                                  onClick={() => handleOpenWithdraw(chit)}
-                                  className="bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold shadow-sm transition-colors flex items-center gap-1.5"
-                                >
-                                  <Award className="w-3.5 h-3.5" /> Claim Prize / Withdraw
-                                </button>
-                              )}
-                            </div>
-                          </>
-                        );
-                      })()}
+                      {/* 5 Key Metric Financial Tiles */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                        {/* Tile 1: Disbursed Amount */}
+                        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                            {isDisbursed ? 'Price Disbursed' : 'Net Prize on Disbursal'}
+                          </span>
+                          <p className="text-base font-black text-primary-900 mt-0.5">
+                            {formatCurrency(disbursedAmount)}
+                          </p>
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            {isDisbursed ? 'Disbursed to Member' : '95% Pool (5% foreman fee)'}
+                          </span>
+                        </div>
+
+                        {/* Tile 2: Monthly Due with Interest */}
+                        <div className={`p-3 rounded-xl border shadow-2xs ${isDisbursed ? 'bg-amber-50/70 border-amber-300' : 'bg-white border-slate-200'}`}>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 block">
+                            {isDisbursed ? 'Monthly Due (With Interest)' : 'Post-Draw Monthly Due'}
+                          </span>
+                          <p className={`text-base font-black mt-0.5 ${isDisbursed ? 'text-amber-900' : 'text-slate-900'}`}>
+                            {formatCurrency(postDrawMonthlyDue)} <span className="text-[10px] font-normal text-slate-500">/mo</span>
+                          </p>
+                          <span className="text-[10px] text-amber-800 font-semibold block truncate" title={`${formatCurrency(baseMonthlyDue)} base + ${formatCurrency(monthlyInterest)} (1% interest)`}>
+                            {formatCurrency(baseMonthlyDue)} base + {formatCurrency(monthlyInterest)} (1% fee)
+                          </span>
+                        </div>
+
+                        {/* Tile 3: Total Payable With Interest */}
+                        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                            Total Payable (With Interest)
+                          </span>
+                          <p className="text-base font-black text-slate-900 mt-0.5">
+                            {formatCurrency(totalPayableWithInterest)}
+                          </p>
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            Across {duration} Months
+                          </span>
+                        </div>
+
+                        {/* Tile 4: Total Amount Paid */}
+                        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">
+                            Total Amount Paid
+                          </span>
+                          <p className="text-base font-black text-emerald-700 mt-0.5">
+                            {formatCurrency(totalPaid)}
+                          </p>
+                          <span className="text-[10px] text-slate-500 font-medium">
+                            {completedMonths} of {duration} Months Cleared
+                          </span>
+                        </div>
+
+                        {/* Tile 5: Remaining Balance to Pay */}
+                        <div className="bg-white p-3 rounded-xl border border-rose-200 shadow-2xs col-span-2 sm:col-span-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 block">
+                            Remaining Balance
+                          </span>
+                          <p className="text-base font-black text-rose-700 mt-0.5">
+                            {formatCurrency(remainingToPay)}
+                          </p>
+                          <span className="text-[10px] text-rose-600 font-medium">
+                            {remainingMonths} Installments Left
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Clear Explanatory Note on Interest & Repayment */}
+                      <div className="bg-white/90 p-3 rounded-xl border border-amber-200/80 text-xs text-slate-700 flex items-start gap-2.5">
+                        <Info className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                        <div className="text-[11px] leading-relaxed">
+                          <strong>Financial Calculation Summary: </strong>
+                          {isDisbursed ? (
+                            <span>
+                              Prize money of <strong className="text-slate-900 font-bold">{formatCurrency(disbursedAmount)}</strong> has been disbursed to you. 
+                              Under official chit terms, monthly repayment is <strong className="text-slate-900 font-bold">{formatCurrency(postDrawMonthlyDue)}</strong>, 
+                              composed of the principal monthly installment <strong className="text-slate-800">{formatCurrency(baseMonthlyDue)}</strong> plus 1% post-draw monthly interest/charge of <strong className="text-slate-800">{formatCurrency(monthlyInterest)}</strong>. 
+                              You have paid <strong className="text-emerald-700 font-bold">{formatCurrency(totalPaid)}</strong> ({completedMonths} months cleared), 
+                              leaving a remaining balance of <strong className="text-rose-700 font-bold">{formatCurrency(remainingToPay)}</strong> over {remainingMonths} remaining months.
+                            </span>
+                          ) : (
+                            <span>
+                              Net prize pool available on withdrawal is <strong className="text-slate-900 font-bold">{formatCurrency(disbursedAmount)}</strong> (95% of {formatCurrency(chitVal)} chit value after 5% foreman commission). 
+                              Your pre-draw installment is <strong className="text-slate-900 font-bold">{formatCurrency(baseMonthlyDue)}/month</strong>. 
+                              When you claim and disburse your prize, a standard 1% monthly interest/charge (<strong className="text-slate-800">{formatCurrency(monthlyInterest)}/mo</strong>) will be added to future monthly dues (<strong className="text-slate-900">{formatCurrency(postDrawMonthlyDue)}/mo</strong>).
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 3. Interactive Month-Wise Installment Chart (Paid & Pending with Pay Now button) */}
+                    <div className="bg-white p-4 sm:p-5 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <h5 className="font-bold text-sm text-primary-900 flex items-center gap-2">
+                            <Calendar className="w-4 h-4 text-amber-700" />
+                            <span>Month-by-Month Installment Chart ({duration} Months)</span>
+                          </h5>
+                          <p className="text-xs text-slate-500 font-medium">
+                            Track paid and pending months. Click <strong className="text-primary-700 font-bold">"Pay Now"</strong> on any pending month to view bank details and QR code.
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                            {completedMonths} of {duration} Months Paid
+                          </span>
+                          <button
+                            onClick={() => toggleScheduleView(chit.groupId)}
+                            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <span>{expandedScheduleChit[chit.groupId] === false ? 'Expand Chart' : 'Collapse Chart'}</span>
+                            {expandedScheduleChit[chit.groupId] === false ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Visual Progress Bar */}
+                      <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                        <div 
+                          className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+                          style={{ width: `${Math.min(100, (completedMonths / duration) * 100)}%` }}
+                        />
+                      </div>
+
+                      {/* Month Table */}
+                      {expandedScheduleChit[chit.groupId] !== false && (
+                        <div className="pt-2 animate-in fade-in duration-150">
+                          <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                            <table className="w-full text-left text-xs">
+                              <thead className="bg-slate-50 text-slate-600 uppercase font-black text-[10px] tracking-wider border-b border-slate-200">
+                                <tr>
+                                  <th className="py-2.5 px-3">Month #</th>
+                                  <th className="py-2.5 px-3">Due Date</th>
+                                  <th className="py-2.5 px-3 text-right">Due Amount</th>
+                                  <th className="py-2.5 px-3 text-center">Status</th>
+                                  <th className="py-2.5 px-3 text-right">Amount Paid</th>
+                                  <th className="py-2.5 px-3">Paid Date</th>
+                                  <th className="py-2.5 px-3 text-center">Action / Pay</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {scheduleSummary.schedule.map((row: any) => {
+                                  const isPaid = row.status === 'PAID';
+                                  const isPartial = row.status === 'PARTIALLY_PAID';
+                                  const isOverdue = row.status === 'OVERDUE';
+                                  const isPending = !isPaid && !isPartial && !isOverdue;
+                                  const isCurrentNext = !isPaid && row.monthNumber === scheduleSummary.currentDueMonthIndex;
+
+                                  return (
+                                    <tr 
+                                      key={row.monthNumber}
+                                      className={`transition-colors ${
+                                        isCurrentNext 
+                                          ? 'bg-amber-50/70 font-semibold' 
+                                          : isPaid 
+                                            ? 'bg-white hover:bg-slate-50/70' 
+                                            : 'bg-white hover:bg-amber-50/40'
+                                      }`}
+                                    >
+                                      {/* Month # */}
+                                      <td className="py-3 px-3 font-bold text-slate-900 whitespace-nowrap">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className={`w-6 h-6 rounded-full font-bold text-[11px] flex items-center justify-center ${
+                                            isPaid ? 'bg-emerald-100 text-emerald-800' : isCurrentNext ? 'bg-amber-200 text-amber-900' : 'bg-slate-100 text-slate-700'
+                                          }`}>
+                                            {row.monthNumber}
+                                          </span>
+                                          <span>{row.monthName}</span>
+                                        </div>
+                                      </td>
+
+                                      {/* Due Date */}
+                                      <td className="py-3 px-3 text-slate-600 font-medium whitespace-nowrap">
+                                        <span className="flex items-center gap-1">
+                                          <Calendar className="w-3 h-3 text-slate-400" />
+                                          {row.dueDate}
+                                        </span>
+                                      </td>
+
+                                      {/* Due Amount */}
+                                      <td className="py-3 px-3 text-right font-black text-slate-900 whitespace-nowrap">
+                                        <div>
+                                          <span className="text-sm">{formatCurrency(row.revisedDue)}</span>
+                                          {isDisbursed && row.revisedDue > baseMonthlyDue && (
+                                            <span className="text-[10px] text-amber-800 font-semibold block">
+                                              (with 1% fee)
+                                            </span>
+                                          )}
+                                        </div>
+                                      </td>
+
+                                      {/* Status Badge */}
+                                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                                        {isPaid && (
+                                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                            <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" /> PAID
+                                          </span>
+                                        )}
+                                        {isPartial && (
+                                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                                            <Clock className="w-3 h-3 mr-1 text-blue-600" /> PARTIAL
+                                          </span>
+                                        )}
+                                        {isOverdue && (
+                                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                                            OVERDUE
+                                          </span>
+                                        )}
+                                        {isPending && (
+                                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                            PENDING
+                                          </span>
+                                        )}
+                                      </td>
+
+                                      {/* Amount Paid */}
+                                      <td className="py-3 px-3 text-right font-bold whitespace-nowrap">
+                                        <span className={row.amountPaid > 0 ? 'text-emerald-700' : 'text-slate-400'}>
+                                          {row.amountPaid > 0 ? formatCurrency(row.amountPaid) : '—'}
+                                        </span>
+                                      </td>
+
+                                      {/* Paid Date */}
+                                      <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
+                                        {row.paidOn || '—'}
+                                      </td>
+
+                                      {/* Action / Pay Button */}
+                                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                                        {isPaid ? (
+                                          <button
+                                            onClick={() => handlePrintSlip(row, chit)}
+                                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs rounded-lg border border-emerald-200 transition-colors shadow-2xs active:scale-95 cursor-pointer"
+                                            title="Print Official Payment Receipt"
+                                          >
+                                            <Printer className="w-3 h-3" />
+                                            <span>Receipt</span>
+                                          </button>
+                                        ) : (
+                                          <button
+                                            onClick={() => handlePayMonth(chit, row)}
+                                            className="inline-flex items-center gap-1 px-3 py-1 bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs rounded-lg shadow-xs transition-all active:scale-95 cursor-pointer"
+                                            title={`Pay Month ${row.monthNumber} installment (${formatCurrency(row.revisedDue - (row.amountPaid || 0))})`}
+                                          >
+                                            <CreditCard className="w-3 h-3" />
+                                            <span>Pay Now</span>
+                                          </button>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                   );
@@ -1612,15 +1959,21 @@ export const CustomerDashboard = () => {
             <div className="px-6 py-4 bg-primary-900 text-white flex justify-between items-center shrink-0">
               <div>
                 <h3 className="font-bold text-lg">
-                  {isAdvancePayment ? 'Pay Installment in Advance' : 'Submit Chit Payment'}
+                  {selectedMonthForPay 
+                    ? `Pay Month ${selectedMonthForPay.monthNumber} Installment`
+                    : isAdvancePayment ? 'Pay Installment in Advance' : 'Submit Chit Payment'}
                 </h3>
                 <p className="text-xs text-primary-200 mt-0.5">
-                  Group: {paymentModalChit.groupName || paymentModalChit.groupId} · Ticket #{paymentModalChit.ticketNumber}
+                  Group: <strong>{paymentModalChit.groupName || paymentModalChit.groupId}</strong> · Ticket #{paymentModalChit.ticketNumber}
+                  {selectedMonthForPay && ` · ${selectedMonthForPay.monthName} (Due: ${selectedMonthForPay.dueDate})`}
                 </p>
               </div>
               <button 
-                onClick={() => setPaymentModalChit(null)} 
-                className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
+                onClick={() => {
+                  setPaymentModalChit(null);
+                  setSelectedMonthForPay(null);
+                }} 
+                className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
               >
                 ✕
               </button>
@@ -1645,7 +1998,9 @@ export const CustomerDashboard = () => {
                     <p className={`text-xs font-semibold uppercase tracking-wider ${
                       isAdvancePayment ? 'text-amber-800' : 'text-primary-700'
                     }`}>
-                      {isAdvancePayment ? 'Advance Installment Amount' : 'Installment Due Amount'}
+                      {selectedMonthForPay 
+                        ? `Month ${selectedMonthForPay.monthNumber} (${selectedMonthForPay.monthName}) Due Amount`
+                        : isAdvancePayment ? 'Advance Installment Amount' : 'Installment Due Amount'}
                     </p>
                     <p className="text-2xl font-black text-primary-900 mt-0.5">
                       ₹{Number(payAmount || 0).toLocaleString('en-IN')}
@@ -1653,11 +2008,13 @@ export const CustomerDashboard = () => {
                   </div>
                   <div className="text-right">
                     <span className={`text-xs font-semibold px-2.5 py-1 rounded-md ${
-                      isAdvancePayment 
-                        ? 'bg-amber-100 text-amber-900 font-bold' 
-                        : 'bg-primary-100 text-primary-800'
+                      selectedMonthForPay
+                        ? 'bg-primary-100 text-primary-900 font-bold'
+                        : isAdvancePayment 
+                          ? 'bg-amber-100 text-amber-900 font-bold' 
+                          : 'bg-primary-100 text-primary-800'
                     }`}>
-                      {isAdvancePayment ? 'Advance Pay' : 'Monthly Due'}
+                      {selectedMonthForPay ? `Month ${selectedMonthForPay.monthNumber}` : isAdvancePayment ? 'Advance Pay' : 'Monthly Due'}
                     </span>
                   </div>
                 </div>
