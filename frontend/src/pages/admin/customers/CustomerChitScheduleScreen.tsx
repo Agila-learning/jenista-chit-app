@@ -1016,6 +1016,10 @@ export const CustomerChitScheduleScreen = () => {
                     <td className="py-3.5 px-4 text-right whitespace-nowrap font-bold text-purple-900">
                       {scheduleData.isWithdrawn ? (
                         <span className="text-[11px] text-slate-400 italic">Disbursed</span>
+                      ) : row.isCompanyMonth ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-slate-100 text-slate-700 border border-slate-300" title="First month is allocated to company (members cannot withdraw)">
+                          COMPANY
+                        </span>
                       ) : (
                         formatCurrency(row.eligiblePayout)
                       )}

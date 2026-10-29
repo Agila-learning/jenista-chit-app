@@ -1,7 +1,11 @@
 export interface FixedMonthRow {
   month: number;
   due: number;
+  duePct: number;
   payout: number;
+  payoutPct: number;
+  isCompany: boolean;
+  payoutDisplay: string;
 }
 
 export interface FixedPlanDetails {
@@ -9,10 +13,13 @@ export interface FixedPlanDetails {
   months: number;
   members: number;
   monthlyDue: number;
+  month1Due: number;
+  standardDue: number;
   postDrawFee: number;
   postDrawTotalDue: number;
   minPayout: number;
   maxPayout: number;
+  totalDue: number;
   schedule: FixedMonthRow[];
 }
 
@@ -41,32 +48,77 @@ export interface AuctionPlanDetails {
   schedule: AuctionMonthRow[];
 }
 
+export const fixedScheduleRatioMatrix: { month: number; duePct: number; paymentPct: number; isCompany?: boolean }[] = [
+  { month: 1, duePct: 0.0500, paymentPct: 0, isCompany: true },
+  { month: 2, duePct: 0.0375, paymentPct: 0.70 },
+  { month: 3, duePct: 0.0375, paymentPct: 0.70 },
+  { month: 4, duePct: 0.0375, paymentPct: 0.70 },
+  { month: 5, duePct: 0.0375, paymentPct: 0.70 },
+  { month: 6, duePct: 0.0375, paymentPct: 0.70 },
+  { month: 7, duePct: 0.0375, paymentPct: 0.70 },
+  { month: 8, duePct: 0.0375, paymentPct: 0.70 },
+  { month: 9, duePct: 0.0385, paymentPct: 0.72 },
+  { month: 10, duePct: 0.0395, paymentPct: 0.74 },
+  { month: 11, duePct: 0.0405, paymentPct: 0.76 },
+  { month: 12, duePct: 0.0415, paymentPct: 0.78 },
+  { month: 13, duePct: 0.0425, paymentPct: 0.80 },
+  { month: 14, duePct: 0.0435, paymentPct: 0.82 },
+  { month: 15, duePct: 0.0450, paymentPct: 0.85 },
+  { month: 16, duePct: 0.0460, paymentPct: 0.87 },
+  { month: 17, duePct: 0.0470, paymentPct: 0.89 },
+  { month: 18, duePct: 0.0480, paymentPct: 0.91 },
+  { month: 19, duePct: 0.0490, paymentPct: 0.93 },
+  { month: 20, duePct: 0.0500, paymentPct: 0.95 },
+];
+
 export const calculateFixedPlanSchedule = (chitValue: number, months: number = 20): FixedPlanDetails => {
   const members = months;
-  const monthlyDue = Math.round(chitValue / months);
   const postDrawFee = Math.round(chitValue * 0.01);
-  const postDrawTotalDue = monthlyDue + postDrawFee;
+  let totalDue = 0;
 
   const schedule: FixedMonthRow[] = [];
   for (let m = 1; m <= months; m++) {
-    const payoutMultiplier = 0.95 + (m - 1) * 0.01;
-    const payout = Math.round(chitValue * payoutMultiplier);
+    const config = fixedScheduleRatioMatrix[m - 1] || {
+      month: m,
+      duePct: 1 / months,
+      paymentPct: 0.70 + ((m - 1) / months) * 0.25,
+      isCompany: m === 1,
+    };
+
+    const due = Math.round(chitValue * config.duePct);
+    const isCompany = !!config.isCompany;
+    const payout = isCompany ? 0 : Math.round(chitValue * config.paymentPct);
+    const payoutDisplay = isCompany ? 'COMPANY' : payout.toLocaleString('en-IN');
+
+    totalDue += due;
+
     schedule.push({
       month: m,
-      due: monthlyDue,
+      due,
+      duePct: config.duePct,
       payout,
+      payoutPct: config.paymentPct,
+      isCompany,
+      payoutDisplay,
     });
   }
+
+  const eligiblePayouts = schedule.filter((r) => !r.isCompany).map((r) => r.payout);
+  const standardDue = schedule[1]?.due || Math.round(chitValue * 0.0375);
+  const month1Due = schedule[0]?.due || Math.round(chitValue * 0.05);
 
   return {
     chitValue,
     months,
     members,
-    monthlyDue,
+    monthlyDue: month1Due,
+    month1Due,
+    standardDue,
     postDrawFee,
-    postDrawTotalDue,
-    minPayout: schedule[0]?.payout || Math.round(chitValue * 0.95),
-    maxPayout: schedule[months - 1]?.payout || Math.round(chitValue * 1.14),
+    postDrawTotalDue: standardDue + postDrawFee,
+    minPayout: eligiblePayouts.length > 0 ? Math.min(...eligiblePayouts) : Math.round(chitValue * 0.70),
+    maxPayout: eligiblePayouts.length > 0 ? Math.max(...eligiblePayouts) : Math.round(chitValue * 0.95),
+    totalDue,
     schedule,
   };
 };

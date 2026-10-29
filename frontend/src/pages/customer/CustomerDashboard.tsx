@@ -16,6 +16,7 @@ import { resolveBankForPayment, generateUpiQrBadge, getStoredBankAccounts, type 
 import { isMockGroup } from '../../utils/cleanMockData';
 import { savePaymentRequest, onPaymentSync, syncPaymentRequestsWithBackend, type PaymentRequest } from '../../utils/paymentRequestsData';
 import { buildCustomerChitSchedule } from '../../utils/customerChitSchedule';
+import { calculateFixedPlanSchedule } from '../../utils/chitCalculations';
 import { 
   getNotificationsForUser, 
   markNotificationAsRead, 
@@ -534,7 +535,10 @@ export const CustomerDashboard = () => {
 
     setWithdrawSubmitting(true);
     const chitVal = withdrawModalChit.chitValue || withdrawModalChit.amount || 100000;
-    const prizeAmount = chitVal * 0.95; // 95% prize after 5% foreman commission
+    const isFixedScheme = String(withdrawModalChit.scheme || withdrawModalChit.groupName || '').toLowerCase().includes('fix');
+    const prizeAmount = isFixedScheme
+      ? (calculateFixedPlanSchedule(chitVal).minPayout || Math.round(chitVal * 0.70))
+      : Math.round(chitVal * 0.95);
 
     const newWReq = {
       id: `WDR-${Date.now().toString().slice(-6)}`,
@@ -2337,26 +2341,53 @@ export const CustomerDashboard = () => {
             ) : (
               <form onSubmit={handleSubmitWithdrawal} className="p-5 sm:p-6 space-y-4 flex-1 overflow-y-auto min-h-0">
                 {/* Prize Breakdown Banner */}
-                <div className="p-4 bg-amber-50/70 rounded-xl border border-amber-200">
-                  <div className="flex justify-between items-center pb-2 border-b border-amber-200/60 text-xs">
-                    <span className="text-neutral-600">Total Chit Value</span>
-                    <span className="font-bold text-neutral-800">
-                      {formatCurrency(withdrawModalChit.chitValue || withdrawModalChit.amount || 100000)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center py-1.5 border-b border-amber-200/60 text-xs">
-                    <span className="text-neutral-500">Foreman Commission (5%)</span>
-                    <span className="text-danger font-semibold">
-                      - {formatCurrency((withdrawModalChit.chitValue || withdrawModalChit.amount || 100000) * 0.05)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center pt-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-amber-900">Net Prize Payout</span>
-                    <span className="text-xl font-black text-amber-800">
-                      {formatCurrency((withdrawModalChit.chitValue || withdrawModalChit.amount || 100000) * 0.95)}
-                    </span>
-                  </div>
-                </div>
+                {(() => {
+                  const chitVal = withdrawModalChit.chitValue || withdrawModalChit.amount || 100000;
+                  const isFixed = String(withdrawModalChit.scheme || withdrawModalChit.groupName || '').toLowerCase().includes('fix');
+                  const fixedDetails = isFixed ? calculateFixedPlanSchedule(chitVal) : null;
+
+                  return (
+                    <div className="p-4 bg-amber-50/70 rounded-xl border border-amber-200">
+                      <div className="flex justify-between items-center pb-2 border-b border-amber-200/60 text-xs">
+                        <span className="text-neutral-600">Total Chit Value</span>
+                        <span className="font-bold text-neutral-800">
+                          {formatCurrency(chitVal)}
+                        </span>
+                      </div>
+                      {isFixed ? (
+                        <>
+                          <div className="flex justify-between items-center py-1.5 border-b border-amber-200/60 text-xs">
+                            <span className="text-neutral-500">Fixed Scheme Policy</span>
+                            <span className="text-neutral-800 font-semibold text-[11px]">
+                              Month 1 is Company • Payout: 70% to 95%
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center pt-2">
+                            <span className="text-xs font-bold uppercase tracking-wider text-amber-900">Eligible Prize Payout (M2-M8 base)</span>
+                            <span className="text-xl font-black text-amber-800">
+                              {formatCurrency(fixedDetails?.minPayout || chitVal * 0.70)}
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex justify-between items-center py-1.5 border-b border-amber-200/60 text-xs">
+                            <span className="text-neutral-500">Foreman Commission (5%)</span>
+                            <span className="text-danger font-semibold">
+                              - {formatCurrency(chitVal * 0.05)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center pt-2">
+                            <span className="text-xs font-bold uppercase tracking-wider text-amber-900">Net Prize Payout</span>
+                            <span className="text-xl font-black text-amber-800">
+                              {formatCurrency(chitVal * 0.95)}
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-neutral-600 mb-1.5">

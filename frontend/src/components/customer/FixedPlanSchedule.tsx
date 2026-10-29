@@ -21,32 +21,20 @@ const colorSchemes = [
 
 const rules = [
   {
-    tamil: 'பிரதி மாதம் 10/15 ம் தேதி மாலை 6.00 மணி முதல் 7.00 மணி வரை ஏலம் விடப்படும்.',
-    english: 'Auction/Draw takes place every month on 10th or 15th between 6:00 PM and 7:00 PM.',
+    tamil: '1. தொடர்ந்து 3 மாதங்கள் சீட்டுத்தொகை கட்டத் தவறினால் சீட்டிலிருந்து நீக்கப்படுவோர், சீட்டு முடிந்தவுடன் கட்டிய பணம் வழங்கப்படும்.',
+    english: 'Members failing to pay chit installments for 3 consecutive months will be removed from the chit; the paid amount will be refunded upon chit completion.',
   },
   {
-    tamil: 'ஏலம் நடைபெற்று முடிந்து 3 நாட்களுக்குள் சீட்டுத்தொகையை கண்டிப்பாக செலுத்த வேண்டும்.',
-    english: 'Chit installments must be paid strictly within 3 days after auction completion.',
+    tamil: '2. சீட்டுத்தொகை எடுத்தவருக்கு ஜாமீன்தாரரும் Co.Applicant-ம் முழுப் பொறுப்பு.',
+    english: 'The Guarantor and Co-Applicant bear full responsibility for the member receiving the prize money.',
   },
   {
-    tamil: 'தொடர்ந்து 3 மாதங்கள் சீட்டு கட்டத் தவறினால் சீட்டிலிருந்து நீக்கப்படுவர், சீட்டு முடிந்தவுடன் கட்டிய பணம் வழங்கப்படும்.',
-    english: 'Failure to pay for 3 consecutive months will lead to removal; paid amount will be refunded upon chit completion.',
+    tamil: '3. தினசரி மற்றும் மாதந்தோறும் சீட்டுத்தொகை வசூலிக்கப்படும்.',
+    english: 'Chit installments are collected on a daily and monthly basis.',
   },
   {
-    tamil: 'சீட்டு எடுத்தவருக்கு ஜாமீன்தாரரும் Co-Applicant-ம் முழுப் பொறுப்பு.',
-    english: 'The guarantor and Co-Applicant bear full responsibility for the prize chit winner.',
-  },
-  {
-    tamil: 'குலுக்கல் சீட்டு வாடிக்கையாளர்கள் குலுக்கல் நேரத்திற்கு முன்பாக சீட்டு தொகையை கண்டிப்பாக செலுத்த வேண்டும்.',
-    english: 'Lucky draw members must clear their due amount strictly prior to the draw time.',
-  },
-  {
-    tamil: 'சீட்டு எடுத்த நபர் ஜாமீன்தாரருடன் சேர்ந்து Co.Applicant உடன் வந்து, முத்திரைத்தாள் (பத்திரம்), அடையாள அட்டை நகல், வங்கி காசோலை (Cheque) இவைகளை சமர்ப்பித்து சீட்டு முடிந்து 10 நாட்களுக்குள் பணம் பெற்றுக் கொள்ளலாம்.',
-    english: 'Prize winners must present Guarantor and Co-Applicant with Stamp Paper, ID Proofs, and Bank Cheque to receive funds within 10 days.',
-  },
-  {
-    tamil: 'சீட்டு வேண்டுபவர்களை மட்டுமே குலுக்கலில் சேர்த்துக்கொள்ளப்படும்.',
-    english: 'Only customers requesting the chit will be included in the draw.',
+    tamil: '4. சீட்டு எடுத்த நாள் ஜாமீன்தாரருடன் சேர்ந்து Co.Applicant உடன் வந்து, நகல் வங்கி காசோலை (Cheque) இவைகளை சமர்ப்பித்து 10 நாட்களுக்குள் பணம் பெற்றுக் கொள்ளலாம்.',
+    english: 'Prize winners must visit with Guarantor and Co-Applicant, submit copy of Bank Cheque and documents, and receive payment within 10 days.',
   },
 ];
 
@@ -168,11 +156,31 @@ export const FixedPlanSchedule = () => {
                           {row ? formatCurrency(row.due) : '-'}
                         </td>
                         <td className={`py-2.5 px-3 ${activeMobilePlan.styling.cellBg} ${activeMobilePlan.styling.cellPay} font-black`}>
-                          {row ? formatCurrency(row.payout) : '-'}
+                          {row ? (
+                            row.isCompany ? (
+                              <span className="inline-block px-2 py-0.5 rounded text-[10px] font-black bg-neutral-900 text-yellow-300">
+                                COMPANY
+                              </span>
+                            ) : (
+                              formatCurrency(row.payout)
+                            )
+                          ) : '-'}
                         </td>
                       </tr>
                     );
                   })}
+                  {/* Total Row */}
+                  <tr className="bg-neutral-900 text-white font-black text-xs">
+                    <td className="bg-neutral-950 text-yellow-300 font-black py-2.5 px-2 border-r border-neutral-800">
+                      TOTAL
+                    </td>
+                    <td className="py-2.5 px-3 bg-neutral-900 text-white font-extrabold border-r border-neutral-800">
+                      {formatCurrency(activeMobilePlan.calc.totalDue)}
+                    </td>
+                    <td className="py-2.5 px-3 bg-neutral-900 text-yellow-300 font-black">
+                      {formatCurrency(activeMobilePlan.calc.maxPayout)}
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -213,7 +221,11 @@ export const FixedPlanSchedule = () => {
                 {isSelected && <span className="text-xs font-bold text-primary-700">Selected</span>}
               </div>
               <h4 className="text-lg font-black">{p.name}</h4>
-              <p className="text-xs font-semibold opacity-80 mt-1">Due: {p.dueStr}</p>
+              <div className="text-[11px] font-medium opacity-90 mt-1 space-y-0.5">
+                <p>Month 1: <span className="font-extrabold">{formatCurrency(p.calc.month1Due)}</span> <span className="text-[9px] opacity-75">(Company)</span></p>
+                <p>M2-M8 Due: <span className="font-extrabold">{formatCurrency(p.calc.standardDue)}/mo</span></p>
+                <p className="font-bold pt-1 border-t border-black/10">Total 20M: <span className="font-black text-xs">{formatCurrency(p.calc.totalDue)}</span></p>
+              </div>
 
               {/* Mobile CTA prompt */}
               <div className="md:hidden mt-2 pt-2 border-t border-emerald-200/60 flex items-center justify-between text-[11px] font-bold text-emerald-900">
@@ -323,13 +335,37 @@ export const FixedPlanSchedule = () => {
                           {row ? formatCurrency(row.due) : '-'}
                         </td>
                         <td className={`py-2.5 px-3 ${p.styling.cellBg} ${p.styling.cellPay} font-bold border-r border-neutral-200`}>
-                          {row ? formatCurrency(row.payout) : '-'}
+                          {row ? (
+                            row.isCompany ? (
+                              <span className="inline-block px-2.5 py-0.5 rounded text-[11px] font-black bg-neutral-900 text-yellow-300">
+                                COMPANY
+                              </span>
+                            ) : (
+                              formatCurrency(row.payout)
+                            )
+                          ) : '-'}
                         </td>
                       </tr>
                     );
                   })}
                 </tr>
               ))}
+              {/* TOTAL Row matching official poster */}
+              <tr className="bg-red-900 text-white font-black text-xs md:text-sm">
+                <td className="bg-red-950 text-yellow-300 font-black py-3 px-3 border-r border-red-800 tracking-wider">
+                  TOTAL
+                </td>
+                {visiblePlans.map((p) => (
+                  <tr key={`${p.id}-total`} className="contents">
+                    <td className="py-3 px-3 bg-red-900 text-white font-black border-r border-red-800">
+                      {formatCurrency(p.calc.totalDue)}
+                    </td>
+                    <td className="py-3 px-3 bg-red-900 text-yellow-300 font-black border-r border-neutral-200">
+                      {formatCurrency(p.calc.maxPayout)}
+                    </td>
+                  </tr>
+                ))}
+              </tr>
             </tbody>
           </table>
         </div>

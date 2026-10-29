@@ -340,20 +340,24 @@ export const ManagePlans = () => {
                   ) : activeTab === 'fixed' ? (
                     <>
                       <div className="flex justify-between text-neutral-600 font-medium">
-                        <span>Monthly Due:</span>
-                        <strong className="text-neutral-900">{formatCurrency(fixedCalc.monthlyDue)}</strong>
+                        <span>Month 1 Due:</span>
+                        <strong className="text-neutral-900">{formatCurrency(fixedCalc.month1Due)} (Company)</strong>
                       </div>
                       <div className="flex justify-between text-neutral-600 font-medium">
-                        <span>Post-Draw Due:</span>
-                        <strong className="text-amber-800">{formatCurrency(fixedCalc.postDrawTotalDue)}</strong>
+                        <span>M2-M8 Monthly Due:</span>
+                        <strong className="text-emerald-900 font-bold">{formatCurrency(fixedCalc.standardDue)}/mo</strong>
                       </div>
                       <div className="flex justify-between text-neutral-600 font-medium">
-                        <span>Month 1 Payout:</span>
-                        <strong className="text-neutral-900">{formatCurrency(fixedCalc.minPayout)}</strong>
+                        <span>Total 20M Investment:</span>
+                        <strong className="text-neutral-900 font-extrabold">{formatCurrency(fixedCalc.totalDue)}</strong>
+                      </div>
+                      <div className="flex justify-between text-neutral-600 font-medium">
+                        <span>Min Payout (M2):</span>
+                        <strong className="text-neutral-900">{formatCurrency(fixedCalc.minPayout)} (70%)</strong>
                       </div>
                       <div className="flex justify-between text-neutral-600 font-medium">
                         <span>Month 20 Payout:</span>
-                        <strong className="text-emerald-700">{formatCurrency(fixedCalc.maxPayout)} (+14%)</strong>
+                        <strong className="text-emerald-700 font-bold">{formatCurrency(fixedCalc.maxPayout)} (95%)</strong>
                       </div>
                     </>
                   ) : (
@@ -445,7 +449,7 @@ export const ManagePlans = () => {
                 activeTab === 'regular' 
                   ? 'M1: 5% (Company) | M2-8: 3.75% Due, 70% Payout | Total: ₹' + activeRegularDetails.totalDue.toLocaleString('en-IN')
                   : activeTab === 'fixed' 
-                    ? 'Payout = Value × (95% + (Month-1)×1%)' 
+                    ? 'M1: 5% (Company) | M2-8: 3.75% Due, 70% Payout | Total: ₹' + activeFixedDetails.totalDue.toLocaleString('en-IN')
                     : 'Max 30% Bid Cap + 5% Foreman Comm.'
               }
             </span>
@@ -531,31 +535,61 @@ export const ManagePlans = () => {
               </thead>
               <tbody className="divide-y divide-neutral-100 font-semibold text-neutral-800">
                 {activeFixedDetails.schedule.map((row) => {
-                  const returnPct = Math.round(95 + (row.month - 1));
+                  const returnPct = Math.round(row.payoutPct * 100);
                   return (
                     <tr key={row.month} className="hover:bg-neutral-50/70 transition-colors">
                       <td className="py-2.5 px-4 font-bold bg-neutral-100/60 border-r border-neutral-200">
                         Month {row.month}
                       </td>
-                      <td className="py-2.5 px-4 border-r border-neutral-200">
+                      <td className="py-2.5 px-4 border-r border-neutral-200 font-bold">
                         {formatCurrency(row.due)}
                       </td>
                       <td className="py-2.5 px-4 border-r border-neutral-200 text-amber-900 font-bold bg-amber-50/20">
-                        {formatCurrency(activeFixedDetails.postDrawTotalDue)}
+                        {formatCurrency(row.due + activeFixedDetails.postDrawFee)}
                       </td>
                       <td className="py-2.5 px-4 text-emerald-900 font-black bg-emerald-50/20">
-                        {formatCurrency(row.payout)}
+                        {row.isCompany ? (
+                          <span className="inline-block px-2.5 py-0.5 rounded text-[11px] font-black bg-neutral-900 text-yellow-300">
+                            COMPANY
+                          </span>
+                        ) : (
+                          formatCurrency(row.payout)
+                        )}
                       </td>
                       <td className="py-2.5 px-4">
-                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${
-                          returnPct >= 100 ? 'bg-emerald-100 text-emerald-800' : 'bg-neutral-100 text-neutral-600'
-                        }`}>
-                          {returnPct}%
-                        </span>
+                        {row.isCompany ? (
+                          <span className="px-2 py-0.5 rounded text-xs font-bold bg-neutral-100 text-neutral-500">
+                            Company
+                          </span>
+                        ) : (
+                          <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                            returnPct >= 90 ? 'bg-emerald-100 text-emerald-800' : 'bg-neutral-100 text-neutral-600'
+                          }`}>
+                            {returnPct}%
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );
                 })}
+                {/* TOTAL ROW matching the poster */}
+                <tr className="bg-emerald-100/80 font-black text-emerald-950 text-sm border-t-2 border-emerald-300">
+                  <td className="py-3 px-4 uppercase font-black tracking-wider border-r border-emerald-200 bg-emerald-200/80">
+                    TOTAL
+                  </td>
+                  <td className="py-3 px-4 border-r border-emerald-200 text-emerald-950 text-base font-black">
+                    {formatCurrency(activeFixedDetails.totalDue)}
+                  </td>
+                  <td className="py-3 px-4 border-r border-emerald-200 text-amber-950 text-base font-bold">
+                    —
+                  </td>
+                  <td className="py-3 px-4 border-r border-emerald-200 text-emerald-950 text-base font-black">
+                    {formatCurrency(activeFixedDetails.maxPayout)}
+                  </td>
+                  <td className="py-3 px-4 text-emerald-900 text-xs font-bold">
+                    15.65% Total Savings
+                  </td>
+                </tr>
               </tbody>
             </table>
           ) : (
@@ -878,14 +912,35 @@ export const ManagePlans = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-100 font-semibold">
-                    {calculateFixedPlanSchedule(viewScheduleValue).schedule.map(r => (
-                      <tr key={r.month} className="hover:bg-neutral-50">
-                        <td className="py-2 px-3 font-bold">Month {r.month}</td>
-                        <td className="py-2 px-3">{formatCurrency(r.due)}</td>
-                        <td className="py-2 px-3 text-amber-900 font-bold">{formatCurrency(r.due + Math.round(viewScheduleValue * 0.01))}</td>
-                        <td className="py-2 px-3 text-emerald-900 font-black">{formatCurrency(r.payout)}</td>
-                      </tr>
-                    ))}
+                    {(() => {
+                      const fCalc = calculateFixedPlanSchedule(viewScheduleValue);
+                      return (
+                        <>
+                          {fCalc.schedule.map(r => (
+                            <tr key={r.month} className="hover:bg-neutral-50">
+                              <td className="py-2 px-3 font-bold">Month {r.month}</td>
+                              <td className="py-2 px-3">{formatCurrency(r.due)}</td>
+                              <td className="py-2 px-3 text-amber-900 font-bold">{formatCurrency(r.due + Math.round(viewScheduleValue * 0.01))}</td>
+                              <td className="py-2 px-3 font-black">
+                                {r.isCompany ? (
+                                  <span className="inline-block px-2 py-0.5 rounded text-[10px] font-black bg-neutral-900 text-yellow-300">
+                                    COMPANY
+                                  </span>
+                                ) : (
+                                  <span className="text-emerald-900">{formatCurrency(r.payout)}</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                          <tr className="bg-neutral-900 text-white font-black">
+                            <td className="py-2 px-3 text-yellow-300">TOTAL</td>
+                            <td className="py-2 px-3 text-white">{formatCurrency(fCalc.totalDue)}</td>
+                            <td className="py-2 px-3 text-amber-300">—</td>
+                            <td className="py-2 px-3 text-yellow-300">{formatCurrency(fCalc.maxPayout)}</td>
+                          </tr>
+                        </>
+                      );
+                    })()}
                   </tbody>
                 </table>
               ) : (

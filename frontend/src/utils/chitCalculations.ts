@@ -1,18 +1,25 @@
 export interface FixedMonthRow {
   month: number;
   due: number;
+  duePct: number;
   payout: number;
+  payoutPct: number;
+  isCompany: boolean;
+  payoutDisplay: string;
 }
 
 export interface FixedPlanDetails {
   chitValue: number;
   months: number;
   members: number;
-  monthlyDue: number;
-  postDrawFee: number;
-  postDrawTotalDue: number;
-  minPayout: number;
-  maxPayout: number;
+  monthlyDue: number;       // Month 1 due (5% of chit value)
+  month1Due: number;        // Month 1 due (5% of chit value)
+  standardDue: number;      // Months 2-8 due (3.75% of chit value)
+  postDrawFee: number;      // 1% of chit value
+  postDrawTotalDue: number; // standardDue + postDrawFee
+  minPayout: number;        // Month 2 payout (70% of chit value)
+  maxPayout: number;        // Month 20 payout (95% of chit value)
+  totalDue: number;         // Total dues across 20 months (e.g. 84,350 for 1L)
   schedule: FixedMonthRow[];
 }
 
@@ -42,41 +49,101 @@ export interface AuctionPlanDetails {
 }
 
 /**
+ * Standard Jenista Chits 20 Months - 20 Members Fixed Plan Schedule Ratio Matrix
+ * Matches official company poster:
+ * - Month 1: 5.00% Due (V * 0.05), Payment = COMPANY (Foreman/Company takes Month 1)
+ * - Months 2-8: 3.75% Due (V * 0.0375), Payment = 70.00% (V * 0.70)
+ * - Month 9:  3.85% Due (V * 0.0385), Payment = 72.00% (V * 0.72)
+ * - Month 10: 3.95% Due (V * 0.0395), Payment = 74.00% (V * 0.74)
+ * - Month 11: 4.05% Due (V * 0.0405), Payment = 76.00% (V * 0.76)
+ * - Month 12: 4.15% Due (V * 0.0415), Payment = 78.00% (V * 0.78)
+ * - Month 13: 4.25% Due (V * 0.0425), Payment = 80.00% (V * 0.80)
+ * - Month 14: 4.35% Due (V * 0.0435), Payment = 82.00% (V * 0.82)
+ * - Month 15: 4.50% Due (V * 0.0450), Payment = 85.00% (V * 0.85)
+ * - Month 16: 4.60% Due (V * 0.0460), Payment = 87.00% (V * 0.87)
+ * - Month 17: 4.70% Due (V * 0.0470), Payment = 89.00% (V * 0.89)
+ * - Month 18: 4.80% Due (V * 0.0480), Payment = 91.00% (V * 0.91)
+ * - Month 19: 4.90% Due (V * 0.0490), Payment = 93.00% (V * 0.93)
+ * - Month 20: 5.00% Due (V * 0.0500), Payment = 95.00% (V * 0.95)
+ *
+ * Total Due Sum = 84.35% of Chit Value (e.g. 84,350 for 1L, 1,68,700 for 2L, 4,21,750 for 5L, 8,43,500 for 10L)
+ * Final Month Payout = 95.00% of Chit Value (e.g. 95,000 for 1L, 1,90,000 for 2L, 4,75,000 for 5L, 9,50,000 for 10L)
+ */
+export const fixedScheduleRatioMatrix: { month: number; duePct: number; paymentPct: number; isCompany?: boolean }[] = [
+  { month: 1, duePct: 0.0500, paymentPct: 0, isCompany: true },
+  { month: 2, duePct: 0.0375, paymentPct: 0.70 },
+  { month: 3, duePct: 0.0375, paymentPct: 0.70 },
+  { month: 4, duePct: 0.0375, paymentPct: 0.70 },
+  { month: 5, duePct: 0.0375, paymentPct: 0.70 },
+  { month: 6, duePct: 0.0375, paymentPct: 0.70 },
+  { month: 7, duePct: 0.0375, paymentPct: 0.70 },
+  { month: 8, duePct: 0.0375, paymentPct: 0.70 },
+  { month: 9, duePct: 0.0385, paymentPct: 0.72 },
+  { month: 10, duePct: 0.0395, paymentPct: 0.74 },
+  { month: 11, duePct: 0.0405, paymentPct: 0.76 },
+  { month: 12, duePct: 0.0415, paymentPct: 0.78 },
+  { month: 13, duePct: 0.0425, paymentPct: 0.80 },
+  { month: 14, duePct: 0.0435, paymentPct: 0.82 },
+  { month: 15, duePct: 0.0450, paymentPct: 0.85 },
+  { month: 16, duePct: 0.0460, paymentPct: 0.87 },
+  { month: 17, duePct: 0.0470, paymentPct: 0.89 },
+  { month: 18, duePct: 0.0480, paymentPct: 0.91 },
+  { month: 19, duePct: 0.0490, paymentPct: 0.93 },
+  { month: 20, duePct: 0.0500, paymentPct: 0.95 },
+];
+
+/**
  * Auto-calculates the complete 20-month schedule for a Fixed Chit Plan.
- * Rule:
- * - 20 months, 20 members
- * - Gross Due = Chit Value / 20
- * - Month 1 Payout = 95% of Chit Value
- * - Each subsequent month increments payout by 1% of Chit Value (Month 20 = 114%)
- * - Post-draw additional monthly fee = 1% of Chit Value
- * - Revised due after winning chit = Gross Due + (1% of Chit Value)
  */
 export const calculateFixedPlanSchedule = (chitValue: number, months: number = 20): FixedPlanDetails => {
   const members = months;
-  const monthlyDue = Math.round(chitValue / months);
   const postDrawFee = Math.round(chitValue * 0.01);
-  const postDrawTotalDue = monthlyDue + postDrawFee;
+  let totalDue = 0;
 
   const schedule: FixedMonthRow[] = [];
+
   for (let m = 1; m <= months; m++) {
-    const payoutMultiplier = 0.95 + (m - 1) * 0.01;
-    const payout = Math.round(chitValue * payoutMultiplier);
+    const config = fixedScheduleRatioMatrix[m - 1] || {
+      month: m,
+      duePct: 1 / months,
+      paymentPct: 0.70 + ((m - 1) / months) * 0.25,
+      isCompany: m === 1,
+    };
+
+    const due = Math.round(chitValue * config.duePct);
+    const isCompany = !!config.isCompany;
+    const payout = isCompany ? 0 : Math.round(chitValue * config.paymentPct);
+    const payoutDisplay = isCompany ? 'COMPANY' : payout.toLocaleString('en-IN');
+
+    totalDue += due;
+
     schedule.push({
       month: m,
-      due: monthlyDue,
+      due,
+      duePct: config.duePct,
       payout,
+      payoutPct: config.paymentPct,
+      isCompany,
+      payoutDisplay,
     });
   }
+
+  const eligiblePayouts = schedule.filter(r => !r.isCompany).map(r => r.payout);
+  const standardDue = schedule[1]?.due || Math.round(chitValue * 0.0375);
+  const month1Due = schedule[0]?.due || Math.round(chitValue * 0.05);
 
   return {
     chitValue,
     months,
     members,
-    monthlyDue,
+    monthlyDue: month1Due,
+    month1Due,
+    standardDue,
     postDrawFee,
-    postDrawTotalDue,
-    minPayout: schedule[0]?.payout || Math.round(chitValue * 0.95),
-    maxPayout: schedule[months - 1]?.payout || Math.round(chitValue * 1.14),
+    postDrawTotalDue: standardDue + postDrawFee,
+    minPayout: eligiblePayouts.length > 0 ? Math.min(...eligiblePayouts) : Math.round(chitValue * 0.70),
+    maxPayout: eligiblePayouts.length > 0 ? Math.max(...eligiblePayouts) : Math.round(chitValue * 0.95),
+    totalDue,
     schedule,
   };
 };

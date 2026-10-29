@@ -15,6 +15,7 @@ export interface DueInstallmentRow {
   isWithdrawn: boolean;     // Whether chit was already claimed / withdrawn
   isDisbursalMonth?: boolean;     // The exact month of disbursal
   isPostDisbursalMonth?: boolean; // Whether 1% post-draw fee applies
+  isCompanyMonth?: boolean;       // Month 1 allocated to company (members cannot withdraw)
   status: 'PAID' | 'DUE' | 'PARTIALLY_PAID' | 'OVERDUE';
   amountPaid: number;       // Cumulative amount credited towards this month's installment
   paidOn?: string;          // Formatted Date & Time e.g. "15 Nov 2024 · 02:30 PM"
@@ -291,10 +292,13 @@ export const buildCustomerChitSchedule = (params: {
     const isPostDisbursalMonth = isWithdrawn && disbursalMonthIndex > 0 && m > disbursalMonthIndex;
     const isDisbursalMonth = isWithdrawn && disbursalMonthIndex === m;
 
+    let isCompanyMonth = false;
+
     if (scheme === 'Fixed' && fixedDetails) {
       const fixedRow = fixedDetails.schedule[m - 1];
       grossDue = fixedRow?.due || fixedDetails.monthlyDue;
-      eligiblePayout = fixedRow?.payout || Math.round(chitValue * (0.95 + (m - 1) * 0.01));
+      isCompanyMonth = !!fixedRow?.isCompany || m === 1;
+      eligiblePayout = isCompanyMonth ? 0 : (fixedRow?.payout || 0);
 
       if (isPostDisbursalMonth) {
         revisedDue = grossDue + fixedDetails.postDrawFee;
@@ -401,6 +405,7 @@ export const buildCustomerChitSchedule = (params: {
       grossDue,
       revisedDue,
       eligiblePayout,
+      isCompanyMonth,
       isWithdrawn,
       isDisbursalMonth,
       isPostDisbursalMonth,
@@ -426,7 +431,15 @@ export const buildCustomerChitSchedule = (params: {
 
   // Current eligible prize: If not withdrawn, what could customer claim in the current active month
   const currentMonthRow = schedule[currentDueMonthIndex - 1] || schedule[0];
-  const currentEligiblePrizeAmount = isWithdrawn ? 0 : (currentMonthRow?.eligiblePayout || Math.round(chitValue * 0.95));
+  let currentEligiblePrizeAmount = 0;
+  if (!isWithdrawn) {
+    if (scheme === 'Fixed' && currentDueMonthIndex === 1) {
+      // Month 1 is Company month; earliest member prize claim starts from Month 2 payout
+      currentEligiblePrizeAmount = schedule[1]?.eligiblePayout || Math.round(chitValue * 0.70);
+    } else {
+      currentEligiblePrizeAmount = currentMonthRow?.eligiblePayout || Math.round(chitValue * 0.95);
+    }
+  }
 
   const totalPaidAmount = schedule.reduce((sum, r) => sum + r.amountPaid, 0);
   const remainingBalanceDue = Math.max(0, totalDueAmount - totalPaidAmount);

@@ -88,18 +88,21 @@ export const buildCustomerChitSchedule = (params: {
     revisedDue: number;
     eligiblePayout: number;
     dividend: number;
+    isCompanyMonth?: boolean;
   }[] = [];
 
   if (scheme === 'Fixed') {
     const fixedDetails = calculateFixedPlanSchedule(chitValue, totalDurationMonths);
     calculatedRows = fixedDetails.schedule.map((r) => {
-      const revisedDue = isWithdrawn ? fixedDetails.postDrawTotalDue : r.due;
+      const isCompanyMonth = r.isCompany || r.month === 1;
+      const revisedDue = isWithdrawn ? (r.due + fixedDetails.postDrawFee) : r.due;
       return {
         monthNumber: r.month,
         grossDue: r.due,
         revisedDue,
-        eligiblePayout: r.payout,
+        eligiblePayout: isCompanyMonth ? 0 : r.payout,
         dividend: 0,
+        isCompanyMonth,
       };
     });
   } else if (scheme === 'Regular') {

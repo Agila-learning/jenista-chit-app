@@ -926,11 +926,21 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
                 <Text style={[styles.scheduleTdText, { flex: 1, textAlign: 'center', color: Colors.navy.primary }]}>
                   {formatCurrency(row.due)}
                 </Text>
-                <Text style={[styles.scheduleTdText, { flex: 1, textAlign: 'right', color: '#047857', fontWeight: '800' }]}>
-                  {formatCurrency(row.payout)}
+                <Text style={[styles.scheduleTdText, { flex: 1, textAlign: 'right', color: row.isCompany ? '#1e293b' : '#047857', fontWeight: '800' }]}>
+                  {row.isCompany ? 'COMPANY' : formatCurrency(row.payout)}
                 </Text>
               </View>
             ))}
+            {/* TOTAL Row */}
+            <View style={[styles.scheduleTableRow, { backgroundColor: '#f1f5f9', borderTopWidth: 2, borderTopColor: '#cbd5e1' }]}>
+              <Text style={[styles.scheduleTdText, { width: 50, fontWeight: '900', color: Colors.navy.primary }]}>TOTAL</Text>
+              <Text style={[styles.scheduleTdText, { flex: 1, textAlign: 'center', color: Colors.navy.primary, fontWeight: '900' }]}>
+                {formatCurrency(fixedPlan.totalDue)}
+              </Text>
+              <Text style={[styles.scheduleTdText, { flex: 1, textAlign: 'right', color: '#047857', fontWeight: '900' }]}>
+                {formatCurrency(fixedPlan.maxPayout)}
+              </Text>
+            </View>
           </View>
         </View>
       )}
