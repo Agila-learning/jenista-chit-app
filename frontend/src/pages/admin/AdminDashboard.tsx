@@ -570,25 +570,30 @@ export const AdminDashboard = () => {
             });
           } catch {}
 
-          // Merge local-only customers that are not yet in backend MongoDB (prevents wipeout of converted leads like Agila)
+          // Merge local-only customers that are not yet in backend MongoDB
+          const deletedIds = new Set<string>(JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]'));
           const backendPhoneSet = new Set(res.data.map((i: any) => (i.phone || i.mobile || '').replace(/\D/g, '')));
           const backendIdSet = new Set(res.data.map((i: any) => i._id || i.customerCode));
 
+          const cleanMapped = mapped.filter((c: any) => !deletedIds.has(c.id) && (!c.mongoId || !deletedIds.has(c.mongoId)));
+
           const localOnly = localSaved.filter((lc: any) => {
             if (isMockCustomer(lc)) return false;
+            if (deletedIds.has(lc.id) || (lc.mongoId && deletedIds.has(lc.mongoId)) || (lc.mobile && deletedIds.has(lc.mobile))) return false;
+            // If customer was synced from MongoDB (has mongoId) but is missing from MongoDB, it was deleted in MongoDB!
+            if (lc.mongoId && !backendIdSet.has(lc.mongoId)) return false;
             const normPhone = (lc.mobile || lc.phone || '').replace(/\D/g, '');
             if (normPhone && backendPhoneSet.has(normPhone)) return false;
-            if (lc.mongoId && backendIdSet.has(lc.mongoId)) return false;
             if (lc.id && backendIdSet.has(lc.id)) return false;
             return true;
           });
 
-          const combined = [...mapped, ...localOnly];
+          const combined = [...cleanMapped, ...localOnly];
 
-          // Auto-resurrect converted leads (like Agila) if missing from customers array
+          // Auto-resurrect converted leads (skipping explicitly deleted leads)
           try {
             const storedLeads = JSON.parse(localStorage.getItem('websiteLeads') || '[]');
-            storedLeads.filter((l: any) => l.status === 'CONVERTED' || (l.fullName && l.fullName.toLowerCase().includes('agila'))).forEach((lead: any) => {
+            storedLeads.filter((l: any) => l.status !== 'REJECTED' && !deletedIds.has(l.convertedCustomerId) && (l.status === 'CONVERTED' || (l.fullName && l.fullName.toLowerCase().includes('agila')))).forEach((lead: any) => {
               const leadPhone = (lead.phone || '').replace(/\D/g, '');
               const leadName = (lead.fullName || '').trim().toLowerCase();
               const alreadyExists = combined.some((c: any) => {
@@ -1448,6 +1453,99 @@ export const AdminDashboard = () => {
       printWindow.document.close();
     };
 
+    // Remove an enrolled member from this specific group and update group filled count
+    const handleDeleteGroupMember = (cust: any, _chit?: any) => {
+      const custName = cust.name || 'this member';
+      const groupName = activeGroup?.name || selectedGroup?.name || 'this group';
+      const confirmMsg = `Are you sure you want to remove member ${custName} from "${groupName}"?\n\nThis will remove their seat in this group and automatically update group enrolled counts.`;
+
+      if (!window.confirm(confirmMsg)) return;
+
+      const targetId = cust.id || cust.customerCode || cust.mongoId;
+      const targetGroupId = activeGroup?.id;
+      const targetGroupCode = activeGroup?.code;
+      const targetGroupName = activeGroup?.name;
+
+      // 1. Remove this group from customer's chits array in mockCustomers
+      const diskCusts = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
+      const updatedCusts = diskCusts.map((c: any) => {
+        const cId = c.id || c.customerCode || c.mongoId;
+        if (cId === targetId || (c.mobile && cust.mobile && c.mobile.replace(/\D/g, '') === cust.mobile.replace(/\D/g, ''))) {
+          const remainingChits = Array.isArray(c.chits)
+            ? c.chits.filter((ch: any) => !(
+                (targetGroupId && ch.groupId === targetGroupId) ||
+                (targetGroupCode && ch.groupId === targetGroupCode) ||
+                (targetGroupName && (ch.groupName === targetGroupName || ch.groupId === targetGroupName))
+              ))
+            : [];
+          return {
+            ...c,
+            chits: remainingChits,
+            activeChits: remainingChits.length
+          };
+        }
+        return c;
+      });
+
+      localStorage.setItem('mockCustomers', JSON.stringify(updatedCusts));
+      setCustomers(updatedCusts.filter((c: any) => !isMockCustomer(c)));
+
+      // 2. Remove member from mockChitGroups and recalculate filled count
+      const diskGroups = JSON.parse(localStorage.getItem('mockChitGroups') || '[]');
+      const updatedGroups = diskGroups.map((g: any) => {
+        const matchesGroup = (targetGroupId && g.id === targetGroupId) || (targetGroupCode && g.code === targetGroupCode) || (targetGroupName && g.name === targetGroupName);
+        if (matchesGroup) {
+          const remainingMembers = Array.isArray(g.enrolledMembers)
+            ? g.enrolledMembers.filter((m: any) => {
+                const mId = m.customerId || m.id;
+                const mPhone = (m.mobile || m.phone || '').replace(/\D/g, '');
+                const targetPhone = (cust.mobile || cust.phone || '').replace(/\D/g, '');
+                return mId !== targetId && !(mPhone && targetPhone && mPhone === targetPhone);
+              })
+            : [];
+          const newFilled = Array.isArray(g.enrolledMembers)
+            ? remainingMembers.length
+            : Math.max(0, (g.filled || 1) - 1);
+          return {
+            ...g,
+            enrolledMembers: remainingMembers,
+            filled: newFilled
+          };
+        }
+        return g;
+      });
+
+      localStorage.setItem('mockChitGroups', JSON.stringify(updatedGroups));
+      setChitGroups(updatedGroups);
+
+      // Keep activeGroup / selectedGroup updated in state
+      const refreshedActive = updatedGroups.find((g: any) => 
+        (targetGroupId && g.id === targetGroupId) || (targetGroupCode && g.code === targetGroupCode) || (targetGroupName && g.name === targetGroupName)
+      );
+      if (refreshedActive) {
+        setSelectedGroup(refreshedActive);
+      }
+
+      // 3. Update chitGroupMemberships
+      const diskMemberships = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
+      const updatedMemberships = diskMemberships.filter((m: any) => {
+        const isTargetGroup = (targetGroupId && m.groupId === targetGroupId) || (targetGroupName && m.groupName === targetGroupName);
+        const isTargetMember = m.customerId === targetId || (m.mobile && cust.mobile && m.mobile.replace(/\D/g, '') === cust.mobile.replace(/\D/g, ''));
+        return !(isTargetGroup && isTargetMember);
+      });
+      localStorage.setItem('chitGroupMemberships', JSON.stringify(updatedMemberships));
+
+      // 4. Update backend if customer exists
+      fetchClient(`/customers/${targetId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          chits: updatedCusts.find((c: any) => (c.id || c.customerCode) === targetId)?.chits || []
+        })
+      }).catch(() => {});
+
+      window.dispatchEvent(new Event('storage'));
+    };
+
     // Filtered members for Tab 2 (Month-wise tracking)
     const filteredMonthMembers = currentMonthStats.members.filter(m => {
       if (monthStatusFilter === 'PAID' && !m.isPaid) return false;
@@ -1780,6 +1878,13 @@ export const AdminDashboard = () => {
                                   title="View full customer profile"
                                 >
                                   <span>Profile</span>
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteGroupMember(c, chit)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-200"
+                                  title={`Remove ${c.name} from this group`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </div>
                             </td>
@@ -2466,6 +2571,16 @@ export const AdminDashboard = () => {
   const getFilteredSchemeCustomers = (filterScheme: 'GROUPS' | 'FIXED' | 'REGULAR' | 'AUCTION' | null) => {
     if (!filterScheme || filterScheme === 'GROUPS') return [];
 
+    const deletedList: string[] = JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]');
+    const deletedSet = new Set(deletedList.map(s => String(s).toLowerCase().trim()));
+    const isDeleted = (id?: string, phone?: string, mongoId?: string) => {
+      if (id && deletedSet.has(String(id).toLowerCase().trim())) return true;
+      if (mongoId && deletedSet.has(String(mongoId).toLowerCase().trim())) return true;
+      const cleanP = (phone || '').replace(/\D/g, '');
+      if (cleanP && (deletedSet.has(cleanP) || deletedSet.has((phone || '').toLowerCase().trim()))) return true;
+      return false;
+    };
+
     const schemePrefix = filterScheme === 'FIXED' ? 'FIX' : filterScheme === 'AUCTION' ? 'AUC' : 'REG';
     const customerMap = new Map<string, any>();
 
@@ -2474,18 +2589,22 @@ export const AdminDashboard = () => {
       if (Array.isArray(g.enrolledMembers)) {
         g.enrolledMembers.forEach((m: any) => {
           if (!isMockCustomer(m)) {
+            const custId = m.customerId || m.id || m.mobile;
+            if (isDeleted(custId, m.mobile || m.phone, m.mongoId)) return;
+
             const s = (m.scheme || '').toUpperCase();
             const matches = schemePrefix === 'REG'
               ? (!s.includes('FIX') && !s.includes('AUC'))
               : s.includes(schemePrefix);
 
             if (matches) {
-              const custId = m.customerId || m.id || m.mobile;
               const uniqueKey = `${custId}_${g.id || g.name}`;
               customerMap.set(uniqueKey, {
                 id: custId,
+                mongoId: m.mongoId,
                 name: m.customerName || m.name || 'Member',
                 mobile: m.mobile || m.phone || '—',
+                phone: m.mobile || m.phone || '—',
                 groupId: g.id,
                 groupName: g.name || g.id,
                 scheme: m.scheme || (filterScheme === 'FIXED' ? 'Fixed' : filterScheme === 'AUCTION' ? 'Auction' : 'Regular'),
@@ -2505,19 +2624,23 @@ export const AdminDashboard = () => {
     const diskMemberships = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
     diskMemberships.forEach((m: any) => {
       if (!isMockCustomer({ id: m.customerId, name: m.customerName })) {
+        const custId = m.customerId || m.id;
+        if (isDeleted(custId, m.mobile || m.phone, m.mongoId)) return;
+
         const s = (m.scheme || '').toUpperCase();
         const matches = schemePrefix === 'REG'
           ? (!s.includes('FIX') && !s.includes('AUC'))
           : s.includes(schemePrefix);
 
         if (matches) {
-          const custId = m.customerId || m.id;
           const uniqueKey = `${custId}_${m.groupId || m.groupName}`;
           if (!customerMap.has(uniqueKey)) {
             customerMap.set(uniqueKey, {
               id: custId,
+              mongoId: m.mongoId,
               name: m.customerName || m.name || 'Member',
               mobile: m.mobile || m.phone || '—',
+              phone: m.mobile || m.phone || '—',
               groupId: m.groupId,
               groupName: m.groupName || m.groupId,
               scheme: m.scheme || (filterScheme === 'FIXED' ? 'Fixed' : filterScheme === 'AUCTION' ? 'Auction' : 'Regular'),
@@ -2535,6 +2658,8 @@ export const AdminDashboard = () => {
     // 3. LocalStorage mockCustomers / MongoDB customers
     const diskCusts = JSON.parse(localStorage.getItem('mockCustomers') || '[]').filter((c: any) => !isMockCustomer(c));
     diskCusts.forEach((c: any) => {
+      if (isDeleted(c.id, c.mobile || c.phone, c.mongoId)) return;
+
       if (Array.isArray(c.chits) && c.chits.length > 0) {
         c.chits.forEach((ch: any) => {
           const s = (ch.scheme || c.scheme || '').toUpperCase();
@@ -2547,8 +2672,10 @@ export const AdminDashboard = () => {
             if (!customerMap.has(uniqueKey)) {
               customerMap.set(uniqueKey, {
                 id: c.id,
+                mongoId: c.mongoId,
                 name: c.name || c.fullName || 'Member',
                 mobile: c.mobile || c.phone || '—',
+                phone: c.mobile || c.phone || '—',
                 groupId: ch.groupId || '—',
                 groupName: ch.groupName || 'Direct Plan',
                 scheme: ch.scheme || c.scheme || (filterScheme === 'FIXED' ? 'Fixed' : filterScheme === 'AUCTION' ? 'Auction' : 'Regular'),
@@ -2572,8 +2699,10 @@ export const AdminDashboard = () => {
           if (!customerMap.has(uniqueKey)) {
             customerMap.set(uniqueKey, {
               id: c.id,
+              mongoId: c.mongoId,
               name: c.name || c.fullName || 'Member',
               mobile: c.mobile || c.phone || '—',
+              phone: c.mobile || c.phone || '—',
               groupId: '—',
               groupName: c.interestedPlan || `${filterScheme === 'FIXED' ? 'Fixed' : filterScheme === 'AUCTION' ? 'Auction' : 'Regular'} Scheme (Awaiting Group Allocation)`,
               scheme: c.scheme || (filterScheme === 'FIXED' ? 'Fixed' : filterScheme === 'AUCTION' ? 'Auction' : 'Regular'),
@@ -2592,6 +2721,9 @@ export const AdminDashboard = () => {
     try {
       const storedLeads = JSON.parse(localStorage.getItem('websiteLeads') || '[]');
       storedLeads.filter((l: any) => l.status === 'CONVERTED' || (l.fullName && l.fullName.toLowerCase().includes('agila'))).forEach((lead: any) => {
+        const leadId = lead.convertedCustomerId || `LEAD-${lead.id}`;
+        if (isDeleted(leadId, lead.phone)) return;
+
         const rawP = lead.interestedPlan || '';
         let dScheme: 'Auction' | 'Fixed' | 'Regular' = 'Auction';
         if (rawP.toLowerCase().includes('fix')) dScheme = 'Fixed';
@@ -2613,11 +2745,11 @@ export const AdminDashboard = () => {
           });
 
           if (!alreadyInMap) {
-            const leadId = lead.convertedCustomerId || `LEAD-${lead.id}`;
             customerMap.set(`lead_${leadId}`, {
               id: leadId,
               name: lead.fullName,
               mobile: lead.phone || '—',
+              phone: lead.phone || '—',
               groupId: 'PENDING',
               groupName: lead.interestedPlan || `${dScheme} Scheme (Lead Enrolled)`,
               scheme: dScheme,
@@ -2980,6 +3112,115 @@ export const AdminDashboard = () => {
     );
   }
 
+  // Remove customer from Scheme Enrollments (Fixed, Regular, Auction) & sync counts across all views
+  const handleDeleteSchemeEnrollment = (cust: any) => {
+    const custName = cust.name || 'this member';
+    const schemeName = cust.scheme || selectedSchemeFilter || 'this scheme';
+    const confirmMsg = `Are you sure you want to remove ${custName} (${cust.id}) from ${schemeName} enrollments?\n\nThis will remove their enrollment, clean all group seat allocations, and update dashboard group counts immediately.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    const targetId = cust.id || cust.customerCode || cust.mongoId;
+    const targetPhone = (cust.mobile || cust.phone || '').replace(/\D/g, '');
+    const targetGroupId = cust.groupId;
+    const targetGroupName = cust.groupName;
+
+    // 1. Record in deletedCustomerIds to prevent zombie resurrection
+    const deletedIds: string[] = JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]');
+    if (targetId && !deletedIds.includes(targetId)) deletedIds.push(targetId);
+    if (cust.mongoId && !deletedIds.includes(cust.mongoId)) deletedIds.push(cust.mongoId);
+    if (targetPhone && !deletedIds.includes(targetPhone)) deletedIds.push(targetPhone);
+    if (cust.mobile && !deletedIds.includes(cust.mobile)) deletedIds.push(cust.mobile);
+    localStorage.setItem('deletedCustomerIds', JSON.stringify(deletedIds));
+
+    // 2. Remove or unenroll from mockCustomers
+    const diskCusts = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
+    const updatedCusts = diskCusts
+      .map((c: any) => {
+        const cId = c.id || c.customerCode || c.mongoId;
+        const cPhone = (c.mobile || c.phone || '').replace(/\D/g, '');
+        const matches = cId === targetId || (cust.mongoId && c.mongoId === cust.mongoId) || (targetPhone && cPhone === targetPhone);
+        if (matches) {
+          // Filter out the chit belonging to this scheme or group
+          const schemePrefix = (cust.scheme || selectedSchemeFilter || '').toUpperCase().slice(0, 3);
+          const remainingChits = Array.isArray(c.chits)
+            ? c.chits.filter((ch: any) => {
+                const s = (ch.scheme || c.scheme || '').toUpperCase();
+                const matchesScheme = schemePrefix ? s.includes(schemePrefix) : false;
+                const matchesGrp = (targetGroupId && ch.groupId === targetGroupId) || (targetGroupName && (ch.groupName === targetGroupName || ch.groupId === targetGroupName));
+                return !(matchesScheme || matchesGrp);
+              })
+            : [];
+
+          return {
+            ...c,
+            chits: remainingChits,
+            activeChits: remainingChits.length,
+            scheme: remainingChits[0]?.scheme || undefined,
+            _removeCompletely: remainingChits.length === 0
+          };
+        }
+        return c;
+      })
+      .filter((c: any) => !c._removeCompletely);
+
+    localStorage.setItem('mockCustomers', JSON.stringify(updatedCusts));
+    setCustomers(updatedCusts.filter((c: any) => !isMockCustomer(c)));
+
+    // 3. Remove member from mockChitGroups and update filled count
+    const diskGroups = JSON.parse(localStorage.getItem('mockChitGroups') || '[]');
+    const updatedGroups = diskGroups.map((g: any) => {
+      if (Array.isArray(g.enrolledMembers)) {
+        const remainingMembers = g.enrolledMembers.filter((m: any) => {
+          const mId = m.customerId || m.id;
+          const mPhone = (m.mobile || m.phone || '').replace(/\D/g, '');
+          const isMatch = mId === targetId || (targetPhone && mPhone === targetPhone);
+          return !isMatch;
+        });
+        return {
+          ...g,
+          enrolledMembers: remainingMembers,
+          filled: remainingMembers.length
+        };
+      }
+      return g;
+    });
+    localStorage.setItem('mockChitGroups', JSON.stringify(updatedGroups));
+    setChitGroups(updatedGroups);
+
+    // 4. Clean from chitGroupMemberships
+    const diskMemberships = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
+    const updatedMemberships = diskMemberships.filter((m: any) => {
+      const mId = m.customerId || m.id;
+      const mPhone = (m.mobile || m.phone || '').replace(/\D/g, '');
+      return mId !== targetId && !(targetPhone && mPhone === targetPhone);
+    });
+    localStorage.setItem('chitGroupMemberships', JSON.stringify(updatedMemberships));
+
+    // 5. Clean websiteLeads so it won't resurrect
+    try {
+      const storedLeads = JSON.parse(localStorage.getItem('websiteLeads') || '[]');
+      const updatedLeads = storedLeads.map((l: any) => {
+        const lPhone = (l.phone || '').replace(/\D/g, '');
+        if (l.convertedCustomerId === targetId || l.id === targetId || (targetPhone && lPhone === targetPhone)) {
+          return { ...l, status: 'REJECTED' };
+        }
+        return l;
+      });
+      localStorage.setItem('websiteLeads', JSON.stringify(updatedLeads));
+    } catch {}
+
+    // 6. Delete from MongoDB backend
+    const backendId = cust.mongoId || (targetId && targetId.length === 24 ? targetId : null);
+    if (backendId) {
+      fetchClient(`/customers/${backendId}`, { method: 'DELETE' }).catch(() => {});
+    } else {
+      fetchClient(`/customers/${targetId}`, { method: 'DELETE' }).catch(() => {});
+    }
+
+    // 7. Dispatch storage event to keep all open components reactive
+    window.dispatchEvent(new Event('storage'));
+  };
+
   // ==========================================
   // FULL SCREEN VIEW: SCHEME FILTERED CUSTOMERS (FIXED, REGULAR, AUCTION)
   // ==========================================
@@ -3103,13 +3344,22 @@ export const AdminDashboard = () => {
                         </span>
                       </td>
                       <td className="px-4 py-3.5 text-center">
-                        <button
-                          onClick={() => navigate(`/admin/customers/${c.id}`)}
-                          className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs inline-flex items-center gap-1 transition-colors"
-                        >
-                          <span>View Profile</span>
-                          <span className="text-[10px]">&rarr;</span>
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => navigate(`/admin/customers/${c.id}`)}
+                            className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs inline-flex items-center gap-1 transition-colors"
+                          >
+                            <span>Profile</span>
+                            <span className="text-[10px]">&rarr;</span>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSchemeEnrollment(c)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-200"
+                            title={`Delete ${c.name} from ${selectedSchemeFilter} enrollments`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))

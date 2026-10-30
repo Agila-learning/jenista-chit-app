@@ -313,4 +313,33 @@ export class CustomerController {
       next(error);
     }
   }
+
+  static async deleteCustomer(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const customerId = Array.isArray(id) ? id[0] : id;
+      const isObjectId = typeof customerId === 'string' && /^[0-9a-fA-F]{24}$/.test(customerId);
+
+      const orConditions: any[] = [];
+      if (isObjectId) {
+        orConditions.push({ _id: customerId });
+      }
+      if (customerId) {
+        orConditions.push({ customerCode: customerId });
+        orConditions.push({ phone: customerId });
+      }
+
+      const deleted = await Customer.findOneAndDelete(
+        orConditions.length > 0 ? { $or: orConditions } : { customerCode: customerId }
+      );
+
+      if (!deleted) {
+        throw new ApiError(404, 'Customer not found', 'NOT_FOUND');
+      }
+
+      res.status(200).json({ success: true, message: 'Customer deleted successfully', data: deleted });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

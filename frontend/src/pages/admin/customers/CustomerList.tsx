@@ -102,20 +102,25 @@ export const CustomerList = () => {
           };
         });
 
-        const cleanMapped = mapped.filter((c: any) => !isMockCustomer(c));
-        const localOnly = localSaved.filter((lc: any) => 
-          !isMockCustomer(lc) &&
-          !mongoList.some((item: any) => 
+        const deletedIds = new Set<string>(JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]'));
+        const cleanMapped = mapped.filter((c: any) => !isMockCustomer(c) && !deletedIds.has(c.id) && (!c.mongoId || !deletedIds.has(c.mongoId)));
+        
+        const localOnly = localSaved.filter((lc: any) => {
+          if (isMockCustomer(lc)) return false;
+          if (deletedIds.has(lc.id) || (lc.mongoId && deletedIds.has(lc.mongoId)) || (lc.mobile && deletedIds.has(lc.mobile))) return false;
+          // If customer has a mongoId but is missing from backend MongoDB list, it was deleted!
+          if (lc.mongoId && !mongoList.some((item: any) => item._id === lc.mongoId)) return false;
+          return !mongoList.some((item: any) => 
             (item._id && lc.mongoId === item._id) || 
             (item.customerCode && lc.id === item.customerCode) ||
             (item.phone && (lc.mobile === item.phone || lc.phone === item.phone))
-          )
-        );
+          );
+        });
 
         const combined = [...cleanMapped, ...localOnly];
 
-        // Self-heal with websiteLeads (e.g. Lead Agila converted)
-        storedLeads.forEach((lead: any) => {
+        // Self-heal with websiteLeads (e.g. Lead Agila converted, skipping deleted leads)
+        storedLeads.filter((l: any) => l.status !== 'REJECTED' && !deletedIds.has(l.convertedCustomerId)).forEach((lead: any) => {
           const leadPhone = (lead.phone || '').replace(/\D/g, '');
           const leadName = (lead.fullName || '').trim().toLowerCase();
 
@@ -243,16 +248,55 @@ export const CustomerList = () => {
   }, [allCustomers]);
 
   const handleDeleteCustomer = (id: string) => {
-    if (window.confirm("Are you sure you want to delete this customer?")) {
+    const cust = allCustomers.find((c: any) => c.id === id);
+    if (window.confirm(`Are you sure you want to delete customer ${cust?.name || id}?`)) {
       const updatedCustomers = allCustomers.filter((c: any) => c.id !== id);
       setAllCustomers(updatedCustomers);
       
       const saved = localStorage.getItem('mockCustomers');
       if (saved) {
         const parsed = JSON.parse(saved);
-        const newStorage = parsed.filter((c: any) => c.id !== id);
+        const newStorage = parsed.filter((c: any) => c.id !== id && c.customerCode !== id && (!cust?.mongoId || c.mongoId !== cust.mongoId));
         localStorage.setItem('mockCustomers', JSON.stringify(newStorage));
       }
+
+      // Track in deletedCustomerIds
+      const deletedIds: string[] = JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]');
+      if (!deletedIds.includes(id)) deletedIds.push(id);
+      if (cust?.mongoId && !deletedIds.includes(cust.mongoId)) deletedIds.push(cust.mongoId);
+      if (cust?.phone && !deletedIds.includes(cust.phone)) deletedIds.push(cust.phone);
+      localStorage.setItem('deletedCustomerIds', JSON.stringify(deletedIds));
+
+      // Clean from mockChitGroups
+      const diskGroups = JSON.parse(localStorage.getItem('mockChitGroups') || '[]');
+      const updatedGroups = diskGroups.map((g: any) => ({
+        ...g,
+        enrolledMembers: Array.isArray(g.enrolledMembers) ? g.enrolledMembers.filter((m: any) => m.id !== id && m.customerId !== id) : [],
+        filled: Array.isArray(g.enrolledMembers) ? g.enrolledMembers.filter((m: any) => m.id !== id && m.customerId !== id).length : (g.filled || 0)
+      }));
+      localStorage.setItem('mockChitGroups', JSON.stringify(updatedGroups));
+
+      // Clean from chitGroupMemberships
+      const diskMemberships = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
+      const updatedMemberships = diskMemberships.filter((m: any) => m.customerId !== id && m.id !== id);
+      localStorage.setItem('chitGroupMemberships', JSON.stringify(updatedMemberships));
+
+      // Clean from websiteLeads
+      try {
+        const storedLeads = JSON.parse(localStorage.getItem('websiteLeads') || '[]');
+        const updatedLeads = storedLeads.map((l: any) => {
+          if (l.convertedCustomerId === id || l.id === id) {
+            return { ...l, status: 'REJECTED' };
+          }
+          return l;
+        });
+        localStorage.setItem('websiteLeads', JSON.stringify(updatedLeads));
+      } catch {}
+
+      // Delete from backend MongoDB
+      const targetId = cust?.mongoId || id;
+      fetchClient(`/customers/${targetId}`, { method: 'DELETE' }).catch(() => {});
+
       window.dispatchEvent(new Event('storage'));
     }
   };

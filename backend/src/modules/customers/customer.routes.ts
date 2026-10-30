@@ -20,4 +20,7 @@ router.get('/', CustomerController.getCustomers);
 router.patch('/:id/status', CustomerController.updateCustomerStatus);
 router.patch('/:id', CustomerController.updateCustomerStatus);
 
+// Delete customer
+router.delete('/:id', CustomerController.deleteCustomer);
+
 export default router;
