@@ -116,7 +116,11 @@ export const Payments = () => {
             };
           });
           const cleanMapped = mapped.filter((item: any) => !isMockCustomer(item));
-          localStorage.setItem('mockCustomers', JSON.stringify(cleanMapped));
+          const existingLocal = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
+          const localOnly = existingLocal.filter((loc: any) => 
+            !cleanMapped.some((m: any) => m.id === loc.id || (loc.mongoId && m.mongoId === loc.mongoId) || (loc.customerCode && m.customerCode === loc.customerCode))
+          );
+          localStorage.setItem('mockCustomers', JSON.stringify([...cleanMapped, ...localOnly]));
         }
       })
       .catch((err: any) => console.warn('Could not sync payments customers:', err));

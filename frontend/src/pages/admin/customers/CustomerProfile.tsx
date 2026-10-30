@@ -6,7 +6,7 @@ import {
   User, Phone, MapPin, Building, 
   Wallet, FileText, AlertCircle, CheckCircle2,
   Calendar, Mail, CreditCard, Activity, ArrowUpRight, ArrowDownRight, Clock, Layers, X, Users, BookOpen, Download, Award,
-  Eye, ExternalLink, Printer, Landmark, Filter, UserX, UserCheck, Pencil, Check
+  Eye, ExternalLink, Printer, Landmark, Filter, UserX, UserCheck, Pencil, Check, Receipt
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import { fetchClient } from '../../../api/client';
@@ -33,11 +33,16 @@ export const CustomerProfile = () => {
   const initialGroup = searchParams.get('chitGroup') || searchParams.get('group') || searchParams.get('groupId') || '';
   const [selectedGroupScope, setSelectedGroupScope] = useState<string>(initialGroup);
 
-  // Receive Payment Modal States
+  // Receive Payment Modal & Past Record States
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [selectedChitForPayment, setSelectedChitForPayment] = useState('');
   const [paymentMode, setPaymentMode] = useState('Cash');
+  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [paymentMonth, setPaymentMonth] = useState('1');
+  const [paymentReceiptNo, setPaymentReceiptNo] = useState('');
+  const [paymentRemarks, setPaymentRemarks] = useState('');
+  const [paymentSuccessToast, setPaymentSuccessToast] = useState<string | null>(null);
 
   // Disburse / Withdraw Modal States
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
@@ -281,108 +286,183 @@ export const CustomerProfile = () => {
         }
       }
 
-      // 1. Try fetching from MongoDB
+      // 1. Fetch from MongoDB
+      let mongoFound: any = null;
       try {
         const res = await fetchClient(`/customers?search=${id}`);
         if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
-          const found = res.data.find((c: any) => c.customerCode === id || c._id === id) || res.data[0];
-          if (found) {
-            const resolvedChits = resolveChitsForCustomer(found, id);
-            const trueTotalPaid = Math.max(Number(found.totalPaid || 0), Number(localFound?.totalPaid || 0), ledgerTotalPaid);
-            const trueWithdrawn = Math.max(
-              resolvedChits.filter((ch: any) => ch.isWithdrawn).reduce((sum: number, ch: any) => sum + Number(ch.withdrawnAmount || 0), 0),
-              ledgerTotalWithdrawn
-            );
-
-            const customerObj = {
-              id: found.customerCode || found._id,
-              mongoId: found._id,
-              customerCode: found.customerCode,
-              name: found.fullName || found.name,
-              mobile: found.phone || found.mobile,
-              address: found.address,
-              aadhar: found.aadhar || '—',
-              pan: found.pan || '—',
-              branch: found.branchId?.branchName || 'Head Office',
-              agent: found.assignedAgentId?.name || 'System Admin',
-              totalPaid: trueTotalPaid,
-              pending: found.pending !== undefined ? found.pending : (localFound?.pending || 0),
-              activeChits: resolvedChits.length,
-              chits: resolvedChits,
-              withdrawnAmount: trueWithdrawn,
-              status: found.status || 'ACTIVE'
-            };
-
-            setCustomer(customerObj);
-
-            // Auto-heal MongoDB record if it was out of sync
-            if (trueTotalPaid > Number(found.totalPaid || 0) || resolvedChits.length > Number(found.chits?.length || 0)) {
-              fetchClient(`/customers/${found._id || found.customerCode || id}`, {
-                method: 'PATCH',
-                body: JSON.stringify({
-                  totalPaid: trueTotalPaid,
-                  chits: resolvedChits
-                })
-              }).catch(err => console.warn('Could not auto-sync customer to MongoDB:', err));
-            }
-
-            return;
-          }
+          mongoFound = res.data.find((c: any) => c.customerCode === id || c._id === id) || res.data[0];
         }
       } catch (err) {
         console.warn('Could not fetch customer profile from API:', err);
       }
 
-      // 2. Fallback to localStorage if API unavailable
-      if (localFound) {
-        const resolvedChits = resolveChitsForCustomer(localFound, id);
-        const trueTotalPaid = Math.max(Number(localFound.totalPaid || 0), ledgerTotalPaid);
-        setCustomer({
-          ...localFound,
-          totalPaid: trueTotalPaid,
-          chits: resolvedChits,
-          activeChits: resolvedChits.length,
-          withdrawnAmount: ledgerTotalWithdrawn
-        });
-      } else {
-        // 3. Fallback: check chitGroupMemberships or mockChitGroups if customer was enrolled directly into a group
-        const memberships = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
-        const mem = memberships.find((m: any) => m.customerId === id || (id.replace(/\D/g, '') && (m.mobile || m.phone || '').replace(/\D/g, '') === id.replace(/\D/g, '')));
-        const groups = JSON.parse(localStorage.getItem('mockChitGroups') || '[]');
-        let groupMem: any = null;
-        groups.forEach((g: any) => {
-          if (Array.isArray(g.enrolledMembers)) {
-            const foundM = g.enrolledMembers.find((m: any) => m.customerId === id || (id.replace(/\D/g, '') && (m.mobile || m.phone || '').replace(/\D/g, '') === id.replace(/\D/g, '')));
-            if (foundM) groupMem = { ...foundM, groupId: g.code || g.id, groupName: g.name };
-          }
-        });
+      // 2. Query all local data sources for customer data
+      // A. websiteLeads (e.g. Lead converted to customer)
+      const storedLeads = JSON.parse(localStorage.getItem('websiteLeads') || '[]');
+      let matchedLead = storedLeads.find((l: any) => 
+        l.convertedCustomerId === id || 
+        l.id === id || 
+        (l.phone && (id.replace(/\D/g, '').length >= 10 && id.replace(/\D/g, '') === l.phone.replace(/\D/g, '')))
+      );
 
-        const fallbackData = mem || groupMem;
-        if (fallbackData) {
-          const fallbackCust = {
-            id: fallbackData.customerId || id,
-            customerCode: fallbackData.customerId || id,
-            name: fallbackData.customerName || fallbackData.name || 'Customer',
-            mobile: fallbackData.mobile || fallbackData.phone || '',
-            phone: fallbackData.mobile || fallbackData.phone || '',
-            address: fallbackData.address || '—',
-            aadhar: fallbackData.aadhar || '—',
-            pan: fallbackData.pan || '—',
-            branch: 'Head Office',
-            agent: 'System Admin',
-            totalPaid: ledgerTotalPaid,
-            pending: fallbackData.pending || 0,
-            status: 'ACTIVE',
-            chits: []
-          };
-          const resolvedChits = resolveChitsForCustomer(fallbackCust, id);
-          setCustomer({
-            ...fallbackCust,
-            chits: resolvedChits,
-            activeChits: resolvedChits.length,
-            withdrawnAmount: ledgerTotalWithdrawn
-          });
+      // If no lead matched directly by ID, check if any converted lead has this customer ID or phone in transactions
+      if (!matchedLead) {
+        matchedLead = storedLeads.find((l: any) => l.status === 'CONVERTED' && !l.convertedCustomerId);
+        if (matchedLead) {
+          matchedLead.convertedCustomerId = id;
+          try {
+            localStorage.setItem('websiteLeads', JSON.stringify(storedLeads));
+          } catch (e) {}
         }
+      }
+
+      // B. ledgerTransactions (check if real name or phone was recorded during transactions)
+      const ledgerTxnWithRealName = ledger.find((t: any) => 
+        (t.customerId === id || t.reference?.includes(id) || t.description?.includes(id)) && 
+        t.customerName && 
+        t.customerName.trim().toLowerCase() !== 'customer' && 
+        t.customerName.trim().toLowerCase() !== 'n/a'
+      );
+
+      // C. withdrawalRequests
+      const withdrawals = JSON.parse(localStorage.getItem('withdrawalRequests') || '[]');
+      const withdrawalWithRealName = withdrawals.find((w: any) => 
+        (w.customerId === id || w.customerCode === id) && 
+        w.customerName && 
+        w.customerName.trim().toLowerCase() !== 'customer'
+      );
+
+      // D. paymentRequests
+      const paymentReqs = JSON.parse(localStorage.getItem('paymentRequests') || '[]');
+      const payReqWithRealName = paymentReqs.find((p: any) => 
+        (p.customerId === id || p.customerCode === id) && 
+        p.customerName && 
+        p.customerName.trim().toLowerCase() !== 'customer'
+      );
+
+      // E. chitGroupMemberships or mockChitGroups
+      const memberships = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
+      const mem = memberships.find((m: any) => m.customerId === id || (id.replace(/\D/g, '') && (m.mobile || m.phone || '').replace(/\D/g, '') === id.replace(/\D/g, '')));
+      const groups = JSON.parse(localStorage.getItem('mockChitGroups') || '[]');
+      let groupMem: any = null;
+      groups.forEach((g: any) => {
+        if (Array.isArray(g.enrolledMembers)) {
+          const foundM = g.enrolledMembers.find((m: any) => m.customerId === id || (id.replace(/\D/g, '') && (m.mobile || m.phone || '').replace(/\D/g, '') === id.replace(/\D/g, '')));
+          if (foundM) groupMem = { ...foundM, groupId: g.code || g.id, groupName: g.name };
+        }
+      });
+
+      // 3. Resolve real Customer Name (reject 'Customer' and 'N/A' placeholders)
+      const candidateNames = [
+        mongoFound?.fullName,
+        mongoFound?.name,
+        localFound?.name,
+        localFound?.fullName,
+        matchedLead?.fullName,
+        matchedLead?.name,
+        ledgerTxnWithRealName?.customerName,
+        withdrawalWithRealName?.customerName,
+        payReqWithRealName?.customerName,
+        mem?.customerName,
+        groupMem?.customerName,
+      ].filter(n => n && typeof n === 'string' && n.trim() !== '' && n.trim().toLowerCase() !== 'customer' && n.trim().toLowerCase() !== 'n/a');
+
+      const resolvedName = candidateNames[0] || (localFound?.name && localFound.name !== 'Customer' ? localFound.name : 'Customer');
+
+      // 4. Resolve real Phone Number
+      const candidatePhones = [
+        mongoFound?.phone,
+        mongoFound?.mobile,
+        localFound?.mobile,
+        localFound?.phone,
+        matchedLead?.phone,
+        matchedLead?.mobile,
+        withdrawalWithRealName?.mobile,
+        withdrawalWithRealName?.phone,
+        payReqWithRealName?.customerMobile,
+        mem?.mobile,
+        mem?.phone,
+        groupMem?.mobile,
+        groupMem?.phone,
+      ].filter(p => p && typeof p === 'string' && p.trim() !== '' && p.trim().toLowerCase() !== 'n/a');
+
+      const resolvedPhone = candidatePhones[0] || (id.startsWith('9') || id.startsWith('8') || id.startsWith('7') || id.startsWith('6') ? id : '');
+      const resolvedEmail = mongoFound?.email || localFound?.email || matchedLead?.email || '';
+      const resolvedAddress = mongoFound?.address || localFound?.address || matchedLead?.address || '—';
+      const resolvedAadhar = mongoFound?.aadhar || localFound?.aadhar || matchedLead?.aadhar || '—';
+      const resolvedPan = mongoFound?.pan || localFound?.pan || matchedLead?.pan || '—';
+
+      const baseRecord = mongoFound || localFound || mem || groupMem || {};
+      const resolvedChits = resolveChitsForCustomer(baseRecord, id);
+      const trueTotalPaid = Math.max(Number(baseRecord.totalPaid || 0), Number(localFound?.totalPaid || 0), ledgerTotalPaid);
+      const trueWithdrawn = Math.max(
+        Number(baseRecord.withdrawnAmount || 0),
+        resolvedChits.filter((ch: any) => ch.isWithdrawn).reduce((sum: number, ch: any) => sum + Number(ch.withdrawnAmount || 0), 0),
+        ledgerTotalWithdrawn
+      );
+
+      const customerObj = {
+        id: id,
+        mongoId: mongoFound?._id || localFound?.mongoId,
+        customerCode: id,
+        name: resolvedName,
+        fullName: resolvedName,
+        mobile: resolvedPhone,
+        phone: resolvedPhone,
+        email: resolvedEmail,
+        address: resolvedAddress,
+        aadhar: resolvedAadhar,
+        pan: resolvedPan,
+        branch: mongoFound?.branchId?.branchName || localFound?.branch || 'Head Office',
+        agent: mongoFound?.assignedAgentId?.name || localFound?.agent || 'System Admin',
+        totalPaid: trueTotalPaid,
+        pending: baseRecord.pending !== undefined ? baseRecord.pending : (localFound?.pending || 0),
+        activeChits: resolvedChits.length,
+        chits: resolvedChits,
+        withdrawnAmount: trueWithdrawn,
+        status: baseRecord.status || localFound?.status || 'ACTIVE'
+      };
+
+      setCustomer(customerObj);
+
+      // Permanently update mockCustomers so this record is never lost
+      const currentCustomers = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
+      const existsIndex = currentCustomers.findIndex((c: any) => c.id === id || c.customerCode === id || (c.mongoId && c.mongoId === id));
+      if (existsIndex >= 0) {
+        currentCustomers[existsIndex] = { ...currentCustomers[existsIndex], ...customerObj };
+      } else {
+        currentCustomers.unshift(customerObj);
+      }
+      localStorage.setItem('mockCustomers', JSON.stringify(currentCustomers));
+
+      // Self-heal ledgerTransactions if customerName was recorded as 'Customer'
+      if (resolvedName && resolvedName !== 'Customer') {
+        let hasLedgerChanges = false;
+        const updatedLedger = ledger.map((t: any) => {
+          if ((t.customerId === id || t.reference?.includes(id)) && (!t.customerName || t.customerName === 'Customer')) {
+            hasLedgerChanges = true;
+            return { ...t, customerName: resolvedName };
+          }
+          return t;
+        });
+        if (hasLedgerChanges) {
+          localStorage.setItem('ledgerTransactions', JSON.stringify(updatedLedger));
+        }
+      }
+
+      // Auto-heal MongoDB backend record if connected
+      const targetMongoId = mongoFound?._id || localFound?.mongoId;
+      if (targetMongoId) {
+        fetchClient(`/customers/${targetMongoId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            fullName: resolvedName,
+            phone: resolvedPhone,
+            totalPaid: trueTotalPaid,
+            chits: resolvedChits
+          })
+        }).catch(err => console.warn('Could not auto-sync customer to MongoDB:', err));
       }
     };
 
@@ -626,25 +706,32 @@ export const CustomerProfile = () => {
     if (!paymentAmount || isNaN(Number(paymentAmount)) || !customer) return;
 
     const amount = Number(paymentAmount);
+    const txnDate = paymentDate ? new Date(paymentDate).toISOString() : new Date().toISOString();
+    const txnId = paymentReceiptNo.trim() || ('REC-' + Math.floor(100000 + Math.random() * 900000));
+    const targetGroupId = selectedChitForPayment || selectedGroupScope;
+    const targetMonthStr = paymentMonth && paymentMonth !== 'GENERAL' ? `Month ${paymentMonth}` : 'General Installment';
+    const groupRef = targetGroupId && targetGroupId !== 'ALL' ? `${targetGroupId} (${targetMonthStr})` : targetMonthStr;
     
     // Add to ledger
     const ledger = JSON.parse(localStorage.getItem('ledgerTransactions') || '[]');
     const newTxn = {
-      id: 'REC-' + Date.now().toString().slice(-6),
-      date: new Date().toISOString(),
-      reference: selectedChitForPayment ? `${customer.id} / ${selectedChitForPayment}` : customer.id,
-      description: `Installment Payment (${paymentMode})`,
+      id: txnId,
+      date: txnDate,
+      reference: `${customer.id || displayId} / ${groupRef}`,
+      description: `Installment Payment - ${targetMonthStr} (${paymentMode})${paymentRemarks ? ' - ' + paymentRemarks : ''}`,
       amount: amount,
       type: 'CREDIT',
       category: 'INSTALLMENT',
       customerName: displayName,
       customerId: displayId,
-      status: 'VERIFIED'
+      month: Number(paymentMonth) || 1,
+      paymentMode: paymentMode,
+      status: 'VERIFIED',
+      notes: paymentRemarks || undefined
     };
     localStorage.setItem('ledgerTransactions', JSON.stringify([newTxn, ...ledger]));
 
     // Update customer totalPaid and mark chit as PAID if paying for group
-    const targetGroupId = selectedChitForPayment || selectedGroupScope;
     const newTotalPaid = (customer.totalPaid || 0) + amount;
     const newPending = Math.max(0, (customer.pending || 0) - amount);
 
@@ -732,8 +819,12 @@ export const CustomerProfile = () => {
 
     window.dispatchEvent(new Event('storage'));
     setIsPaymentModalOpen(false);
+    setPaymentSuccessToast(`Payment record of ₹${amount.toLocaleString('en-IN')} for ${targetMonthStr} on ${paymentDate} added successfully! (Receipt: ${txnId})`);
+    setTimeout(() => setPaymentSuccessToast(null), 6000);
     setPaymentAmount('');
     setSelectedChitForPayment('');
+    setPaymentRemarks('');
+    setPaymentReceiptNo('');
   };
 
   // Dynamic values or clean fallbacks
@@ -1247,7 +1338,8 @@ export const CustomerProfile = () => {
             )}
 
             <button 
-              className="bg-primary-600 text-white px-4 py-1.5 rounded-lg font-semibold hover:bg-primary-700 transition-colors"
+              type="button"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 shadow-xs"
               onClick={() => {
                 if (selectedGroupScope && selectedGroupScope !== 'ALL') {
                   setSelectedChitForPayment(selectedGroupScope);
@@ -1256,6 +1348,26 @@ export const CustomerProfile = () => {
                     setPaymentAmount(String(matchedChit.monthlyInstallment));
                   }
                 }
+                setPaymentReceiptNo('REC-' + Math.floor(100000 + Math.random() * 900000));
+                setIsPaymentModalOpen(true);
+              }}
+              title="Add past or existing offline payment record with custom date and month"
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Add Past / Existing Record</span>
+            </button>
+
+            <button 
+              className="bg-primary-600 text-white px-4 py-1.5 rounded-lg font-semibold hover:bg-primary-700 transition-colors text-xs sm:text-sm"
+              onClick={() => {
+                if (selectedGroupScope && selectedGroupScope !== 'ALL') {
+                  setSelectedChitForPayment(selectedGroupScope);
+                  const matchedChit = customer?.chits?.find((c: any) => c.groupId === selectedGroupScope || c.groupName === selectedGroupScope);
+                  if (matchedChit?.monthlyInstallment) {
+                    setPaymentAmount(String(matchedChit.monthlyInstallment));
+                  }
+                }
+                setPaymentReceiptNo('REC-' + Math.floor(100000 + Math.random() * 900000));
                 setIsPaymentModalOpen(true);
               }}
             >
@@ -1263,6 +1375,14 @@ export const CustomerProfile = () => {
             </button>
           </div>
         </div>
+
+        {/* Payment Success Toast / Banner */}
+        {paymentSuccessToast && (
+          <div className="p-3.5 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{paymentSuccessToast}</span>
+          </div>
+        )}
 
         {/* Status Action Success Banner */}
         {statusActionSuccess && (
@@ -1717,23 +1837,44 @@ export const CustomerProfile = () => {
                     : 'Showing verified payments across all groups.'}
                 </p>
               </div>
-              {selectedGroupScope && selectedGroupScope !== 'ALL' && (
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
+                  type="button"
                   onClick={() => {
-                    setSelectedGroupScope('ALL');
-                    setSearchParams(prev => {
-                      const next = new URLSearchParams(prev);
-                      next.delete('group');
-                      next.delete('chitGroup');
-                      next.delete('groupId');
-                      return next;
-                    });
+                    if (selectedGroupScope && selectedGroupScope !== 'ALL') {
+                      setSelectedChitForPayment(selectedGroupScope);
+                      const matchedChit = customer?.chits?.find((c: any) => c.groupId === selectedGroupScope || c.groupName === selectedGroupScope);
+                      if (matchedChit?.monthlyInstallment) {
+                        setPaymentAmount(String(matchedChit.monthlyInstallment));
+                      }
+                    }
+                    setPaymentReceiptNo('REC-' + Math.floor(100000 + Math.random() * 900000));
+                    setIsPaymentModalOpen(true);
                   }}
-                  className="text-xs font-bold text-primary-700 hover:text-primary-900 bg-primary-50 px-3 py-1.5 rounded-lg border border-primary-200"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors"
+                  title="Choose payment date and month to record past offline payments"
                 >
-                  View All Groups History
+                  <Calendar className="w-3.5 h-3.5" />
+                  + Add Past / Existing Record
                 </button>
-              )}
+                {selectedGroupScope && selectedGroupScope !== 'ALL' && (
+                  <button
+                    onClick={() => {
+                      setSelectedGroupScope('ALL');
+                      setSearchParams(prev => {
+                        const next = new URLSearchParams(prev);
+                        next.delete('group');
+                        next.delete('chitGroup');
+                        next.delete('groupId');
+                        return next;
+                      });
+                    }}
+                    className="text-xs font-bold text-primary-700 hover:text-primary-900 bg-primary-50 px-3 py-1.5 rounded-lg border border-primary-200"
+                  >
+                    View All Groups History
+                  </button>
+                )}
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left min-w-full">
@@ -1993,80 +2134,188 @@ export const CustomerProfile = () => {
         )}
       </div>
 
-      {/* Receive Payment Modal */}
+      {/* Receive Payment / Past Record Modal */}
       {isPaymentModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">
-          <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-primary-900">Receive Payment</h2>
-              <button onClick={() => setIsPaymentModalOpen(false)} className="text-neutral-500 hover:text-neutral-700">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-neutral-200 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 bg-primary-950 text-white flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-bold flex items-center gap-2">
+                  <Receipt className="w-5 h-5 text-accent" />
+                  Record Customer Payment
+                </h2>
+                <p className="text-xs text-primary-200 mt-0.5">
+                  Record new collections or backfill existing records with custom payment date & month.
+                </p>
+              </div>
+              <button 
+                onClick={() => setIsPaymentModalOpen(false)} 
+                className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
             
-            <div className="space-y-4">
-              {customer?.chits && customer.chits.length > 0 && (
+            <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* 1. Payment Date */}
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">Select Chit (Optional)</label>
-                  <select 
-                    className="w-full border border-neutral-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    value={selectedChitForPayment}
-                    onChange={(e) => {
-                      setSelectedChitForPayment(e.target.value);
-                      const chit = customer.chits.find((c: any) => c.groupId === e.target.value);
-                      if (chit && chit.monthlyInstallment) {
-                        setPaymentAmount(chit.monthlyInstallment.toString());
-                      }
-                    }}
+                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-primary-700" />
+                    Payment Date *
+                  </label>
+                  <input 
+                    type="date"
+                    className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 bg-white"
+                    value={paymentDate}
+                    onChange={(e) => setPaymentDate(e.target.value)}
+                    required
+                  />
+                  <span className="text-[10px] text-neutral-500 mt-0.5 block">
+                    Choose past date for historical entries.
+                  </span>
+                </div>
+
+                {/* 2. Month / Period Selector */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
+                    Chit Month / Period *
+                  </label>
+                  <select
+                    className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 bg-white"
+                    value={paymentMonth}
+                    onChange={(e) => setPaymentMonth(e.target.value)}
                   >
-                    <option value="">-- General Payment --</option>
-                    {customer.chits.map((c: any) => (
-                      <option key={c.groupId} value={c.groupId}>
-                        {c.groupId} (Due: {formatCurrency(c.monthlyInstallment || 0)})
+                    {Array.from({ length: 20 }, (_, i) => i + 1).map((m) => (
+                      <option key={m} value={String(m)}>
+                        Month {m} {m === 1 ? '(1st Month / Company)' : ''}
                       </option>
                     ))}
+                    <option value="GENERAL">General Advance / Custom</option>
                   </select>
+                  <span className="text-[10px] text-neutral-500 mt-0.5 block">
+                    Target installment month (1 - 20).
+                  </span>
                 </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Amount (₹)</label>
-                <input 
-                  type="number"
-                  className="w-full border border-neutral-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(e.target.value)}
-                  placeholder="e.g. 15000"
-                />
               </div>
 
+              {/* 3. Chit Group Selection */}
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Payment Mode</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
+                  Chit Group
+                </label>
                 <select 
-                  className="w-full border border-neutral-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  value={paymentMode}
-                  onChange={(e) => setPaymentMode(e.target.value)}
+                  className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 bg-white"
+                  value={selectedChitForPayment}
+                  onChange={(e) => {
+                    setSelectedChitForPayment(e.target.value);
+                    const chit = customer?.chits?.find((c: any) => c.groupId === e.target.value || c.groupName === e.target.value);
+                    if (chit && chit.monthlyInstallment) {
+                      setPaymentAmount(chit.monthlyInstallment.toString());
+                    }
+                  }}
                 >
-                  <option value="Cash">Cash</option>
-                  <option value="UPI">UPI / QR</option>
-                  <option value="Bank Transfer">Bank Transfer (NEFT/RTGS)</option>
-                  <option value="Cheque">Cheque</option>
+                  <option value="">-- General Payment (Auto-allocate) --</option>
+                  {(customer?.chits || []).map((c: any) => (
+                    <option key={c.groupId} value={c.groupId}>
+                      {c.groupId} - {c.scheme || c.groupName} (Due: {formatCurrency(c.monthlyInstallment || 5000)})
+                    </option>
+                  ))}
                 </select>
               </div>
 
-              <div className="flex justify-end space-x-3 mt-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* 4. Amount */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
+                    Amount Paid (₹) *
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 font-bold text-sm">₹</span>
+                    <input 
+                      type="number"
+                      className="w-full border border-neutral-300 rounded-lg pl-8 pr-3 py-2 text-sm font-bold text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary-600 bg-white"
+                      value={paymentAmount}
+                      onChange={(e) => setPaymentAmount(e.target.value)}
+                      placeholder="e.g. 5000"
+                      min="1"
+                    />
+                  </div>
+                </div>
+
+                {/* 5. Payment Mode */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
+                    Payment Mode *
+                  </label>
+                  <select 
+                    className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 bg-white"
+                    value={paymentMode}
+                    onChange={(e) => setPaymentMode(e.target.value)}
+                  >
+                    <option value="Cash">Cash</option>
+                    <option value="UPI">UPI / QR Code</option>
+                    <option value="Bank Transfer">Bank Transfer (NEFT/RTGS/IMPS)</option>
+                    <option value="Cheque">Cheque</option>
+                    <option value="Demand Draft">Demand Draft</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* 6. Receipt / Ref Number */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
+                  Receipt / Ref Number (Optional)
+                </label>
+                <input 
+                  type="text"
+                  className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 font-mono text-neutral-800 bg-white"
+                  value={paymentReceiptNo}
+                  onChange={(e) => setPaymentReceiptNo(e.target.value)}
+                  placeholder="e.g. REC-123456 or Physical Receipt Book No."
+                />
+                <span className="text-[10px] text-neutral-500 mt-0.5 block">
+                  Leave blank to auto-generate a unique system receipt ID.
+                </span>
+              </div>
+
+              {/* 7. Notes / Remarks */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
+                  Remarks / Notes (Optional)
+                </label>
+                <input 
+                  type="text"
+                  className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600 text-neutral-800 bg-white"
+                  value={paymentRemarks}
+                  onChange={(e) => setPaymentRemarks(e.target.value)}
+                  placeholder="e.g. Existing record added from manual passbook"
+                />
+              </div>
+
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-900 flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong>Admin Ledger Entry:</strong> This record will be credited directly to the customer's passbook, ledger history, and verified collection totals for {displayName}.
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-3 border-t border-neutral-100">
                 <button 
-                  className="px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 rounded-md transition-colors"
+                  type="button"
+                  className="px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-100 rounded-lg transition-colors"
                   onClick={() => setIsPaymentModalOpen(false)}
                 >
                   Cancel
                 </button>
                 <button 
-                  className="btn-primary"
+                  type="button"
+                  className="px-5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-bold shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={handleReceivePayment}
                   disabled={!paymentAmount || Number(paymentAmount) <= 0}
                 >
-                  Confirm Payment
+                  <Check className="w-4 h-4" />
+                  Save Payment Record
                 </button>
               </div>
             </div>

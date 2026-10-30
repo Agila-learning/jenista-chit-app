@@ -152,7 +152,13 @@ export const CustomerList = () => {
             }
           } else if (lead.status === 'CONVERTED' || (lead.fullName && lead.fullName.toLowerCase().includes('agila'))) {
             // Restore converted lead to customers
-            const newCode = lead.convertedCustomerId || `TC-${Math.floor(10000 + Math.random() * 90000)}`;
+            if (!lead.convertedCustomerId) {
+              lead.convertedCustomerId = `TC-${Math.floor(10000 + Math.random() * 90000)}`;
+              try {
+                localStorage.setItem('websiteLeads', JSON.stringify(storedLeads));
+              } catch (e) {}
+            }
+            const newCode = lead.convertedCustomerId;
             combined.unshift({
               id: newCode,
               customerCode: newCode,

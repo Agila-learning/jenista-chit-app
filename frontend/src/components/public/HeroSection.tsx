@@ -42,16 +42,16 @@ export const HeroSection = () => {
     <section className="relative min-h-[92vh] flex items-center pt-8 sm:pt-14 pb-28 sm:pb-32 overflow-hidden bg-[#060c18]">
       {/* Background with Layered Image & Luminous Fintech Visual Gradients */}
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-        {/* Layered Rich Architectural Image with Mix-Blend Overlay */}
+        {/* Layered Rich Architectural Image with Clean Visible Finish */}
         <div className="absolute inset-0 z-0">
           <img 
             src="/assets/hero-bg.jpg" 
             alt="Jenista Chit Funds Digital Architecture" 
-            className="w-full h-full object-cover object-center opacity-25 mix-blend-luminosity scale-105 filter blur-[0.5px]" 
+            className="w-full h-full object-cover object-center opacity-45 scale-100" 
           />
-          {/* Deep dark gradient vignettes from top, center, and bottom */}
-          <div className="absolute inset-0 bg-gradient-to-t from-[#060c18] via-[#060c18]/80 to-[#060c18]/90" />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#060c18] via-transparent to-[#060c18]" />
+          {/* Balanced gradient overlay allowing architectural image to be clearly viewable while ensuring white text contrast */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#060c18] via-[#060c18]/50 to-[#060c18]/65" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#060c18]/80 via-[#060c18]/35 to-[#060c18]/65" />
         </div>
 
         {/* Soft geometric fintech blueprint grid */}

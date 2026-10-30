@@ -129,8 +129,13 @@ export const ReceiptEntry = () => {
             };
           });
           const cleanMapped = mapped.filter((item: any) => !isMockCustomer(item));
-          setCustomersDB(cleanMapped);
-          localStorage.setItem('mockCustomers', JSON.stringify(cleanMapped));
+          const existingLocal = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
+          const localOnly = existingLocal.filter((loc: any) => 
+            !cleanMapped.some((m: any) => m.id === loc.id || (loc.mongoId && m.mongoId === loc.mongoId) || (loc.customerCode && m.customerCode === loc.customerCode))
+          );
+          const merged = [...cleanMapped, ...localOnly];
+          setCustomersDB(merged);
+          localStorage.setItem('mockCustomers', JSON.stringify(merged));
         }
       })
       .catch((err: any) => console.warn('Could not sync receipt entry customers:', err));

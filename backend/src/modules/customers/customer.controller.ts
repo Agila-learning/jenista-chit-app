@@ -7,18 +7,49 @@ import bcrypt from 'bcryptjs';
 export class CustomerController {
   static async createCustomer(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { name, mobile, address, password } = req.body;
+      const { name, mobile, address, password, aadhar, pan, email } = req.body;
       
       const phone = mobile || req.body.phone;
-      const fullName = name || req.body.fullName;
+      const fullName = (name || req.body.fullName || '').toString().trim();
       
       if (!phone || !fullName) {
         throw new ApiError(400, 'Name and Mobile are required', 'VALIDATION_ERROR');
       }
 
+      if (fullName.length < 3) {
+        throw new ApiError(400, 'Customer name must be at least 3 characters', 'VALIDATION_ERROR');
+      }
+
       const cleanPhone = phone.toString().replace(/\D/g, '');
       if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
         throw new ApiError(400, 'Mobile number must start with 6, 7, 8, or 9 and have exactly 10 digits', 'VALIDATION_ERROR');
+      }
+
+      // Optional Aadhaar Validation (strictly optional)
+      let cleanAadhar = '';
+      if (aadhar && aadhar.toString().trim()) {
+        cleanAadhar = aadhar.toString().replace(/\D/g, '');
+        if (cleanAadhar.length > 0 && cleanAadhar.length !== 12) {
+          throw new ApiError(400, 'Aadhaar number must be exactly 12 numeric digits if provided', 'VALIDATION_ERROR');
+        }
+      }
+
+      // Optional PAN Validation (strictly optional)
+      let cleanPan = '';
+      if (pan && pan.toString().trim()) {
+        cleanPan = pan.toString().trim().toUpperCase();
+        if (cleanPan.length > 0 && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(cleanPan)) {
+          throw new ApiError(400, 'PAN number must be a valid 10-character code (e.g. ABCDE1234F) if provided', 'VALIDATION_ERROR');
+        }
+      }
+
+      // Optional Email Validation
+      let cleanEmail = '';
+      if (email && email.toString().trim()) {
+        cleanEmail = email.toString().trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+          throw new ApiError(400, 'Invalid email address format', 'VALIDATION_ERROR');
+        }
       }
 
       const existing = await Customer.findOne({ phone: cleanPhone });
@@ -38,7 +69,10 @@ export class CustomerController {
         customerCode,
         fullName,
         phone: cleanPhone,
-        address: address || req.body.address,
+        address: address ? address.toString().trim() : 'Registered Subscriber',
+        aadhar: cleanAadhar || undefined,
+        pan: cleanPan || undefined,
+        email: cleanEmail || undefined,
         passwordHash,
         createdBy: req.user?.userId,
       });

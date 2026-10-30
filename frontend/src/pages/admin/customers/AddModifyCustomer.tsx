@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ActionLayout } from '../../../components/layout/ActionLayout';
 import type { ActionType } from '../../../components/layout/ActionLayout';
-import { Search, User, Phone, Lock, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { Search, User, Phone, Lock, Eye, EyeOff, ShieldCheck, CreditCard } from 'lucide-react';
 import { Input } from '../../../components/common/Input';
 import { Button } from '../../../components/common/Button';
 import { fetchClient } from '../../../api/client';
@@ -54,8 +54,13 @@ export const AddModifyCustomer = () => {
             };
           });
           const cleanMapped = mapped.filter((c: any) => !isMockCustomer(c));
-          setMockCustomers(cleanMapped);
-          localStorage.setItem('mockCustomers', JSON.stringify(cleanMapped));
+          const existingLocal = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
+          const localOnly = existingLocal.filter((loc: any) => 
+            !cleanMapped.some((m: any) => m.id === loc.id || (loc.mongoId && m.mongoId === loc.mongoId) || (loc.customerCode && m.customerCode === loc.customerCode))
+          );
+          const merged = [...cleanMapped, ...localOnly];
+          setMockCustomers(merged);
+          localStorage.setItem('mockCustomers', JSON.stringify(merged));
         }
       } catch (e) {
         console.warn('Could not sync customers with MongoDB in AddModifyCustomer:', e);
@@ -134,6 +139,49 @@ export const AddModifyCustomer = () => {
               <div>
                 <label className="block text-sm font-semibold text-neutral-700 mb-1">Residential Address *</label>
                 <Input name="address" defaultValue={customer?.address || ""} placeholder="Enter full residential address" disabled={disabled} required />
+              </div>
+            </div>
+          </section>
+
+          {/* Identity & Verification (Optional) */}
+          <section>
+            <div className="flex items-center space-x-2 border-b border-neutral-100 pb-3 mb-6">
+              <CreditCard className="w-5 h-5 text-primary-900" />
+              <h4 className="text-lg font-bold text-neutral-800">Identity & Verification (Optional)</h4>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-neutral-50/70 p-6 rounded-xl border border-neutral-200">
+              <div>
+                <label className="block text-sm font-semibold text-neutral-700 mb-1 flex items-center justify-between">
+                  <span>Aadhaar Number</span>
+                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Optional</span>
+                </label>
+                <Input 
+                  name="aadhar" 
+                  defaultValue={customer?.aadhar && customer.aadhar !== '—' ? customer.aadhar : ""} 
+                  placeholder="e.g. 123456789012 (12 digits)" 
+                  maxLength={12}
+                  disabled={disabled} 
+                />
+                <span className="text-[11px] text-neutral-500 mt-1 block">
+                  Optional. If entered, must be exactly 12 numeric digits.
+                </span>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-neutral-700 mb-1 flex items-center justify-between">
+                  <span>PAN Card Number</span>
+                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Optional</span>
+                </label>
+                <Input 
+                  name="pan" 
+                  defaultValue={customer?.pan && customer.pan !== '—' ? customer.pan : ""} 
+                  placeholder="e.g. ABCDE1234F (10 characters)" 
+                  maxLength={10}
+                  style={{ textTransform: 'uppercase' }}
+                  disabled={disabled} 
+                />
+                <span className="text-[11px] text-neutral-500 mt-1 block">
+                  Optional. If entered, must be 10 characters (e.g. ABCDE1234F).
+                </span>
               </div>
             </div>
           </section>
@@ -241,6 +289,8 @@ export const AddModifyCustomer = () => {
             name: foundMongo.fullName || foundMongo.name,
             mobile: foundMongo.phone || foundMongo.mobile,
             address: foundMongo.address,
+            aadhar: foundMongo.aadhar || '—',
+            pan: foundMongo.pan || '—',
             dob: foundMongo.dateOfBirth ? new Date(foundMongo.dateOfBirth).toISOString().split('T')[0] : '',
             gender: foundMongo.gender || '',
             status: foundMongo.status || 'ACTIVE'
@@ -340,15 +390,46 @@ export const AddModifyCustomer = () => {
         const mobileVal = (formData.get('mobile') as string)?.trim() || '';
         const addressVal = (formData.get('address') as string)?.trim() || '';
         const passwordVal = (formData.get('password') as string)?.trim() || '';
+        const aadharRaw = (formData.get('aadhar') as string)?.trim() || '';
+        const panRaw = (formData.get('pan') as string)?.trim().toUpperCase() || '';
 
+        // Validation & Security Checks
         if (!nameVal || !mobileVal) {
           alert('Please enter at least Customer Name and Mobile Number.');
+          return;
+        }
+
+        if (nameVal.length < 3) {
+          alert('Customer name must be at least 3 characters.');
+          return;
+        }
+
+        if (!/^[a-zA-Z\s.]+$/.test(nameVal)) {
+          alert('Customer name should only contain letters, spaces, and dots.');
           return;
         }
 
         const cleanMobile = mobileVal.replace(/\D/g, '');
         if (!/^[6-9]\d{9}$/.test(cleanMobile)) {
           alert('Mobile number must start with 6, 7, 8, or 9 and have exactly 10 digits.');
+          return;
+        }
+
+        if (addressVal && addressVal.length < 4) {
+          alert('Please provide a valid residential address (minimum 4 characters).');
+          return;
+        }
+
+        // Optional Aadhaar Validation (strictly optional)
+        const cleanAadhar = aadharRaw.replace(/\D/g, '');
+        if (cleanAadhar.length > 0 && cleanAadhar.length !== 12) {
+          alert('Aadhaar number is optional, but if entered it must be exactly 12 numeric digits.');
+          return;
+        }
+
+        // Optional PAN Validation (strictly optional)
+        if (panRaw.length > 0 && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(panRaw)) {
+          alert('PAN card is optional, but if entered it must follow the standard 10-character code format (e.g. ABCDE1234F).');
           return;
         }
 
@@ -373,6 +454,8 @@ export const AddModifyCustomer = () => {
           mobile: cleanMobile,
           phone: cleanMobile,
           password: passwordVal,
+          aadhar: cleanAadhar || '—',
+          pan: panRaw || '—',
           dob: (formData.get('dob') as string) || '',
           gender: (formData.get('gender') as string) || '',
           address: addressVal,
@@ -395,6 +478,8 @@ export const AddModifyCustomer = () => {
               phone: cleanMobile,
               mobile: cleanMobile,
               address: addressVal,
+              aadhar: cleanAadhar || undefined,
+              pan: panRaw || undefined,
               password: passwordVal,
               gender: newCustomer.gender ? newCustomer.gender.toUpperCase() : undefined,
               status: isStaff ? 'PENDING_APPROVAL' : 'ACTIVE',
@@ -435,10 +520,26 @@ export const AddModifyCustomer = () => {
         const formData = new FormData(form);
         const targetId = activeCustomer.mongoId || activeCustomer.id;
         const newPassword = (formData.get('password') as string)?.trim();
+        const aadharRaw = (formData.get('aadhar') as string)?.trim() || '';
+        const panRaw = (formData.get('pan') as string)?.trim().toUpperCase() || '';
+        const cleanAadhar = aadharRaw.replace(/\D/g, '');
+
+        if (cleanAadhar.length > 0 && cleanAadhar.length !== 12) {
+          alert('Aadhaar number is optional, but if entered it must be exactly 12 numeric digits.');
+          return;
+        }
+
+        if (panRaw.length > 0 && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(panRaw)) {
+          alert('PAN card is optional, but if entered it must follow the standard 10-character code format (e.g. ABCDE1234F).');
+          return;
+        }
+
         const payload: any = {
           fullName: formData.get('name') as string,
           phone: formData.get('mobile') as string,
           address: formData.get('address') as string,
+          aadhar: cleanAadhar || undefined,
+          pan: panRaw || undefined,
         };
         if (newPassword) {
           payload.password = newPassword;
@@ -463,6 +564,8 @@ export const AddModifyCustomer = () => {
               phone: payload.phone || c.phone,
               mobile: payload.phone || c.mobile,
               address: payload.address || c.address,
+              aadhar: cleanAadhar || c.aadhar || '—',
+              pan: panRaw || c.pan || '—',
               ...(newPassword ? { password: newPassword } : {})
             };
           }

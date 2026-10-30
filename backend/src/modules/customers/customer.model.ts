@@ -9,6 +9,8 @@ export interface ICustomer extends Document {
   passwordHash?: string;
   dateOfBirth?: Date;
   gender?: 'MALE' | 'FEMALE' | 'OTHER';
+  aadhar?: string;
+  pan?: string;
   photo?: string;
   address: string;
   occupation?: string;
@@ -37,6 +39,8 @@ const CustomerSchema: Schema = new Schema(
     phone: { type: String, required: true },
     alternatePhone: { type: String },
     email: { type: String },
+    aadhar: { type: String, trim: true, default: '' },
+    pan: { type: String, trim: true, uppercase: true, default: '' },
     passwordHash: { type: String },
     dateOfBirth: { type: Date },
     gender: { type: String, enum: ['MALE', 'FEMALE', 'OTHER'] },

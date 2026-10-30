@@ -593,8 +593,13 @@ export const AdminDashboard = () => {
                 let dScheme: 'Auction' | 'Fixed' | 'Regular' = 'Auction';
                 if (rawP.toLowerCase().includes('fix')) dScheme = 'Fixed';
                 else if (rawP.toLowerCase().includes('reg')) dScheme = 'Regular';
-                else if (rawP.toLowerCase().includes('auc')) dScheme = 'Auction';
-                const newCode = lead.convertedCustomerId || `TC-${Math.floor(10000 + Math.random() * 90000)}`;
+                if (!lead.convertedCustomerId) {
+                  lead.convertedCustomerId = `TC-${Math.floor(10000 + Math.random() * 90000)}`;
+                  try {
+                    localStorage.setItem('websiteLeads', JSON.stringify(storedLeads));
+                  } catch (e) {}
+                }
+                const newCode = lead.convertedCustomerId;
 
                 combined.unshift({
                   id: newCode,

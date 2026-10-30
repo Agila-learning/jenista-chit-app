@@ -15,6 +15,7 @@ import {
   SlidersHorizontal
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/format';
+import { calculateFixedPlanSchedule } from '../../utils/chitCalculations';
 
 type SchemeType = 'AUCTION' | 'FIXED' | 'REGULAR';
 type ViewMode = 'SCHEDULE' | 'COMPARISON';
@@ -44,21 +45,23 @@ export const ChitCalculator: React.FC = () => {
     const grossMonthlyInstallment = Math.round(chitValue / duration);
     const foremanCommissionTotal = Math.round(chitValue * (foremanCommPercent / 100));
     const foremanCommissionPerMonth = Math.round(foremanCommissionTotal / duration);
+    const fixedDetails = calculateFixedPlanSchedule(chitValue, duration);
 
     if (scheme === 'FIXED') {
-      const winnerNetPayout = chitValue - foremanCommissionTotal;
-      const totalPaidByMember = grossMonthlyInstallment * duration;
+      const winnerNetPayout = fixedDetails.maxPayout; // Month 20: 95%
+      const totalPaidByMember = fixedDetails.totalDue;
       return {
-        grossMonthlyInstallment,
-        netMonthlyInstallment: grossMonthlyInstallment,
+        grossMonthlyInstallment: fixedDetails.month1Due,
+        netMonthlyInstallment: fixedDetails.standardDue,
         totalPaidByMember,
         winnerNetPayout,
+        minMemberPayout: fixedDetails.minPayout,
         foremanCommissionTotal,
         foremanCommissionPerMonth,
         totalDividendPerMember: 0,
         dividendPerMonth: 0,
         netGainOrCost: winnerNetPayout - totalPaidByMember,
-        effectiveAnnualYield: '0.0',
+        effectiveAnnualYield: (((winnerNetPayout - totalPaidByMember) / totalPaidByMember) * (12 / duration) * 100).toFixed(1),
       };
     }
 
@@ -70,6 +73,7 @@ export const ChitCalculator: React.FC = () => {
         netMonthlyInstallment: grossMonthlyInstallment,
         totalPaidByMember,
         winnerNetPayout,
+        minMemberPayout: winnerNetPayout,
         foremanCommissionTotal,
         foremanCommissionPerMonth,
         totalDividendPerMember: 0,
@@ -86,7 +90,7 @@ export const ChitCalculator: React.FC = () => {
     const dividendPerMemberPerMonth = Math.round(totalDividendPool / duration);
     const netMonthlyInstallment = Math.max(0, grossMonthlyInstallment - dividendPerMemberPerMonth);
     
-    // Non-prized subscriber pays lower installments for most months
+    // Non-prized subscriber pays lower installments for most months (Month 1 is Company / full installment)
     const totalPaidByPatientSaver = Math.round(netMonthlyInstallment * (duration - 1) + grossMonthlyInstallment);
     const totalDividendEarned = Math.round(dividendPerMemberPerMonth * (duration - 1));
     const netGainForLastMonthWinner = (chitValue - foremanCommissionTotal) - totalPaidByPatientSaver;
@@ -96,6 +100,7 @@ export const ChitCalculator: React.FC = () => {
       netMonthlyInstallment,
       totalPaidByMember: totalPaidByPatientSaver,
       winnerNetPayout,
+      minMemberPayout: winnerNetPayout,
       foremanCommissionTotal,
       foremanCommissionPerMonth,
       totalDividendPerMember: totalDividendEarned,
@@ -120,9 +125,11 @@ export const ChitCalculator: React.FC = () => {
     const auctionBorrowPayout = chitValue - grossBid;
     const auctionSaverPayout = chitValue - foremanFee;
 
-    // Fixed
-    const fixedTotalPaid = gross * duration;
-    const fixedPayout = chitValue - foremanFee;
+    // Fixed (Jenista matrix: Month 1 is Company, Months 2-8 3.75%, Months 9-20 step up)
+    const fixedDetails = calculateFixedPlanSchedule(chitValue, duration);
+    const fixedTotalPaid = fixedDetails.totalDue;
+    const fixedMinPayout = fixedDetails.minPayout; // Month 2: 70%
+    const fixedMaxPayout = fixedDetails.maxPayout; // Month 20: 95%
 
     // Regular
     const regularTotalPaid = gross * duration;
@@ -141,11 +148,12 @@ export const ChitCalculator: React.FC = () => {
         yieldRate: ((auctionTotalDiv / chitValue) * (12 / duration) * 100).toFixed(1)
       },
       fixed: {
-        grossInstallment: gross,
-        netInstallment: gross,
+        grossInstallment: fixedDetails.month1Due,
+        netInstallment: fixedDetails.standardDue,
         totalPaid: fixedTotalPaid,
-        winnerPayout: fixedPayout,
-        netCost: fixedPayout - fixedTotalPaid
+        minPayout: fixedMinPayout,
+        winnerPayout: fixedMaxPayout,
+        netCost: fixedMaxPayout - fixedTotalPaid
       },
       regular: {
         grossInstallment: gross,
@@ -157,51 +165,85 @@ export const ChitCalculator: React.FC = () => {
     };
   }, [chitValue, duration, foremanCommPercent, avgDiscountPercent]);
 
-  // Month-by-Month Projection Schedule
+  // Month-by-Month Projection Schedule (Month 1 is Company / Foreman Chit)
   const projectionSchedule = useMemo(() => {
     const rows = [];
     const baseInstallment = Math.round(chitValue / duration);
     const foremanFee = Math.round(chitValue * (foremanCommPercent / 100));
+    const fixedDetails = calculateFixedPlanSchedule(chitValue, duration);
 
     let cumulativePaid = 0;
 
     for (let month = 1; month <= duration; month++) {
-      let bidPercent = avgDiscountPercent;
+      let bidPercent = 0;
       let dividend = 0;
-      let netPayable = baseInstallment;
-      let payout = chitValue - foremanFee;
+      let installmentDue = baseInstallment;
+      let payout = 0;
+      let isCompany = month === 1;
+      let winnerPayoutDisplay = '';
 
       if (scheme === 'AUCTION') {
-        // Taper discount curve: early months higher discount, final months lower discount
-        const curveFactor = 1 + (0.35 * ((duration - month) / duration) - 0.15);
-        bidPercent = Math.min(35, Math.max(8, Math.round(avgDiscountPercent * curveFactor)));
-        const grossDiscount = Math.round(chitValue * (bidPercent / 100));
-        payout = chitValue - grossDiscount;
-        const divPool = Math.max(0, grossDiscount - foremanFee);
-        dividend = Math.round(divPool / duration);
-        netPayable = baseInstallment - dividend;
+        if (month === 1) {
+          // Month 1: Foreman Chit (Company receives prize money under Chit Funds Act, 1982)
+          isCompany = true;
+          bidPercent = 0;
+          dividend = 0;
+          installmentDue = baseInstallment;
+          payout = chitValue;
+          winnerPayoutDisplay = 'COMPANY';
+        } else {
+          // Months 2-20: Subscriber competitive bidding
+          isCompany = false;
+          const curveFactor = 1 + (0.35 * ((duration - month) / duration) - 0.15);
+          bidPercent = Math.min(35, Math.max(8, Math.round(avgDiscountPercent * curveFactor)));
+          const grossDiscount = Math.round(chitValue * (bidPercent / 100));
+          payout = chitValue - grossDiscount;
+          const divPool = Math.max(0, grossDiscount - foremanFee);
+          dividend = Math.round(divPool / duration);
+          installmentDue = baseInstallment - dividend;
+          winnerPayoutDisplay = formatCurrency(payout);
+        }
       } else if (scheme === 'FIXED') {
-        bidPercent = 0;
+        const rowData = fixedDetails.schedule.find(r => r.month === month);
+        installmentDue = rowData ? rowData.due : baseInstallment;
         dividend = 0;
-        netPayable = baseInstallment;
-        payout = chitValue - foremanFee;
+        bidPercent = 0;
+        if (month === 1) {
+          isCompany = true;
+          payout = 0;
+          winnerPayoutDisplay = 'COMPANY';
+        } else {
+          isCompany = false;
+          payout = rowData ? rowData.payout : Math.round(chitValue * (0.70 + ((month - 1) / duration) * 0.25));
+          winnerPayoutDisplay = formatCurrency(payout);
+        }
       } else {
         // Regular
         bidPercent = 0;
         dividend = 0;
-        netPayable = baseInstallment;
-        payout = chitValue - foremanFee;
+        installmentDue = baseInstallment;
+        if (month === 1) {
+          isCompany = true;
+          payout = chitValue;
+          winnerPayoutDisplay = 'COMPANY';
+        } else {
+          isCompany = false;
+          payout = chitValue - foremanFee;
+          winnerPayoutDisplay = formatCurrency(payout);
+        }
       }
 
-      cumulativePaid += netPayable;
+      cumulativePaid += installmentDue;
 
       rows.push({
         month,
-        baseInstallment,
+        baseInstallment: installmentDue,
         bidPercent,
         dividend,
-        netPayable,
+        netPayable: installmentDue,
         winnerPayout: payout,
+        winnerPayoutDisplay,
+        isCompany,
         cumulativePaid,
       });
     }
@@ -234,7 +276,7 @@ Calculated via Jenista Accounting Engine`;
       scheme === 'AUCTION' ? `${r.bidPercent}%` : '0%',
       r.dividend,
       r.netPayable,
-      r.winnerPayout,
+      r.isCompany ? 'COMPANY' : r.winnerPayout,
       r.cumulativePaid
     ]);
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
@@ -632,6 +674,10 @@ Calculated via Jenista Accounting Engine`;
                         <span className="font-bold text-emerald-700">+{formatCurrency(comparativeData.auction.totalDividend)}</span>
                       </div>
                       <div className="flex justify-between border-t border-indigo-100 pt-1">
+                        <span className="text-slate-500">Month 1 (Foreman):</span>
+                        <span className="font-bold text-amber-800">Company Chit</span>
+                      </div>
+                      <div className="flex justify-between">
                         <span className="text-slate-500">Borrower Net Payout:</span>
                         <span className="font-bold text-blue-800">{formatCurrency(comparativeData.auction.borrowerPayout)}</span>
                       </div>
@@ -655,29 +701,29 @@ Calculated via Jenista Accounting Engine`;
                     </span>
                     <h4 className="font-extrabold text-slate-900 text-sm">Guaranteed Full Value</h4>
                     <p className="text-[11px] text-slate-600 leading-snug">
-                      Predictable, fixed installments with transparent monthly lucky draws. Full prize money without auction discount.
+                      Fixed installments with monthly draws. Month 1 is Company Chit; member payouts step up from 70% to 95%.
                     </p>
 
                     <div className="space-y-1.5 pt-2 text-xs">
                       <div className="flex justify-between">
-                        <span className="text-slate-500">Monthly Installment:</span>
-                        <span className="font-black text-blue-900">{formatCurrency(comparativeData.fixed.grossInstallment)}/mo</span>
+                        <span className="text-slate-500">Month 1 (Company):</span>
+                        <span className="font-bold text-amber-800">{formatCurrency(comparativeData.fixed.grossInstallment)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-500">Dividend:</span>
-                        <span className="font-bold text-slate-400">None (Zero discount)</span>
+                        <span className="text-slate-500">Standard Dues:</span>
+                        <span className="font-black text-blue-900">{formatCurrency(comparativeData.fixed.netInstallment)}/mo</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-500">Total Contributed:</span>
                         <span className="font-bold text-slate-900">{formatCurrency(comparativeData.fixed.totalPaid)}</span>
                       </div>
                       <div className="flex justify-between border-t border-blue-100 pt-1">
-                        <span className="text-slate-500">Winner Net Payout:</span>
-                        <span className="font-extrabold text-emerald-700">{formatCurrency(comparativeData.fixed.winnerPayout)}</span>
+                        <span className="text-slate-500">Min Payout (Month 2):</span>
+                        <span className="font-bold text-blue-800">{formatCurrency(comparativeData.fixed.minPayout)} (70%)</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-500">Foreman Fee (5%):</span>
-                        <span className="font-bold text-slate-600">{formatCurrency(calculations.foremanCommissionTotal)}</span>
+                        <span className="text-slate-500">Max Payout (Month 20):</span>
+                        <span className="font-extrabold text-emerald-700">{formatCurrency(comparativeData.fixed.winnerPayout)} (95%)</span>
                       </div>
                     </div>
                   </div>
@@ -760,28 +806,39 @@ Calculated via Jenista Accounting Engine`;
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {projectionSchedule.map((row) => (
-                      <tr key={row.month} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-2.5 px-3 font-bold text-slate-900">
-                          Month {row.month}
+                      <tr key={row.month} className={`hover:bg-slate-50/80 transition-colors ${row.isCompany ? 'bg-amber-50/30' : ''}`}>
+                        <td className="py-2.5 px-3 font-bold text-slate-900 flex items-center gap-1.5">
+                          <span>Month {row.month}</span>
+                          {row.isCompany && (
+                            <span className="text-[9px] font-black uppercase tracking-wider bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded border border-amber-300">
+                              Company
+                            </span>
+                          )}
                         </td>
                         <td className="py-2.5 px-3 text-slate-600">
                           {formatCurrency(row.baseInstallment)}
                         </td>
                         {scheme === 'AUCTION' && (
                           <td className="py-2.5 px-3 text-indigo-700 font-semibold">
-                            {row.bidPercent}%
+                            {row.isCompany ? '0%' : `${row.bidPercent}%`}
                           </td>
                         )}
                         {scheme === 'AUCTION' && (
                           <td className="py-2.5 px-3 text-emerald-700 font-semibold">
-                            +{formatCurrency(row.dividend)}
+                            {row.isCompany ? '—' : `+${formatCurrency(row.dividend)}`}
                           </td>
                         )}
                         <td className="py-2.5 px-3 font-black text-slate-900 bg-slate-50/50">
                           {formatCurrency(row.netPayable)}
                         </td>
-                        <td className="py-2.5 px-3 text-blue-700 font-bold">
-                          {formatCurrency(row.winnerPayout)}
+                        <td className="py-2.5 px-3">
+                          {row.isCompany ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs">
+                              COMPANY
+                            </span>
+                          ) : (
+                            <span className="text-blue-700 font-bold">{formatCurrency(row.winnerPayout)}</span>
+                          )}
                         </td>
                         <td className="py-2.5 px-3 text-slate-500 font-medium">
                           {formatCurrency(row.cumulativePaid)}
