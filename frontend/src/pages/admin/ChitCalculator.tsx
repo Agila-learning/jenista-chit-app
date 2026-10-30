@@ -183,27 +183,18 @@ export const ChitCalculator: React.FC = () => {
       let winnerPayoutDisplay = '';
 
       if (scheme === 'AUCTION') {
-        if (month === 1) {
-          // Month 1: Foreman Chit (Company receives prize money under Chit Funds Act, 1982)
-          isCompany = true;
-          bidPercent = 0;
-          dividend = 0;
-          installmentDue = baseInstallment;
-          payout = chitValue;
-          winnerPayoutDisplay = 'COMPANY';
-        } else {
-          // Months 2-20: Subscriber competitive bidding
-          isCompany = false;
-          const curveFactor = 1 + (0.35 * ((duration - month) / duration) - 0.15);
-          bidPercent = Math.min(35, Math.max(8, Math.round(avgDiscountPercent * curveFactor)));
-          const grossDiscount = Math.round(chitValue * (bidPercent / 100));
-          payout = chitValue - grossDiscount;
-          const divPool = Math.max(0, grossDiscount - foremanFee);
-          dividend = Math.round(divPool / duration);
-          installmentDue = baseInstallment - dividend;
-          winnerPayoutDisplay = formatCurrency(payout);
-        }
+        // Subscriber competitive bidding from Month 1
+        isCompany = false;
+        const curveFactor = 1 + (0.35 * ((duration - month) / duration) - 0.15);
+        bidPercent = Math.min(35, Math.max(8, Math.round(avgDiscountPercent * curveFactor)));
+        const grossDiscount = Math.round(chitValue * (bidPercent / 100));
+        payout = chitValue - grossDiscount;
+        const divPool = Math.max(0, grossDiscount - foremanFee);
+        dividend = Math.round(divPool / duration);
+        installmentDue = baseInstallment - dividend;
+        winnerPayoutDisplay = formatCurrency(payout);
       } else if (scheme === 'FIXED') {
+        // Fixed Plan: Month 1 is Company Chit as per Jenista Matrix
         const rowData = fixedDetails.schedule.find(r => r.month === month);
         installmentDue = rowData ? rowData.due : baseInstallment;
         dividend = 0;
@@ -218,19 +209,13 @@ export const ChitCalculator: React.FC = () => {
           winnerPayoutDisplay = formatCurrency(payout);
         }
       } else {
-        // Regular
+        // Regular Scheme: Standard member lucky draw turns from Month 1
+        isCompany = false;
         bidPercent = 0;
         dividend = 0;
         installmentDue = baseInstallment;
-        if (month === 1) {
-          isCompany = true;
-          payout = chitValue;
-          winnerPayoutDisplay = 'COMPANY';
-        } else {
-          isCompany = false;
-          payout = chitValue - foremanFee;
-          winnerPayoutDisplay = formatCurrency(payout);
-        }
+        payout = chitValue - foremanFee;
+        winnerPayoutDisplay = formatCurrency(payout);
       }
 
       cumulativePaid += installmentDue;
@@ -674,10 +659,6 @@ Calculated via Jenista Accounting Engine`;
                         <span className="font-bold text-emerald-700">+{formatCurrency(comparativeData.auction.totalDividend)}</span>
                       </div>
                       <div className="flex justify-between border-t border-indigo-100 pt-1">
-                        <span className="text-slate-500">Month 1 (Foreman):</span>
-                        <span className="font-bold text-amber-800">Company Chit</span>
-                      </div>
-                      <div className="flex justify-between">
                         <span className="text-slate-500">Borrower Net Payout:</span>
                         <span className="font-bold text-blue-800">{formatCurrency(comparativeData.auction.borrowerPayout)}</span>
                       </div>

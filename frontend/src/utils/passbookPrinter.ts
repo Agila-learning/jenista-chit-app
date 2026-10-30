@@ -37,22 +37,31 @@ export const downloadPassbookPDF = (data: PassbookStatementData) => {
     hour12: true
   });
 
+  const adminSignature = typeof window !== 'undefined' ? (localStorage.getItem('adminSignature') || '') : '';
+  const adminSignatoryName = typeof window !== 'undefined' ? (localStorage.getItem('adminSignatoryName') || 'Authorized Signatory') : 'Authorized Signatory';
+  const adminSignatoryTitle = typeof window !== 'undefined' ? (localStorage.getItem('adminSignatoryTitle') || 'For Jenista Chits Pvt Ltd') : 'For Jenista Chits Pvt Ltd';
+
   const groupTitle = data.groupScope && data.groupScope !== 'ALL'
     ? `Group: ${data.groupScope}`
     : 'All Chit Groups (Consolidated)';
 
+  // Sort transactions chronologically date-wise
+  const sortedTransactions = [...(data.transactions || [])].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+
   // Calculate totals
-  const totalCredits = data.transactions
+  const totalCredits = sortedTransactions
     .filter(t => t.type === 'CREDIT')
     .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
-  const totalDebits = data.transactions
+  const totalDebits = sortedTransactions
     .filter(t => t.type === 'DEBIT')
     .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
   const netBalance = totalCredits - totalDebits;
 
-  const rowsHtml = data.transactions.map((t, index) => {
+  const rowsHtml = sortedTransactions.map((t, index) => {
     const isCredit = t.type === 'CREDIT';
     const isCash = (t.description || '').toLowerCase().includes('cash') || (t.paymentMode || '').toLowerCase().includes('cash');
     const modeBadge = isCash ? '<span class="badge cash">CASH</span>' : (t.paymentMode ? `<span class="badge online">${t.paymentMode}</span>` : '');
@@ -126,18 +135,24 @@ export const downloadPassbookPDF = (data: PassbookStatementData) => {
           .company-brand {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 14px;
           }
-          .tree-logo {
-            width: 44px;
-            height: 44px;
-            border-radius: 50%;
-            background: #fef3c7;
-            border: 2px solid #d97706;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 22px;
+          .company-logo-img {
+            width: 48px;
+            height: 48px;
+            object-fit: contain;
+            border-radius: 8px;
+            background: #ffffff;
+            padding: 2px;
+            border: 1.5px solid #d97706;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+          }
+          .sig-img {
+            max-height: 42px;
+            max-width: 140px;
+            object-fit: contain;
+            display: block;
+            margin: 0 auto -16px auto;
           }
           .company-name {
             font-size: 18px;
@@ -415,7 +430,7 @@ export const downloadPassbookPDF = (data: PassbookStatementData) => {
           <!-- Top Header -->
           <div class="header-banner">
             <div class="company-brand">
-              <div class="tree-logo">🌳</div>
+              <img src="/assets/Chit logo.jpg.jpeg" alt="Jenista Chits Logo" class="company-logo-img" />
               <div>
                 <div class="company-name">JENISTA CHITS PVT. LTD.</div>
                 <div class="company-sub">
@@ -525,8 +540,16 @@ export const downloadPassbookPDF = (data: PassbookStatementData) => {
                 <div class="sig-title">Cashier / Staff In-Charge</div>
               </div>
               <div class="sig-box">
-                <div class="sig-line"></div>
-                <div class="sig-title">For Jenista Chits Pvt Ltd<br/>(Authorized Signatory)</div>
+                ${adminSignature ? `
+                  <img src="${adminSignature}" alt="Authorized Signature" class="sig-img" />
+                  <div class="sig-line"></div>
+                ` : `
+                  <div class="sig-line"></div>
+                `}
+                <div class="sig-title">
+                  <strong>${adminSignatoryName}</strong><br/>
+                  <span>${adminSignatoryTitle}</span>
+                </div>
               </div>
             </div>
             <div class="disclaimer">

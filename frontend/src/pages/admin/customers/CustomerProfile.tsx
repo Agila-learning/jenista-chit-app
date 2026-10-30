@@ -64,6 +64,10 @@ export const CustomerProfile = () => {
   const [editTxnDesc, setEditTxnDesc] = useState('');
   const [editTxnSuccessMsg, setEditTxnSuccessMsg] = useState<string | null>(null);
 
+  // Date-wise Sorting States for Payment History & Digital Passbook
+  const [paymentSortOrder, setPaymentSortOrder] = useState<'DESC' | 'ASC'>('DESC');
+  const [passbookSortOrder, setPassbookSortOrder] = useState<'ASC' | 'DESC'>('ASC');
+
   // Bank Customization States
   const [isChangeBankModalOpen, setIsChangeBankModalOpen] = useState(false);
   const [selectedBankToAssign, setSelectedBankToAssign] = useState('INHERIT');
@@ -1881,7 +1885,18 @@ export const CustomerProfile = () => {
                 <thead className="bg-neutral-50 text-xs font-bold text-neutral-500 uppercase tracking-wider border-b border-neutral-200">
                 <tr>
                   <th className="p-4">Receipt ID</th>
-                  <th className="p-4">Date</th>
+                  <th 
+                    className="p-4 cursor-pointer hover:bg-neutral-100 transition-colors select-none"
+                    onClick={() => setPaymentSortOrder(prev => prev === 'DESC' ? 'ASC' : 'DESC')}
+                    title="Click to toggle Date sorting (Newest / Oldest)"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Date</span>
+                      <span className="text-[10px] text-primary-700 bg-primary-100 px-1.5 py-0.5 rounded font-black tracking-wider">
+                        {paymentSortOrder === 'DESC' ? '↓ Newest' : '↑ Oldest'}
+                      </span>
+                    </div>
+                  </th>
                   <th className="p-4">Group / Reference</th>
                   <th className="p-4">Description</th>
                   <th className="p-4 text-center">Receipt</th>
@@ -1892,8 +1907,12 @@ export const CustomerProfile = () => {
                 {(() => {
                   const ledger = JSON.parse(localStorage.getItem('ledgerTransactions') || '[]');
                   let customerTxns = ledger.filter((t: any) => 
-                    t.reference?.includes(displayId) || t.description?.includes(displayId)
-                  );
+                    t.reference?.includes(displayId) || t.description?.includes(displayId) || t.customerId === displayId
+                  ).sort((a: any, b: any) => {
+                    const timeA = new Date(a.date).getTime() || 0;
+                    const timeB = new Date(b.date).getTime() || 0;
+                    return paymentSortOrder === 'DESC' ? timeB - timeA : timeA - timeB;
+                  });
 
                   if (selectedGroupScope && selectedGroupScope !== 'ALL') {
                     customerTxns = customerTxns.filter((t: any) => matchesGroupScope(t, selectedGroupScope));
@@ -2005,7 +2024,18 @@ export const CustomerProfile = () => {
               <table className="w-full text-left border-collapse min-w-[760px]">
                 <thead className="bg-neutral-100/80 text-xs font-bold text-neutral-500 uppercase tracking-wider border-b border-neutral-200">
                   <tr>
-                    <th className="p-4 border-r border-neutral-200 whitespace-nowrap">Date</th>
+                    <th 
+                      className="p-4 border-r border-neutral-200 whitespace-nowrap cursor-pointer hover:bg-neutral-200/60 select-none transition-colors"
+                      onClick={() => setPassbookSortOrder(prev => prev === 'ASC' ? 'DESC' : 'ASC')}
+                      title="Click to toggle Date sort order"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>Date</span>
+                        <span className="text-[10px] text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded font-black tracking-wider">
+                          {passbookSortOrder === 'ASC' ? '↑ Oldest (Chrono)' : '↓ Newest'}
+                        </span>
+                      </div>
+                    </th>
                     <th className="p-4 border-r border-neutral-200 min-w-[200px]">Particulars</th>
                     <th className="p-4 border-r border-neutral-200 whitespace-nowrap">Ref / Txn ID</th>
                     <th className="p-4 border-r border-neutral-200 text-right whitespace-nowrap">Debit (-)</th>
@@ -2017,10 +2047,9 @@ export const CustomerProfile = () => {
                 <tbody className="divide-y divide-neutral-100 bg-white">
                   {(() => {
                     const ledger = JSON.parse(localStorage.getItem('ledgerTransactions') || '[]');
-                    // Sort ledger from oldest to newest to calculate running balance
                     let customerTxns = ledger.filter((t: any) => 
-                      t.reference?.includes(displayId) || t.description?.includes(displayId)
-                    ).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                      t.reference?.includes(displayId) || t.description?.includes(displayId) || t.customerId === displayId
+                    );
 
                     if (selectedGroupScope && selectedGroupScope !== 'ALL') {
                       customerTxns = customerTxns.filter((t: any) => matchesGroupScope(t, selectedGroupScope));
@@ -2041,13 +2070,28 @@ export const CustomerProfile = () => {
                       );
                     }
 
+                    // Sort chronologically from oldest to newest to compute running balance accurately
+                    const chronoSorted = [...customerTxns].sort(
+                      (a: any, b: any) => (new Date(a.date).getTime() || 0) - (new Date(b.date).getTime() || 0)
+                    );
+
                     let runningBalance = 0;
-                    return customerTxns.map((t: any, idx: number) => {
+                    const withBalances = chronoSorted.map((t: any) => {
                       if (t.type === 'CREDIT') {
                         runningBalance += Number(t.amount) || 0;
                       } else {
                         runningBalance -= Number(t.amount) || 0;
                       }
+                      return {
+                        ...t,
+                        calculatedBalance: runningBalance
+                      };
+                    });
+
+                    // Order by user selection: either chronological (oldest first) or reverse chronological (newest first)
+                    const displayTxns = passbookSortOrder === 'DESC' ? [...withBalances].reverse() : withBalances;
+
+                    return displayTxns.map((t: any, idx: number) => {
                       const isCash = (t.description || '').toLowerCase().includes('cash');
 
                       return (
@@ -2075,8 +2119,8 @@ export const CustomerProfile = () => {
                             {t.type === 'CREDIT' ? formatCurrency(t.amount) : '-'}
                           </td>
                           <td className="p-4 text-sm font-bold text-right bg-neutral-50/30 border-r border-neutral-100 whitespace-nowrap tabular-nums">
-                            <span className={runningBalance < 0 ? 'text-danger inline-block whitespace-nowrap' : 'text-primary-900 inline-block whitespace-nowrap'}>
-                              {formatCurrency(runningBalance)}
+                            <span className={t.calculatedBalance < 0 ? 'text-danger inline-block whitespace-nowrap' : 'text-primary-900 inline-block whitespace-nowrap'}>
+                              {formatCurrency(t.calculatedBalance)}
                             </span>
                           </td>
                           <td className="p-4 text-center whitespace-nowrap">

@@ -42,31 +42,31 @@ export const HeroSection = () => {
     <section className="relative min-h-[92vh] flex items-center pt-8 sm:pt-14 pb-28 sm:pb-32 overflow-hidden bg-[#060c18]">
       {/* Background with Layered Image & Luminous Fintech Visual Gradients */}
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-        {/* Layered Rich Architectural Image with Clean Visible Finish */}
+        {/* Layered Architectural Background Image with High Visibility & Crisp Clarity */}
         <div className="absolute inset-0 z-0">
           <img 
             src="/assets/hero-bg.jpg" 
             alt="Jenista Chit Funds Digital Architecture" 
-            className="w-full h-full object-cover object-center opacity-45 scale-100" 
+            className="w-full h-full object-cover object-center opacity-85 brightness-[0.95] contrast-[1.08] scale-100 transition-opacity duration-700" 
           />
-          {/* Balanced gradient overlay allowing architectural image to be clearly viewable while ensuring white text contrast */}
-          <div className="absolute inset-0 bg-gradient-to-t from-[#060c18] via-[#060c18]/50 to-[#060c18]/65" />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#060c18]/80 via-[#060c18]/35 to-[#060c18]/65" />
+          {/* Directional contrast scrim: keeps text legible on the left while allowing the background image to be clearly visible and vibrant */}
+          <div className="absolute inset-0 bg-gradient-to-r from-[#060c18]/90 via-[#060c18]/50 to-[#060c18]/25" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#060c18] via-transparent to-[#060c18]/30" />
         </div>
 
         {/* Soft geometric fintech blueprint grid */}
         <div 
-          className="absolute inset-0 opacity-[0.12] z-1"
+          className="absolute inset-0 opacity-[0.06] z-1"
           style={{
             backgroundImage: `radial-gradient(rgba(255, 255, 255, 0.45) 1px, transparent 1px), linear-gradient(to right, rgba(59, 130, 246, 0.08) 1px, transparent 1px)`,
             backgroundSize: '36px 36px, 72px 72px'
           }}
         />
 
-        {/* Luminous atmospheric glowing orbs */}
-        <div className="absolute -top-32 -left-32 w-[650px] h-[650px] bg-gradient-to-br from-blue-600/30 via-indigo-600/20 to-transparent rounded-full blur-[140px] z-1" />
-        <div className="absolute top-1/3 -right-32 w-[600px] h-[600px] bg-gradient-to-bl from-emerald-500/25 via-teal-600/15 to-transparent rounded-full blur-[130px] z-1" />
-        <div className="absolute -bottom-20 left-1/3 w-[520px] h-[520px] bg-gradient-to-t from-cyan-500/15 via-blue-700/15 to-transparent rounded-full blur-[140px] z-1" />
+        {/* Subtle luminous atmospheric accent highlights */}
+        <div className="absolute -top-32 -left-32 w-[650px] h-[650px] bg-gradient-to-br from-blue-600/20 via-indigo-600/10 to-transparent rounded-full blur-[140px] z-1" />
+        <div className="absolute top-1/3 -right-32 w-[600px] h-[600px] bg-gradient-to-bl from-emerald-500/15 via-teal-600/10 to-transparent rounded-full blur-[130px] z-1" />
+        <div className="absolute -bottom-20 left-1/3 w-[520px] h-[520px] bg-gradient-to-t from-cyan-500/10 via-blue-700/10 to-transparent rounded-full blur-[140px] z-1" />
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full pt-4 sm:pt-6">

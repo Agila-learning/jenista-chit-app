@@ -26,7 +26,11 @@ import {
   Search,
   Trash2,
   Calculator,
-  Receipt
+  Receipt,
+  Download,
+  Printer,
+  FileSpreadsheet,
+  AlertTriangle
 } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip as RechartsTooltip } from 'recharts';
 import { formatCurrency, formatDate } from '../../utils/format';
@@ -91,10 +95,15 @@ export const AdminDashboard = () => {
   const partialPaymentsTotalPaid = partialReceipts.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
   const partialPaymentsTotalDue = partialReceipts.reduce((sum: number, r: any) => sum + Number(r.remainingBalance || 0), 0);
 
-  // Scheme / Card Filtering State for Top KPI Cards (Groups, Fixed, Regular, Auction)
   const [selectedSchemeFilter, setSelectedSchemeFilter] = useState<'GROUPS' | 'FIXED' | 'REGULAR' | 'AUCTION' | null>(null);
   const [schemeSearchQuery, setSchemeSearchQuery] = useState('');
   const [groupSearchQuery, setGroupSearchQuery] = useState('');
+
+  // Group Drilldown View & Month Tracking States
+  const [drilldownTab, setDrilldownTab] = useState<'MEMBERS' | 'MONTH_WISE' | 'ALL_MATRIX'>('MEMBERS');
+  const [selectedMonthForTracking, setSelectedMonthForTracking] = useState<number>(1);
+  const [monthStatusFilter, setMonthStatusFilter] = useState<'ALL' | 'PAID' | 'UNPAID'>('ALL');
+  const [groupMemberQuery, setGroupMemberQuery] = useState('');
 
   // Live greeting determination
   const currentHour = new Date().getHours();
@@ -1060,194 +1069,1066 @@ export const AdminDashboard = () => {
       return sum + Number(chit?.chitValue || (chit?.monthlyInstallment ? chit.monthlyInstallment * groupDuration : calculatedGroupChitValue));
     }, 0);
 
+    const ledger = JSON.parse(localStorage.getItem('ledgerTransactions') || '[]');
+    const groupIdentifier = activeGroup.code || activeGroup.name || activeGroup.id;
+
+    // Filter all credit transactions belonging to this group
+    const groupCredits = ledger.filter((t: any) =>
+      (t.type === 'CREDIT' || t.category === 'INSTALLMENT') &&
+      ((t.reference || '').toLowerCase().includes(groupIdentifier.toLowerCase()) ||
+       (t.description || '').toLowerCase().includes(groupIdentifier.toLowerCase()) ||
+       (t.groupId && t.groupId.toLowerCase().includes(groupIdentifier.toLowerCase())))
+    );
+
+    const totalCollectedForGroup = groupCredits.reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
+    const standardMonthlyDue = Number(activeGroup.customerChitAmount) || (totalGroupMembers > 0 ? Math.round(Number(activeGroup.value || 0) / groupDuration) : 5000);
+    const totalExpectedGroupValue = enrolledTotalChitValueSum || (groupCustomers.length * Number(activeGroup.value || 0)) || calculatedGroupChitValue;
+    const totalPendingForGroup = Math.max(0, totalExpectedGroupValue - totalCollectedForGroup);
+
+    // Compute month-wise breakdown for all months 1..groupDuration
+    const computeMonthData = (targetMonth: number) => {
+      let paidCount = 0;
+      let unpaidCount = 0;
+      let monthTotalDue = 0;
+      let monthTotalCollected = 0;
+
+      const membersData = groupCustomers.map((cust) => {
+        const chit = cust.chits?.find((ch: any) => (
+          ch.groupId === activeGroup.id ||
+          ch.groupId === activeGroup.code ||
+          ch.groupId === activeGroup.name ||
+          (activeGroup.name && ch.groupName === activeGroup.name)
+        )) || cust.chits?.[0];
+
+        const custTargetId = cust.id || cust.customerCode || cust.mongoId;
+        const dueAmt = chit?.monthlyInstallment || standardMonthlyDue;
+        monthTotalDue += dueAmt;
+
+        // Specific ledger match for targetMonth
+        const monthTxn = groupCredits.find((t: any) =>
+          (t.customerId === custTargetId || t.customerId === cust.id || t.reference?.includes(custTargetId) || t.description?.includes(custTargetId)) &&
+          (t.month === targetMonth || (t.description || '').toLowerCase().includes(`month ${targetMonth}`) || (t.reference || '').toLowerCase().includes(`month ${targetMonth}`))
+        );
+
+        // Cumulative fallback: has paid at least up to targetMonth dues
+        const custTotalInGroup = groupCredits
+          .filter((t: any) =>
+            t.customerId === custTargetId || t.customerId === cust.id || t.reference?.includes(custTargetId) || t.description?.includes(custTargetId)
+          )
+          .reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
+
+        const isPaid = !!monthTxn || custTotalInGroup >= (dueAmt * targetMonth) || (chit?.paymentStatus === 'PAID' && targetMonth === 1);
+        const amountPaid = monthTxn ? Number(monthTxn.amount) : (isPaid ? dueAmt : Math.min(dueAmt, Math.max(0, custTotalInGroup - (dueAmt * (targetMonth - 1)))));
+
+        if (isPaid) {
+          paidCount++;
+          monthTotalCollected += (amountPaid || dueAmt);
+        } else {
+          unpaidCount++;
+        }
+
+        return {
+          customer: cust,
+          customerId: custTargetId,
+          name: cust.name || 'Member',
+          mobile: cust.mobile || cust.phone || '—',
+          ticketNumber: chit?.ticketNumber || '—',
+          scheme: chit?.scheme || cust.scheme || 'Regular',
+          dueAmount: dueAmt,
+          amountPaid,
+          isPaid,
+          paidDate: monthTxn?.date ? new Date(monthTxn.date).toLocaleDateString('en-GB') : (isPaid ? 'Recorded' : undefined),
+          receiptId: monthTxn?.id || (isPaid ? 'PAID' : undefined),
+          paymentMode: monthTxn?.paymentMode || 'Cash',
+          pendingAmount: isPaid ? 0 : Math.max(0, dueAmt - amountPaid)
+        };
+      });
+
+      return {
+        month: targetMonth,
+        paidCount,
+        unpaidCount,
+        monthTotalDue,
+        monthTotalCollected,
+        monthPending: Math.max(0, monthTotalDue - monthTotalCollected),
+        members: membersData
+      };
+    };
+
+    const currentMonthStats = computeMonthData(selectedMonthForTracking);
+
+    // Export Specific Group Details alone to Excel (.csv)
+    const handleExportGroupExcel = () => {
+      const headers = ['Ticket No', 'Customer Name', 'Member ID', 'Mobile Number', 'Scheme', 'Duration (Months)', 'Monthly Due (Rs)', 'Total Value (Rs)', 'Total Paid (Rs)', 'Pending Due (Rs)', 'Payment Status'];
+      const rows = groupCustomers.map((c) => {
+        const chit = c.chits?.find((ch: any) => (
+          ch.groupId === activeGroup.id || ch.groupId === activeGroup.code || ch.groupName === activeGroup.name || ch.groupId === activeGroup.name
+        )) || c.chits?.[0];
+        const custTargetId = c.id || c.customerCode || c.mongoId;
+        const custTotalPaid = groupCredits
+          .filter((t: any) => t.customerId === custTargetId || t.customerId === c.id || t.reference?.includes(custTargetId) || t.description?.includes(custTargetId))
+          .reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
+        const chitVal = Number(chit?.chitValue || activeGroup.value || 0);
+        const dueAmt = Number(chit?.monthlyInstallment || standardMonthlyDue);
+        const pendingAmt = Math.max(0, (dueAmt * groupDuration) - custTotalPaid);
+        const isPaid = chit?.paymentStatus === 'PAID' || custTotalPaid >= dueAmt;
+
+        return [
+          chit?.ticketNumber || '—',
+          `"${(c.name || 'Member').replace(/"/g, '""')}"`,
+          custTargetId,
+          c.mobile || c.phone || '—',
+          chit?.scheme || c.scheme || 'Regular',
+          chit?.duration || groupDuration,
+          dueAmt,
+          chitVal,
+          custTotalPaid,
+          pendingAmt,
+          isPaid ? 'PAID' : 'DUE'
+        ];
+      });
+
+      const csvContent = '\uFEFF' + [
+        `"Jenista Chits Pvt. Ltd. - Official Group Member Directory & Financial Report"`,
+        `"Group: ${activeGroup.name || activeGroup.id} (Code: ${activeGroup.code || activeGroup.id})"`,
+        `"Total Value: ${formatCurrency(totalExpectedGroupValue)} | Duration: ${groupDuration} Months | Capacity: ${totalGroupMembers} | Enrolled: ${groupCustomers.length}"`,
+        `"Total Collected: ${formatCurrency(totalCollectedForGroup)} | Total Outstanding: ${formatCurrency(totalPendingForGroup)}"`,
+        `"Generated On: ${new Date().toLocaleString('en-IN')}"`,
+        '',
+        headers.join(','),
+        ...rows.map(r => r.join(','))
+      ].join('\r\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `Jenista_Group_${(activeGroup.code || activeGroup.name || 'group').replace(/[^a-zA-Z0-9_-]/g, '_')}_Details.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+
+    // Export Month-Wise Matrix to Excel (.csv)
+    const handleExportMonthWiseMatrixExcel = () => {
+      const monthHeaders = Array.from({ length: groupDuration }, (_, i) => `Month ${i + 1}`);
+      const headers = ['Ticket No', 'Customer Name', 'Member ID', 'Mobile', 'Scheme', ...monthHeaders, 'Total Paid (Rs)', 'Total Pending (Rs)'];
+      
+      const rows = groupCustomers.map((cust) => {
+        const chit = cust.chits?.find((ch: any) => (
+          ch.groupId === activeGroup.id || ch.groupId === activeGroup.code || ch.groupName === activeGroup.name || ch.groupId === activeGroup.name
+        )) || cust.chits?.[0];
+        const custTargetId = cust.id || cust.customerCode || cust.mongoId;
+        const dueAmt = Number(chit?.monthlyInstallment || standardMonthlyDue);
+
+        const custTotalPaid = groupCredits
+          .filter((t: any) => t.customerId === custTargetId || t.customerId === cust.id || t.reference?.includes(custTargetId) || t.description?.includes(custTargetId))
+          .reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
+
+        const monthCells = Array.from({ length: groupDuration }, (_, i) => {
+          const m = i + 1;
+          const monthTxn = groupCredits.find((t: any) =>
+            (t.customerId === custTargetId || t.customerId === cust.id || t.reference?.includes(custTargetId) || t.description?.includes(custTargetId)) &&
+            (t.month === m || (t.description || '').toLowerCase().includes(`month ${m}`) || (t.reference || '').toLowerCase().includes(`month ${m}`))
+          );
+          const isPaid = !!monthTxn || custTotalPaid >= (dueAmt * m) || (chit?.paymentStatus === 'PAID' && m === 1);
+          return isPaid ? `PAID (${formatCurrency(monthTxn?.amount || dueAmt)})` : `DUE (${formatCurrency(dueAmt)})`;
+        });
+
+        const totalPending = Math.max(0, (dueAmt * groupDuration) - custTotalPaid);
+
+        return [
+          chit?.ticketNumber || '—',
+          `"${(cust.name || 'Member').replace(/"/g, '""')}"`,
+          custTargetId,
+          cust.mobile || cust.phone || '—',
+          chit?.scheme || cust.scheme || 'Regular',
+          ...monthCells.map(c => `"${c}"`),
+          custTotalPaid,
+          totalPending
+        ];
+      });
+
+      const csvContent = '\uFEFF' + [
+        `"Jenista Chits Pvt. Ltd. - Group Month-Wise Payment Tracking Matrix"`,
+        `"Group: ${activeGroup.name || activeGroup.id} | Duration: ${groupDuration} Months"`,
+        `"Export Timestamp: ${new Date().toLocaleString('en-IN')}"`,
+        '',
+        headers.join(','),
+        ...rows.map(r => r.join(','))
+      ].join('\r\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `Jenista_Group_${(activeGroup.code || activeGroup.name || 'group').replace(/[^a-zA-Z0-9_-]/g, '_')}_MonthWise_Tracking.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+
+    // Print / PDF Official Group Month-Wise Report
+    const handlePrintGroupMonthReport = () => {
+      const stats = computeMonthData(selectedMonthForTracking);
+      const adminSig = localStorage.getItem('adminSignature') || '';
+      const adminName = localStorage.getItem('adminSignatoryName') || 'Authorized Signatory';
+      const adminTitle = localStorage.getItem('adminSignatoryTitle') || 'For Jenista Chits Pvt Ltd';
+
+      const printWindow = window.open('', '_blank', 'width=950,height=750');
+      if (!printWindow) {
+        alert('Please allow popups to view and print the group report.');
+        return;
+      }
+
+      const rowsHtml = stats.members.map((m, idx) => `
+        <tr style="border-bottom: 1px solid #e2e8f0; ${!m.isPaid ? 'background-color: #fef2f2;' : (idx % 2 === 0 ? 'background-color: #ffffff;' : 'background-color: #f8fafc;')}">
+          <td style="padding: 8px 10px; font-weight: bold; font-family: monospace;">#${m.ticketNumber}</td>
+          <td style="padding: 8px 10px; font-weight: bold; color: #0f172a;">${m.name}</td>
+          <td style="padding: 8px 10px; font-size: 11px; color: #64748b; font-family: monospace;">${m.customerId}</td>
+          <td style="padding: 8px 10px; font-size: 11px; color: #334155;">${m.mobile}</td>
+          <td style="padding: 8px 10px; font-size: 11px;">${m.scheme}</td>
+          <td style="padding: 8px 10px; text-align: right; font-weight: bold;">₹${m.dueAmount.toLocaleString('en-IN')}</td>
+          <td style="padding: 8px 10px; text-align: right; font-weight: bold; color: ${m.isPaid ? '#047857' : '#dc2626'};">
+            ${m.isPaid ? `₹${(m.amountPaid || m.dueAmount).toLocaleString('en-IN')}` : '₹0'}
+          </td>
+          <td style="padding: 8px 10px; text-align: center;">
+            <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 800; ${
+              m.isPaid ? 'background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0;' : 'background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;'
+            }">
+              ${m.isPaid ? 'PAID ✓' : 'UNPAID / DUE'}
+            </span>
+          </td>
+          <td style="padding: 8px 10px; font-size: 10.5px; color: #64748b;">
+            ${m.isPaid ? `${m.paidDate || ''} ${m.receiptId ? `(${m.receiptId})` : ''}` : 'Pending Followup'}
+          </td>
+        </tr>
+      `).join('');
+
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Jenista_Group_${activeGroup.code || activeGroup.name}_Month_${selectedMonthForTracking}_Report.pdf</title>
+          <style>
+            @page { size: A4 portrait; margin: 12mm 10mm; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #0f172a; margin: 0; padding: 15px; font-size: 11px; }
+            .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #d97706; padding-bottom: 12px; margin-bottom: 15px; }
+            .brand { display: flex; align-items: center; gap: 12px; }
+            .logo { width: 50px; height: 50px; object-fit: contain; border-radius: 6px; border: 1px solid #e2e8f0; background: #fff; }
+            .title { font-size: 18px; font-weight: 900; color: #b45309; text-transform: uppercase; }
+            .sub { font-size: 9px; color: #64748b; margin-top: 2px; }
+            .badge-box { text-align: right; }
+            .badge-box h2 { font-size: 14px; font-weight: 900; margin: 0; color: #0f172a; text-transform: uppercase; }
+            .badge-box p { font-size: 10px; font-weight: 700; color: #d97706; margin: 2px 0 0 0; }
+            
+            .meta-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; margin-bottom: 15px; }
+            .meta-item { font-size: 10.5px; }
+            .meta-label { font-size: 9px; font-weight: bold; color: #64748b; text-transform: uppercase; }
+            .meta-val { font-weight: 800; color: #0f172a; margin-top: 1px; }
+
+            .kpi-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 15px; }
+            .kpi-card { padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0; text-align: center; }
+            .kpi-num { font-size: 16px; font-weight: 900; }
+            .kpi-lbl { font-size: 9px; font-weight: bold; text-transform: uppercase; color: #64748b; }
+
+            table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+            th { background: #f1f5f9; padding: 8px 10px; font-weight: 800; text-transform: uppercase; font-size: 9px; color: #475569; border-bottom: 2px solid #cbd5e1; }
+            .summary-row td { background: #f8fafc; font-weight: 900; border-top: 2px solid #cbd5e1; padding: 10px; }
+
+            .footer-sig { display: flex; justify-content: space-between; margin-top: 40px; padding-top: 10px; }
+            .sig-box { text-align: center; width: 200px; }
+            .sig-line { border-top: 1px solid #94a3b8; margin-bottom: 4px; }
+            .sig-img { max-height: 40px; max-width: 140px; object-fit: contain; margin-bottom: -15px; display: block; margin-left: auto; margin-right: auto; }
+            
+            .no-print { text-align: center; padding-bottom: 15px; }
+            .btn { background: #0f172a; color: white; border: none; padding: 8px 20px; font-weight: bold; border-radius: 6px; cursor: pointer; }
+            @media print { .no-print { display: none; } }
+          </style>
+        </head>
+        <body>
+          <div class="no-print">
+            <button class="btn" onclick="window.print()">📥 Print or Save as PDF</button>
+          </div>
+          <div class="header">
+            <div class="brand">
+              <img src="/assets/Chit logo.jpg.jpeg" alt="Logo" class="logo" />
+              <div>
+                <div class="title">JENISTA CHITS PVT. LTD.</div>
+                <div class="sub">CIN: U67190TZ2020PTC033361 • Central Chit Funds Act, 1982 Regulated</div>
+                <div class="sub">Head Office: Thoothukudi • Branch: Hosur • Phone: 70942 95556, 70940 45556</div>
+              </div>
+            </div>
+            <div class="badge-box">
+              <h2>Group Payment Status</h2>
+              <p>Month ${selectedMonthForTracking} of ${groupDuration} Reconciliation</p>
+            </div>
+          </div>
+
+          <div class="meta-strip">
+            <div class="meta-item">
+              <div class="meta-label">Group Name / Code</div>
+              <div class="meta-val">${activeGroup.name || activeGroup.id} (${activeGroup.code || activeGroup.id})</div>
+            </div>
+            <div class="meta-item">
+              <div class="meta-label">Total Chit Value</div>
+              <div class="meta-val">₹${Number(activeGroup.value || 0).toLocaleString('en-IN')}</div>
+            </div>
+            <div class="meta-item">
+              <div class="meta-label">Duration & Scheme</div>
+              <div class="meta-val">${groupDuration} Months · ${activeGroup.scheme || 'Multi-Scheme'}</div>
+            </div>
+            <div class="meta-item">
+              <div class="meta-label">Subscribers Capacity</div>
+              <div class="meta-val">${totalGroupMembers} Members (${groupCustomers.length} Enrolled)</div>
+            </div>
+          </div>
+
+          <div class="kpi-strip">
+            <div class="kpi-card" style="background: #f8fafc;">
+              <div class="kpi-num" style="color: #0f172a;">₹${stats.monthTotalDue.toLocaleString('en-IN')}</div>
+              <div class="kpi-lbl">Month ${selectedMonthForTracking} Expected Dues</div>
+            </div>
+            <div class="kpi-card" style="background: #ecfdf5;">
+              <div class="kpi-num" style="color: #047857;">₹${stats.monthTotalCollected.toLocaleString('en-IN')}</div>
+              <div class="kpi-lbl">${stats.paidCount} Subscribers Paid</div>
+            </div>
+            <div class="kpi-card" style="background: #fef2f2;">
+              <div class="kpi-num" style="color: #dc2626;">₹${stats.monthPending.toLocaleString('en-IN')}</div>
+              <div class="kpi-lbl">${stats.unpaidCount} Subscribers Unpaid</div>
+            </div>
+            <div class="kpi-card" style="background: #eff6ff;">
+              <div class="kpi-num" style="color: #1d4ed8;">${Math.round((stats.paidCount / Math.max(1, groupCustomers.length)) * 100)}%</div>
+              <div class="kpi-lbl">Collection Recovery Rate</div>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 50px;">Ticket</th>
+                <th>Member Name</th>
+                <th>Member Code</th>
+                <th>Mobile Number</th>
+                <th>Scheme</th>
+                <th style="text-align: right;">Monthly Due</th>
+                <th style="text-align: right;">Paid Amount</th>
+                <th style="text-align: center;">Status</th>
+                <th>Payment Remarks / Ref</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+              <tr class="summary-row">
+                <td colspan="5" style="text-align: right; text-transform: uppercase;">Month ${selectedMonthForTracking} Totals:</td>
+                <td style="text-align: right; color: #0f172a;">₹${stats.monthTotalDue.toLocaleString('en-IN')}</td>
+                <td style="text-align: right; color: #047857;">₹${stats.monthTotalCollected.toLocaleString('en-IN')}</td>
+                <td style="text-align: center; color: ${stats.unpaidCount === 0 ? '#047857' : '#dc2626'};">${stats.paidCount} Paid / ${stats.unpaidCount} Due</td>
+                <td style="color: #64748b; font-size: 9.5px;">Pending: ₹${stats.monthPending.toLocaleString('en-IN')}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="footer-sig">
+            <div class="sig-box">
+              <div class="sig-line"></div>
+              <div style="font-weight: 700; font-size: 9px; text-transform: uppercase;">Collection Agent / Cashier</div>
+            </div>
+            <div class="sig-box">
+              ${adminSig ? `<img src="${adminSig}" alt="Sig" class="sig-img" /><div class="sig-line"></div>` : `<div class="sig-line"></div>`}
+              <div style="font-weight: 800; font-size: 10px; color: #0f172a;">${adminName}</div>
+              <div style="font-size: 8.5px; color: #64748b;">${adminTitle}</div>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      printWindow.document.write(html);
+      printWindow.document.close();
+    };
+
+    // Filtered members for Tab 2 (Month-wise tracking)
+    const filteredMonthMembers = currentMonthStats.members.filter(m => {
+      if (monthStatusFilter === 'PAID' && !m.isPaid) return false;
+      if (monthStatusFilter === 'UNPAID' && m.isPaid) return false;
+      if (groupMemberQuery.trim()) {
+        const q = groupMemberQuery.toLowerCase();
+        return (
+          m.name.toLowerCase().includes(q) ||
+          m.customerId.toLowerCase().includes(q) ||
+          m.mobile.includes(q) ||
+          m.ticketNumber.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+
     return (
       <div className="space-y-6 animate-in fade-in duration-300">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        
+        {/* Top Header with Back, Title, and Action Controls */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm">
           <div className="flex items-start sm:items-center gap-3 sm:gap-4">
             <button
               onClick={handleBackToGroups}
-              className="p-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shrink-0 shadow-2xs mt-0.5 sm:mt-0"
+              className="p-2.5 bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-xl transition-colors shrink-0 shadow-2xs mt-0.5 sm:mt-0"
               title="Back to Dashboard"
             >
-              <ArrowLeft className="w-4 h-4 text-slate-600" />
+              <ArrowLeft className="w-5 h-5 text-slate-700" />
             </button>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold text-slate-900 tracking-tight">{activeGroup.name || activeGroup.id}</h1>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                  {activeGroup.name || activeGroup.id}
+                </h1>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-100 text-blue-900 border border-blue-200 uppercase tracking-wider">
+                  {activeGroup.code || activeGroup.id}
+                </span>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                  Total Enrolled Value: {formatCurrency(enrolledTotalChitValueSum || (groupCustomers.length * Number(activeGroup.value || 0)) || calculatedGroupChitValue)}
+                  Total Value: {formatCurrency(totalExpectedGroupValue)}
                 </span>
               </div>
-              <p className="text-xs text-slate-600 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                <span>{totalGroupMembers > 0 ? `${totalGroupMembers} Members Capacity (${groupCustomers.length} Enrolled)` : `${groupCustomers.length} Enrolled Customer${groupCustomers.length !== 1 ? 's' : ''}`}</span>
+              <p className="text-xs text-slate-500 font-medium mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span>{totalGroupMembers > 0 ? `${totalGroupMembers} Members Capacity (${groupCustomers.length} Enrolled)` : `${groupCustomers.length} Enrolled Subscribers`}</span>
                 <span>•</span>
-                <span className="text-emerald-700 font-semibold">
+                <span>{groupDuration} Months Duration</span>
+                <span>•</span>
+                <span className="text-emerald-700 font-bold">
                   {groupCustomers.filter(c => ((c.chits?.[0]?.scheme || c.scheme || '').toUpperCase().includes('FIX'))).length} Fixed
                 </span>
                 <span>•</span>
-                <span className="text-amber-800 font-semibold">
+                <span className="text-amber-800 font-bold">
                   {groupCustomers.filter(c => ((c.chits?.[0]?.scheme || c.scheme || '').toUpperCase().includes('REG'))).length} Regular
                 </span>
                 <span>•</span>
-                <span className="text-purple-800 font-semibold">
+                <span className="text-purple-800 font-bold">
                   {groupCustomers.filter(c => ((c.chits?.[0]?.scheme || c.scheme || '').toUpperCase().includes('AUC'))).length} Auction
                 </span>
               </p>
             </div>
           </div>
+
+          {/* Action Export & Add Buttons */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleExportGroupExcel}
+              className="px-3.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl shadow-2xs transition-all flex items-center gap-1.5 active:scale-95"
+              title="Export specific group details and member directory to Excel (.csv)"
+            >
+              <Download className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Export Group Excel</span>
+            </button>
+
+            <button
+              onClick={handleExportMonthWiseMatrixExcel}
+              className="px-3.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl shadow-2xs transition-all flex items-center gap-1.5 active:scale-95"
+              title="Export complete Month 1 to Month N payment matrix for this group"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" />
+              <span>Month Matrix Excel</span>
+            </button>
+
+            <button
+              onClick={handlePrintGroupMonthReport}
+              className="px-3.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl shadow-2xs transition-all flex items-center gap-1.5 active:scale-95"
+              title="Print or Save Month-wise payment reconciliation report as PDF"
+            >
+              <Printer className="w-3.5 h-3.5 text-purple-600" />
+              <span>Print / PDF Report</span>
+            </button>
+
+            <button
+              onClick={() => {
+                const defaultVal = activeGroup?.value
+                  ? activeGroup.value.toString()
+                  : (activeGroup?.customerChitAmount && activeGroup?.members
+                    ? (Number(activeGroup.customerChitAmount) * Number(activeGroup.members)).toString()
+                    : '');
+                const defaultMonths = activeGroup?.months?.toString() || activeGroup?.duration?.toString() || '20';
+                setCustomChitValue(defaultVal);
+                setCustomerEnrollScheme('Regular');
+                setCustomerEnrollMonths(defaultMonths);
+                const calculatedDue = defaultVal && Number(defaultMonths) > 0
+                  ? Math.round(Number(defaultVal) / Number(defaultMonths)).toString()
+                  : (activeGroup?.customerChitAmount?.toString() || '');
+                setCustomerEnrollInstallment(calculatedDue);
+                const d = new Date();
+                d.setDate(15);
+                if (d.getTime() < Date.now()) {
+                  d.setMonth(d.getMonth() + 1);
+                }
+                setDueDate(d.toISOString().split('T')[0]);
+                setSearchMobile('');
+                setFoundCustomer(null);
+                setVerificationCustomer(null);
+                setSearchError(null);
+                setIsAddCustomerModalOpen(true);
+              }}
+              className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition-colors flex items-center gap-1.5 active:scale-95"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Customer</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Financial KPI Summary Cards Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Group Chit Value</span>
+            <div className="text-xl sm:text-2xl font-black text-slate-900 mt-1">{formatCurrency(totalExpectedGroupValue)}</div>
+            <div className="text-[11px] text-slate-500 mt-1">
+              Monthly Due: <strong>{formatCurrency(standardMonthlyDue)}/mo</strong>
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-2xl border border-emerald-200/80 shadow-2xs bg-gradient-to-br from-white to-emerald-50/30">
+            <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block">Total Collections</span>
+            <div className="text-xl sm:text-2xl font-black text-emerald-700 mt-1">{formatCurrency(totalCollectedForGroup)}</div>
+            <div className="text-[11px] text-emerald-800/80 mt-1 flex items-center gap-1">
+              <span>{Math.round((totalCollectedForGroup / Math.max(1, totalExpectedGroupValue)) * 100)}% of total chit realized</span>
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-2xl border border-rose-200/80 shadow-2xs bg-gradient-to-br from-white to-rose-50/30">
+            <span className="text-[11px] font-bold text-rose-600 uppercase tracking-wider block">Total Pending Dues</span>
+            <div className="text-xl sm:text-2xl font-black text-rose-700 mt-1">{formatCurrency(totalPendingForGroup)}</div>
+            <div className="text-[11px] text-rose-800/80 mt-1">
+              Across {groupDuration} months schedule
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Subscribers Enrolled</span>
+            <div className="text-xl sm:text-2xl font-black text-slate-900 mt-1">
+              {groupCustomers.length} <span className="text-sm font-semibold text-slate-400">/ {totalGroupMembers || 20}</span>
+            </div>
+            <div className="text-[11px] text-slate-500 mt-1">
+              {totalGroupMembers - groupCustomers.length > 0 ? `${totalGroupMembers - groupCustomers.length} seats available` : 'Full capacity enrolled ✓'}
+            </div>
+          </div>
+        </div>
+
+        {/* View Mode Tabs */}
+        <div className="flex border-b border-slate-200 gap-2 overflow-x-auto bg-white p-2 rounded-2xl border border-slate-200/80 shadow-2xs">
           <button
-            className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 active:scale-95"
-            onClick={() => {
-              const defaultVal = activeGroup?.value
-                ? activeGroup.value.toString()
-                : (activeGroup?.customerChitAmount && activeGroup?.members
-                  ? (Number(activeGroup.customerChitAmount) * Number(activeGroup.members)).toString()
-                  : '');
-              const defaultMonths = activeGroup?.months?.toString() || activeGroup?.duration?.toString() || '20';
-              setCustomChitValue(defaultVal);
-              setCustomerEnrollScheme('Regular');
-              setCustomerEnrollMonths(defaultMonths);
-              const calculatedDue = defaultVal && Number(defaultMonths) > 0
-                ? Math.round(Number(defaultVal) / Number(defaultMonths)).toString()
-                : (activeGroup?.customerChitAmount?.toString() || '');
-              setCustomerEnrollInstallment(calculatedDue);
-              const d = new Date();
-              d.setDate(15);
-              if (d.getTime() < Date.now()) {
-                d.setMonth(d.getMonth() + 1);
-              }
-              setDueDate(d.toISOString().split('T')[0]);
-              setSearchMobile('');
-              setFoundCustomer(null);
-              setVerificationCustomer(null);
-              setSearchError(null);
-              setIsAddCustomerModalOpen(true);
-            }}
+            onClick={() => setDrilldownTab('MEMBERS')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
+              drilldownTab === 'MEMBERS'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            }`}
           >
-            <Plus className="w-4 h-4" /> Add Customer
+            <Users className="w-4 h-4" />
+            <span>Member Directory ({groupCustomers.length})</span>
+          </button>
+
+          <button
+            onClick={() => setDrilldownTab('MONTH_WISE')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
+              drilldownTab === 'MONTH_WISE'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            <span>Month-Wise Payment Tracker (Month 1 - {groupDuration})</span>
+          </button>
+
+          <button
+            onClick={() => setDrilldownTab('ALL_MATRIX')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
+              drilldownTab === 'ALL_MATRIX'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Full Schedule Payment Matrix</span>
           </button>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-2xs border border-slate-200/80 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-100">
-              <thead className="bg-slate-50/80 whitespace-nowrap">
-                <tr>
-                  <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Customer Info</th>
-                  <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Mobile</th>
-                  <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Scheme / Plan</th>
-                  <th className="px-5 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider">Duration</th>
-                  <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Monthly Due</th>
-                  <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Chit Value</th>
-                  <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Payment Status</th>
-                  <th className="px-5 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-slate-100 whitespace-nowrap">
-                {groupCustomers.length === 0 ? (
+        {/* TAB 1: MEMBER DIRECTORY */}
+        {drilldownTab === 'MEMBERS' && (
+          <div className="bg-white rounded-2xl shadow-2xs border border-slate-200/80 overflow-hidden">
+            <div className="p-4 bg-slate-50 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
+              <span className="text-xs font-bold text-slate-700">
+                Enrolled Subscribers Roster ({groupCustomers.length})
+              </span>
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search subscriber name or phone..."
+                  value={groupMemberQuery}
+                  onChange={(e) => setGroupMemberQuery(e.target.value)}
+                  className="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg w-full sm:w-64 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                />
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-100">
+                <thead className="bg-slate-50/80 whitespace-nowrap">
                   <tr>
-                    <td colSpan={8} className="px-5 py-12 text-center text-xs text-slate-400 font-medium">
-                      No customers enrolled in this group yet. Click "+ Add Customer" above to begin enrollment.
-                    </td>
+                    <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Ticket / Customer</th>
+                    <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Mobile</th>
+                    <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Scheme</th>
+                    <th className="px-5 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider">Duration</th>
+                    <th className="px-5 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Monthly Due</th>
+                    <th className="px-5 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Total Paid</th>
+                    <th className="px-5 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Pending Due</th>
+                    <th className="px-5 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                    <th className="px-5 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider">Actions</th>
                   </tr>
-                ) : (
-                  groupCustomers.map((c) => {
-                    const chit = c.chits?.find((ch: any) => (
+                </thead>
+                <tbody className="bg-white divide-y divide-slate-100 whitespace-nowrap">
+                  {groupCustomers.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-5 py-12 text-center text-xs text-slate-400 font-medium">
+                        No customers enrolled in this group yet. Click "+ Add Customer" above to begin enrollment.
+                      </td>
+                    </tr>
+                  ) : (
+                    groupCustomers
+                      .filter(c => {
+                        if (!groupMemberQuery.trim()) return true;
+                        const q = groupMemberQuery.toLowerCase();
+                        return (c.name || '').toLowerCase().includes(q) || (c.id || '').toLowerCase().includes(q) || (c.mobile || '').includes(q);
+                      })
+                      .map((c) => {
+                        const chit = c.chits?.find((ch: any) => (
+                          ch.groupId === activeGroup.id ||
+                          ch.groupId === activeGroup.code ||
+                          ch.groupId === activeGroup.name ||
+                          (activeGroup.name && ch.groupName === activeGroup.name)
+                        )) || c.chits?.[0];
+
+                        const custTargetId = c.id || c.customerCode || c.mongoId;
+                        const monthlyDue = chit?.monthlyInstallment || standardMonthlyDue;
+
+                        const paidForThisGroup = groupCredits
+                          .filter((t: any) => 
+                            (t.customerId === custTargetId || t.customerId === c.id || t.reference?.includes(custTargetId) || t.description?.includes(custTargetId))
+                          )
+                          .reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
+
+                        const isChitPaid = chit?.paymentStatus === 'PAID' || (monthlyDue > 0 && paidForThisGroup >= monthlyDue);
+                        const custPending = Math.max(0, (monthlyDue * groupDuration) - paidForThisGroup);
+
+                        return (
+                          <tr key={c.id} className="hover:bg-slate-50/70 transition-colors">
+                            <td className="px-5 py-3">
+                              <button
+                                onClick={() => navigate(`/admin/customers/${custTargetId}/schedule?group=${encodeURIComponent(groupIdentifier)}`)}
+                                className="text-left group/cust hover:opacity-90 focus:outline-none"
+                              >
+                                <div className="font-bold text-slate-900 text-xs group-hover/cust:text-blue-600 transition-colors flex items-center gap-1.5">
+                                  <span className="font-mono text-slate-400">#{chit?.ticketNumber || '—'}</span>
+                                  <span>{c.name}</span>
+                                </div>
+                                <div className="text-[10px] text-slate-400 font-mono">ID: {c.id}</div>
+                              </button>
+                            </td>
+                            <td className="px-5 py-3 text-xs font-medium text-slate-700">
+                              {c.mobile || c.phone || '—'}
+                            </td>
+                            <td className="px-5 py-3">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${(chit?.scheme || c.scheme || '').toUpperCase().includes('FIX')
+                                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                  : (chit?.scheme || c.scheme || '').toUpperCase().includes('AUC')
+                                    ? 'bg-purple-50 text-purple-800 border border-purple-200'
+                                    : 'bg-amber-50 text-amber-800 border border-amber-200'
+                                }`}>
+                                {chit?.scheme || c.scheme || 'Regular'}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3 text-center text-xs font-bold text-slate-700">
+                              {chit?.duration || chit?.months || c.months || groupDuration}m
+                            </td>
+                            <td className="px-5 py-3 text-right text-xs font-bold text-slate-900">
+                              {formatCurrency(monthlyDue)}
+                            </td>
+                            <td className="px-5 py-3 text-right text-xs font-bold text-emerald-700">
+                              {formatCurrency(paidForThisGroup)}
+                            </td>
+                            <td className="px-5 py-3 text-right text-xs font-bold text-rose-700">
+                              {formatCurrency(custPending)}
+                            </td>
+                            <td className="px-5 py-3 text-center">
+                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${isChitPaid
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                  : 'bg-rose-100 text-rose-800 border border-rose-200'
+                                }`}>
+                                {isChitPaid ? 'PAID' : 'DUE'}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3 text-center">
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  onClick={() => navigate(`/admin/customers/${custTargetId}/schedule?group=${encodeURIComponent(groupIdentifier)}`)}
+                                  className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-2xs inline-flex items-center gap-1 transition-all active:scale-95"
+                                  title="View full installment chart & dates"
+                                >
+                                  <span>Due Chart</span>
+                                  <span className="text-[10px]">&rarr;</span>
+                                </button>
+                                <button
+                                  onClick={() => navigate(`/admin/customers/${custTargetId}?group=${encodeURIComponent(groupIdentifier)}`)}
+                                  className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 hover:text-slate-900 text-xs font-medium rounded-lg shadow-2xs transition-colors"
+                                  title="View full customer profile"
+                                >
+                                  <span>Profile</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: DETAILED MONTH-WISE VIEW (WHO PAID VS WHO HAVEN'T PAID) */}
+        {drilldownTab === 'MONTH_WISE' && (
+          <div className="space-y-4">
+            
+            {/* Month Selection Bar (Month 1 to Duration) */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <span className="text-xs font-bold text-slate-800 block">Select Installment Month to Track</span>
+                  <span className="text-[11px] text-slate-500">Live breakdown of payments received vs pending for the group</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handlePrintGroupMonthReport}
+                    className="px-3 py-1.5 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg flex items-center gap-1 transition-colors"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Print Month {selectedMonthForTracking} Statement</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Month Pills */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
+                {Array.from({ length: groupDuration }, (_, i) => {
+                  const m = i + 1;
+                  const mStats = computeMonthData(m);
+                  const isFullyPaid = mStats.unpaidCount === 0 && mStats.members.length > 0;
+                  const isCurrentSelected = selectedMonthForTracking === m;
+
+                  return (
+                    <button
+                      key={m}
+                      onClick={() => setSelectedMonthForTracking(m)}
+                      className={`px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex flex-col items-center min-w-[76px] ${
+                        isCurrentSelected
+                          ? 'bg-blue-600 text-white shadow-md scale-105'
+                          : isFullyPaid
+                          ? 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200'
+                          : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
+                      }`}
+                    >
+                      <span className="text-[11px]">Month {m}</span>
+                      <span className={`text-[9px] font-black mt-0.5 ${
+                        isCurrentSelected ? 'text-blue-100' : isFullyPaid ? 'text-emerald-700' : 'text-slate-400'
+                      }`}>
+                        {mStats.paidCount}/{mStats.members.length} Paid
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Month Summary Bar & Filter Chips */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Month {selectedMonthForTracking} Target</span>
+                  <span className="text-xl font-black text-slate-900">{formatCurrency(currentMonthStats.monthTotalDue)}</span>
+                </div>
+                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 font-bold">
+                  {currentMonthStats.members.length}
+                </div>
+              </div>
+
+              <div className="p-4 bg-emerald-50/60 rounded-2xl border border-emerald-200 shadow-2xs flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">Realized / Paid</span>
+                  <span className="text-xl font-black text-emerald-800">{formatCurrency(currentMonthStats.monthTotalCollected)}</span>
+                </div>
+                <span className="px-2.5 py-1 bg-emerald-100 text-emerald-900 text-xs font-black rounded-lg">
+                  {currentMonthStats.paidCount} Paid ✓
+                </span>
+              </div>
+
+              <div className="p-4 bg-rose-50/60 rounded-2xl border border-rose-200 shadow-2xs flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold text-rose-700 uppercase tracking-wider block">Pending / Unpaid</span>
+                  <span className="text-xl font-black text-rose-800">{formatCurrency(currentMonthStats.monthPending)}</span>
+                </div>
+                <span className="px-2.5 py-1 bg-rose-100 text-rose-900 text-xs font-black rounded-lg">
+                  {currentMonthStats.unpaidCount} Defaulters ⚠️
+                </span>
+              </div>
+            </div>
+
+            {/* Month-Wise Table: Who Made Payment vs Who Haven't */}
+            <div className="bg-white rounded-2xl shadow-2xs border border-slate-200/80 overflow-hidden">
+              <div className="p-4 bg-slate-50 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-800">Filter By Payment Status:</span>
+                  <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-white">
+                    <button
+                      onClick={() => setMonthStatusFilter('ALL')}
+                      className={`px-2.5 py-1 rounded-md text-xs font-bold transition-colors ${
+                        monthStatusFilter === 'ALL' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      All ({currentMonthStats.members.length})
+                    </button>
+                    <button
+                      onClick={() => setMonthStatusFilter('PAID')}
+                      className={`px-2.5 py-1 rounded-md text-xs font-bold transition-colors ${
+                        monthStatusFilter === 'PAID' ? 'bg-emerald-600 text-white' : 'text-emerald-700 hover:bg-emerald-50'
+                      }`}
+                    >
+                      Paid ({currentMonthStats.paidCount})
+                    </button>
+                    <button
+                      onClick={() => setMonthStatusFilter('UNPAID')}
+                      className={`px-2.5 py-1 rounded-md text-xs font-bold transition-colors ${
+                        monthStatusFilter === 'UNPAID' ? 'bg-rose-600 text-white' : 'text-rose-700 hover:bg-rose-50'
+                      }`}
+                    >
+                      Unpaid ({currentMonthStats.unpaidCount})
+                    </button>
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search subscriber name or phone..."
+                    value={groupMemberQuery}
+                    onChange={(e) => setGroupMemberQuery(e.target.value)}
+                    className="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg w-full sm:w-60 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-100">
+                  <thead className="bg-slate-50/80 whitespace-nowrap">
+                    <tr>
+                      <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Ticket</th>
+                      <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Subscriber Name</th>
+                      <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Mobile</th>
+                      <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Scheme</th>
+                      <th className="px-5 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Month {selectedMonthForTracking} Due</th>
+                      <th className="px-5 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Amount Paid</th>
+                      <th className="px-5 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider">Payment Status</th>
+                      <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Transaction Info</th>
+                      <th className="px-5 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-100 whitespace-nowrap">
+                    {filteredMonthMembers.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="px-5 py-12 text-center text-xs text-slate-400 font-medium">
+                          No subscribers matching the filter for Month {selectedMonthForTracking}.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredMonthMembers.map((m) => (
+                        <tr key={m.customerId} className={`hover:bg-slate-50/70 transition-colors ${!m.isPaid ? 'bg-rose-50/20' : ''}`}>
+                          <td className="px-5 py-3 font-mono font-bold text-slate-700 text-xs">
+                            #{m.ticketNumber}
+                          </td>
+                          <td className="px-5 py-3">
+                            <div className="font-bold text-slate-900 text-xs">{m.name}</div>
+                            <div className="text-[10px] text-slate-400 font-mono">ID: {m.customerId}</div>
+                          </td>
+                          <td className="px-5 py-3 text-xs font-medium text-slate-700">
+                            {m.mobile}
+                          </td>
+                          <td className="px-5 py-3">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-800">
+                              {m.scheme}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 text-right text-xs font-bold text-slate-900">
+                            {formatCurrency(m.dueAmount)}
+                          </td>
+                          <td className="px-5 py-3 text-right text-xs font-bold text-emerald-700">
+                            {m.isPaid ? formatCurrency(m.amountPaid || m.dueAmount) : '—'}
+                          </td>
+                          <td className="px-5 py-3 text-center">
+                            {m.isPaid ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> PAID
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300">
+                                <AlertTriangle className="w-3 h-3 text-rose-600" /> UNPAID / DUE
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3 text-xs text-slate-600">
+                            {m.isPaid ? (
+                              <div className="text-[11px]">
+                                <span className="font-semibold text-slate-800">{m.paidDate || 'Paid'}</span>
+                                {m.receiptId && (
+                                  <span className="ml-1 text-[10px] font-mono text-slate-400">({m.receiptId})</span>
+                                )}
+                                <span className="ml-1 text-[9px] uppercase px-1 rounded bg-slate-100 font-bold text-slate-600">{m.paymentMode}</span>
+                              </div>
+                            ) : (
+                              <span className="text-rose-600 font-semibold text-[11px]">
+                                Due: {formatCurrency(m.pendingAmount || m.dueAmount)}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              {!m.isPaid ? (
+                                <button
+                                  onClick={() => navigate(`/admin/customers/${m.customerId}?group=${encodeURIComponent(groupIdentifier)}&payMonth=${selectedMonthForTracking}`)}
+                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-2xs inline-flex items-center gap-1 transition-all active:scale-95"
+                                  title="Record payment for this customer"
+                                >
+                                  <CreditCard className="w-3 h-3" />
+                                  <span>Collect</span>
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => navigate(`/admin/customers/${m.customerId}?group=${encodeURIComponent(groupIdentifier)}`)}
+                                  className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-medium rounded-lg shadow-2xs"
+                                >
+                                  Passbook
+                                </button>
+                              )}
+                              <button
+                                onClick={() => navigate(`/admin/customers/${m.customerId}/schedule?group=${encodeURIComponent(groupIdentifier)}`)}
+                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors"
+                              >
+                                Chart &rarr;
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: FULL SCHEDULE PAYMENT MATRIX (MONTH 1 TO 20) */}
+        {drilldownTab === 'ALL_MATRIX' && (
+          <div className="bg-white rounded-2xl shadow-2xs border border-slate-200/80 overflow-hidden">
+            <div className="p-4 bg-slate-50 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div>
+                <span className="text-xs font-bold text-slate-800 block">Complete Group Payment Tracking Matrix</span>
+                <span className="text-[11px] text-slate-500">Overview of subscriber payments across all {groupDuration} months</span>
+              </div>
+              <button
+                onClick={handleExportMonthWiseMatrixExcel}
+                className="px-3.5 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-2xs flex items-center gap-1.5 transition-all"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export Matrix (.csv)</span>
+              </button>
+            </div>
+
+            <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+              <table className="min-w-full divide-y divide-slate-100 text-xs">
+                <thead className="bg-slate-100 sticky top-0 z-10 whitespace-nowrap">
+                  <tr>
+                    <th className="px-4 py-2.5 text-left font-bold text-slate-600 sticky left-0 bg-slate-100 z-20 border-r border-slate-200">
+                      Subscriber Info
+                    </th>
+                    {Array.from({ length: groupDuration }, (_, i) => (
+                      <th key={i} className="px-3 py-2.5 text-center font-bold text-slate-600 min-w-[75px] border-r border-slate-200">
+                        M{i + 1}
+                      </th>
+                    ))}
+                    <th className="px-4 py-2.5 text-right font-bold text-emerald-800">Total Paid</th>
+                    <th className="px-4 py-2.5 text-right font-bold text-rose-800">Pending</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-slate-100 whitespace-nowrap">
+                  {groupCustomers.map((cust) => {
+                    const chit = cust.chits?.find((ch: any) => (
                       ch.groupId === activeGroup.id ||
                       ch.groupId === activeGroup.code ||
                       ch.groupId === activeGroup.name ||
                       (activeGroup.name && ch.groupName === activeGroup.name)
-                    )) || c.chits?.[0];
+                    )) || cust.chits?.[0];
 
-                    const custTargetId = c.id || c.customerCode || c.mongoId;
-                    const monthlyDue = chit?.monthlyInstallment || 0;
-                    const groupIdentifier = activeGroup.code || activeGroup.name || activeGroup.id;
+                    const custTargetId = cust.id || cust.customerCode || cust.mongoId;
+                    const dueAmt = Number(chit?.monthlyInstallment || standardMonthlyDue);
 
-                    // Dynamically check if customer has paid their installment for this group from ledger
-                    const ledger = JSON.parse(localStorage.getItem('ledgerTransactions') || '[]');
-                    const paidForThisGroup = ledger
-                      .filter((t: any) => 
-                        (t.type === 'CREDIT' || t.category === 'INSTALLMENT') &&
-                        (t.customerId === custTargetId || t.customerId === c.id || t.reference?.includes(custTargetId) || t.description?.includes(custTargetId)) &&
-                        ((t.reference || '').toLowerCase().includes((groupIdentifier || '').toLowerCase()) || 
-                         (t.description || '').toLowerCase().includes((groupIdentifier || '').toLowerCase()) ||
-                         (t.groupId && t.groupId.toLowerCase().includes((groupIdentifier || '').toLowerCase())))
-                      )
+                    const custTotalPaid = groupCredits
+                      .filter((t: any) => t.customerId === custTargetId || t.customerId === cust.id || t.reference?.includes(custTargetId) || t.description?.includes(custTargetId))
                       .reduce((sum: number, t: any) => sum + (Number(t.amount) || 0), 0);
 
-                    const isChitPaid = chit?.paymentStatus === 'PAID' || (monthlyDue > 0 && paidForThisGroup >= monthlyDue);
+                    const totalPending = Math.max(0, (dueAmt * groupDuration) - custTotalPaid);
 
                     return (
-                      <tr key={c.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="px-5 py-3">
-                          <button
-                            onClick={() => navigate(`/admin/customers/${custTargetId}/schedule?group=${encodeURIComponent(groupIdentifier)}`)}
-                            className="text-left group/cust hover:opacity-90 focus:outline-none"
-                            title="Click to view due amounts, due dates, paid on dates, and autocalculated pre-chart"
-                          >
-                            <div className="font-bold text-slate-900 text-xs group-hover/cust:text-blue-600 group-hover/cust:underline transition-colors flex items-center gap-1.5">
-                              <span>{c.name}</span>
-                            </div>
-                            <div className="text-[10px] text-slate-400 font-mono group-hover/cust:text-slate-600">ID: {c.id}</div>
-                          </button>
-                        </td>
-                        <td className="px-5 py-3 text-xs font-medium text-slate-700">
-                          {c.mobile || c.phone || '—'}
-                        </td>
-                        <td className="px-5 py-3">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${(chit?.scheme || c.scheme || '').toUpperCase().includes('FIX')
-                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                              : (chit?.scheme || c.scheme || '').toUpperCase().includes('AUC')
-                                ? 'bg-purple-50 text-purple-800 border border-purple-200'
-                                : 'bg-amber-50 text-amber-800 border border-amber-200'
-                            }`}>
-                            {chit?.scheme || c.scheme || 'Regular'}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3 text-center text-xs font-bold text-slate-700">
-                          {chit?.duration || chit?.months || c.months || 20}m
-                        </td>
-                        <td className="px-5 py-3 text-xs font-bold text-slate-900">
-                          {formatCurrency(chit?.monthlyInstallment || 0)}
-                        </td>
-                        <td className="px-5 py-3 text-xs font-extrabold text-slate-900">
-                          {formatCurrency(chit?.chitValue || 0)}
-                        </td>
-                        <td className="px-5 py-3">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isChitPaid
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-amber-100 text-amber-800'
-                            }`}>
-                            {isChitPaid ? 'PAID' : 'DUE'}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              onClick={() => navigate(`/admin/customers/${custTargetId}/schedule?group=${encodeURIComponent(groupIdentifier)}`)}
-                              className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-2xs inline-flex items-center gap-1 transition-all active:scale-95"
-                              title="View due amount, due date, paid on, and full schedule chart"
-                            >
-                              <span>Due Chart</span>
-                              <span className="text-[10px]">&rarr;</span>
-                            </button>
-                            <button
-                              onClick={() => navigate(`/admin/customers/${custTargetId}?group=${encodeURIComponent(groupIdentifier)}`)}
-                              className="px-2 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-500 hover:text-slate-800 text-xs font-medium rounded-lg shadow-2xs inline-flex items-center gap-1 transition-colors"
-                              title="View full customer profile"
-                            >
-                              <span>Profile</span>
-                            </button>
+                      <tr key={custTargetId} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="px-4 py-2.5 font-bold text-slate-900 sticky left-0 bg-white z-10 border-r border-slate-200 shadow-2xs">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-slate-400 text-[10px]">#{chit?.ticketNumber || '—'}</span>
+                            <span className="truncate max-w-[130px]">{cust.name}</span>
                           </div>
+                        </td>
+
+                        {Array.from({ length: groupDuration }, (_, i) => {
+                          const m = i + 1;
+                          const monthTxn = groupCredits.find((t: any) =>
+                            (t.customerId === custTargetId || t.customerId === cust.id || t.reference?.includes(custTargetId) || t.description?.includes(custTargetId)) &&
+                            (t.month === m || (t.description || '').toLowerCase().includes(`month ${m}`) || (t.reference || '').toLowerCase().includes(`month ${m}`))
+                          );
+                          const isPaid = !!monthTxn || custTotalPaid >= (dueAmt * m) || (chit?.paymentStatus === 'PAID' && m === 1);
+
+                          return (
+                            <td key={m} className={`px-2 py-2 text-center border-r border-slate-100 ${
+                              isPaid ? 'bg-emerald-50/40 text-emerald-800' : 'bg-rose-50/30 text-rose-700'
+                            }`}>
+                              {isPaid ? (
+                                <span className="font-black text-[10px] text-emerald-700">✓ Paid</span>
+                              ) : (
+                                <span className="text-[10px] font-bold text-rose-600">Due</span>
+                              )}
+                            </td>
+                          );
+                        })}
+
+                        <td className="px-4 py-2.5 text-right font-bold text-emerald-700">
+                          {formatCurrency(custTotalPaid)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-bold text-rose-700">
+                          {formatCurrency(totalPending)}
                         </td>
                       </tr>
                     );
-                  })
-                )}
-              </tbody>
-            </table>
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Modal: Add Customer into Selected Group */}
         {isAddCustomerModalOpen && (

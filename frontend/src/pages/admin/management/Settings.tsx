@@ -307,7 +307,143 @@ export const Settings = () => {
             </div>
           )}
 
-          {/* 2. BRANCH MANAGEMENT */}
+          {/* 2. ADMIN SIGNATURE & AUTHORIZED SIGNATORY */}
+          {activeTab === 'signature' && (
+            <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
+              <div className="flex items-center space-x-3 p-6 border-b border-neutral-100 bg-neutral-50">
+                <div className="p-2 bg-amber-100 rounded-lg text-amber-900">
+                  <PenTool className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-primary-900">Admin Signature & Official Seal</h2>
+                  <p className="text-sm text-neutral-500">
+                    Upload official authorized signature to reflect dynamically on digital passbooks, payment receipts, and certificates.
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={handleSaveSignature} className="p-6 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                  
+                  {/* Upload Box */}
+                  <div className="space-y-4">
+                    <label className="block text-xs font-bold text-neutral-500 uppercase tracking-wider">
+                      Authorized Signature Image (PNG / JPG)
+                    </label>
+
+                    {adminSignature ? (
+                      <div className="p-6 bg-slate-50 border-2 border-dashed border-amber-300 rounded-2xl flex flex-col items-center justify-center space-y-3 relative">
+                        <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-xs max-w-full">
+                          <img 
+                            src={adminSignature} 
+                            alt="Uploaded Signature" 
+                            className="max-h-24 max-w-full object-contain mx-auto" 
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg cursor-pointer shadow-2xs transition-colors flex items-center gap-1.5">
+                            <UploadCloud className="w-3.5 h-3.5" />
+                            <span>Replace Image</span>
+                            <input 
+                              type="file" 
+                              accept="image/png, image/jpeg, image/jpg, image/webp" 
+                              onChange={handleSignatureUpload} 
+                              className="hidden" 
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={handleRemoveSignature}
+                            className="px-3 py-1.5 bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Remove</span>
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          Signature active & ready for digital passbooks and receipts
+                        </p>
+                      </div>
+                    ) : (
+                      <label className="p-8 bg-neutral-50 border-2 border-dashed border-neutral-300 hover:border-amber-400 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all hover:bg-amber-50/20 group">
+                        <div className="p-3 bg-white rounded-full shadow-xs text-neutral-400 group-hover:text-amber-600 group-hover:scale-110 transition-all mb-3">
+                          <UploadCloud className="w-6 h-6" />
+                        </div>
+                        <span className="text-xs font-bold text-neutral-700 group-hover:text-amber-800">
+                          Click or drag signature image to upload
+                        </span>
+                        <span className="text-[11px] text-neutral-400 mt-1">
+                          Supports PNG, JPG, or WebP (Max 2MB). Transparent background recommended.
+                        </span>
+                        <input 
+                          type="file" 
+                          accept="image/png, image/jpeg, image/jpg, image/webp" 
+                          onChange={handleSignatureUpload} 
+                          className="hidden" 
+                        />
+                      </label>
+                    )}
+                  </div>
+
+                  {/* Signatory Text Details & Live Preview */}
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-500 uppercase tracking-wider mb-2">
+                        Signatory Official Name
+                      </label>
+                      <Input 
+                        value={signatoryName} 
+                        onChange={(e) => setSignatoryName(e.target.value)} 
+                        placeholder="e.g. S. Senthil Kumar or Authorized Signatory" 
+                        required 
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-500 uppercase tracking-wider mb-2">
+                        Official Designation / Title
+                      </label>
+                      <Input 
+                        value={signatoryTitle} 
+                        onChange={(e) => setSignatoryTitle(e.target.value)} 
+                        placeholder="e.g. Authorized Signatory / Branch Manager / Managing Director" 
+                        required 
+                      />
+                    </div>
+
+                    {/* Live Passbook Preview Box */}
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                        Passbook & Receipt Preview
+                      </span>
+                      <div className="p-4 bg-white rounded-lg border border-slate-200 shadow-2xs text-center">
+                        <div className="h-14 flex items-center justify-center mb-1">
+                          {adminSignature ? (
+                            <img src={adminSignature} alt="Sig Preview" className="max-h-12 max-w-[140px] object-contain" />
+                          ) : (
+                            <span className="text-xs text-slate-300 italic">No signature uploaded yet</span>
+                          )}
+                        </div>
+                        <div className="w-36 h-px bg-slate-300 mx-auto mb-1.5" />
+                        <div className="text-xs font-bold text-slate-900">{signatoryName || 'System Admin'}</div>
+                        <div className="text-[10px] text-slate-500">{signatoryTitle || 'Authorized Signatory'}</div>
+                        <div className="text-[9px] text-amber-700 font-semibold mt-0.5">FOR JENISTA CHITS PVT LTD</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-4 border-t border-neutral-100">
+                  <Button type="submit" variant="primary" className="px-8 shadow-sm">
+                    Save Signature Settings
+                  </Button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* 3. BRANCH MANAGEMENT */}
           {activeTab === 'branches' && (
             <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
               <div className="flex items-center justify-between p-6 border-b border-neutral-100 bg-neutral-50">

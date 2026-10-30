@@ -261,27 +261,64 @@ export const syncOverdueAndDisbursementAlerts = (): void => {
     const cRaw = localStorage.getItem('mockCustomers');
     if (cRaw) {
       const customers: any[] = JSON.parse(cRaw);
-      const overdueCustomers = customers.filter((c: any) => Number(c.pending) > 0 && c.status !== 'REJECTED');
-      const clearedCustomerIds = new Set(customers.filter((c: any) => !c.pending || Number(c.pending) <= 0).map((c: any) => c.id));
+      const overdueList: { customer: any; amount: number; groupName?: string; groupId?: string }[] = [];
+      const clearedCustomerIds = new Set<string>();
 
-      overdueCustomers.forEach((c: any) => {
-        const notifId = `NOTIF-OVERDUE-${c.id}`;
+      customers.forEach((c: any) => {
+        if (c.status === 'REJECTED') return;
+        const custId = c.id || c.customerCode || c._id;
+        if (!custId) return;
+
+        let totalDue = Number(c.pending || 0);
+        let groupName = '';
+        let groupId = '';
+
+        if (Array.isArray(c.chits)) {
+          c.chits.forEach((ch: any) => {
+            const chDue = Number(ch.dueAmount || ch.pendingAmount || ch.pending || 0);
+            if (chDue > 0) {
+              totalDue = Math.max(totalDue, totalDue + chDue);
+              if (!groupName) groupName = ch.groupName || ch.groupId || '';
+              if (!groupId) groupId = ch.groupId || '';
+            } else if (ch.paymentStatus === 'DUE') {
+              const installment = Number(ch.monthlyInstallment || 5000);
+              totalDue = Math.max(totalDue, totalDue + installment);
+              if (!groupName) groupName = ch.groupName || ch.groupId || '';
+              if (!groupId) groupId = ch.groupId || '';
+            }
+          });
+        }
+
+        if (totalDue > 0) {
+          overdueList.push({ customer: c, amount: totalDue, groupName, groupId });
+        } else {
+          clearedCustomerIds.add(custId);
+        }
+      });
+
+      overdueList.forEach(({ customer: c, amount, groupName, groupId }) => {
+        const custId = c.id || c.customerCode || c._id;
+        const notifId = `NOTIF-OVERDUE-${custId}`;
         const existingIdx = notifications.findIndex(n => n.id === notifId);
-        const amount = Number(c.pending || 0);
+        const title = `⚠️ Pending Due: ${c.name || 'Member'} - ₹${amount.toLocaleString('en-IN')}`;
+        const message = `Member ${c.name || 'Customer'} (${custId}) has an overdue installment balance of ₹${amount.toLocaleString('en-IN')}${groupName ? ` in ${groupName}` : ''}. Click to collect payment or view ledger.`;
 
         if (existingIdx === -1) {
           notifications.unshift({
             id: notifId,
             type: 'OVERDUE_ALERT',
-            title: `⚠️ Pending Overdue Alert: ${c.name || 'Member'}`,
-            message: `Member ${c.name || 'Customer'} (${c.id || c.customerCode || ''}) has overdue installment balance of ₹${amount.toLocaleString('en-IN')}. Follow-up required until dues are cleared.`,
+            title,
+            message,
             timestamp: new Date().toISOString(),
             isRead: false,
             targetRole: 'ALL',
             metadata: {
-              customerId: c.id,
-              customerName: c.name,
-              amount: amount
+              customerId: custId,
+              customerName: c.name || c.fullName,
+              amount: amount,
+              groupId: groupId || undefined,
+              groupName: groupName || undefined,
+              phone: c.mobile || c.phone || undefined
             }
           });
           hasChanged = true;
@@ -289,10 +326,14 @@ export const syncOverdueAndDisbursementAlerts = (): void => {
           notifications[existingIdx] = {
             ...notifications[existingIdx],
             isRead: false,
-            message: `Member ${c.name || 'Customer'} (${c.id || c.customerCode || ''}) has overdue installment balance of ₹${amount.toLocaleString('en-IN')}. Follow-up required until dues are cleared.`,
+            title,
+            message,
             metadata: {
               ...notifications[existingIdx].metadata,
-              amount: amount
+              amount: amount,
+              groupId: groupId || notifications[existingIdx].metadata?.groupId,
+              groupName: groupName || notifications[existingIdx].metadata?.groupName,
+              phone: c.mobile || c.phone || notifications[existingIdx].metadata?.phone
             }
           };
           hasChanged = true;
