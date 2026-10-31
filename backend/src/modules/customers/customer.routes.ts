@@ -15,10 +15,15 @@ router.post('/track', CustomerController.trackChit);
 
 // Customer list (allows filtering by status, search, etc.)
 router.get('/', CustomerController.getCustomers);
+router.get('/:id', CustomerController.getCustomerById);
 
 // Update customer status or details (e.g. approve / reject / modify)
 router.patch('/:id/status', CustomerController.updateCustomerStatus);
 router.patch('/:id', CustomerController.updateCustomerStatus);
+
+// Chit Enrollment & Allocation for customer
+router.post('/:id/chits', CustomerController.addChitToCustomer);
+router.patch('/:id/chits', CustomerController.addChitToCustomer);
 
 // Delete customer
 router.delete('/:id', CustomerController.deleteCustomer);

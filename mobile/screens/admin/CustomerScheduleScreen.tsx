@@ -503,6 +503,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+    maxWidth: 768,
+    width: '100%',
+    alignSelf: 'center',
   },
   summaryBox: {
     backgroundColor: Colors.navy.primary,
@@ -739,14 +742,18 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
   },
   modalCard: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderRadius: 24,
     padding: 20,
     maxHeight: '90%',
+    width: '100%',
+    maxWidth: 540,
+    alignSelf: 'center',
   },
   modalHeader: {
     flexDirection: 'row',

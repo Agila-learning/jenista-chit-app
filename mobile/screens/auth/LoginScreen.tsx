@@ -196,10 +196,13 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     padding: 20,
+    alignItems: 'center',
   },
   header: {
     alignItems: 'center',
     marginBottom: 24,
+    width: '100%',
+    maxWidth: 440,
   },
   logoBadge: {
     width: 76,
@@ -228,6 +231,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderRadius: 24,
     padding: 24,
+    maxWidth: 440,
+    width: '100%',
+    alignSelf: 'center',
     shadowColor: Colors.navy.primary,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.18,

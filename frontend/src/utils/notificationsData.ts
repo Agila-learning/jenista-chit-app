@@ -68,66 +68,9 @@ export interface WebsiteLead {
   notes?: string;
 }
 
-const DEFAULT_NOTIFICATIONS: SystemNotification[] = [
-  {
-    id: 'NOTIF-101',
-    type: 'PAYMENT_APPROVED',
-    title: 'Payment Receipt Verified',
-    message: 'Your monthly installment of ₹5,000 for Gold Auction Series A has been verified and approved.',
-    timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
-    isRead: false,
-    targetRole: 'CUSTOMER',
-    targetUserId: 'TC-11075',
-    metadata: {
-      customerId: 'TC-11075',
-      customerName: 'Karthik Subramanian',
-      groupId: 'CG-AUC-501',
-      amount: 5000,
-      receiptNo: 'REC-90812'
-    }
-  },
-  {
-    id: 'NOTIF-102',
-    type: 'ANNOUNCEMENT',
-    title: '🏆 Prize Winner Announced',
-    message: 'Member S. Murugan won the October Auction Prize of ₹4,25,000 for CG-AUC-501 (15% bid discount).',
-    timestamp: new Date(Date.now() - 86400000).toISOString(),
-    isRead: false,
-    targetRole: 'ALL'
-  }
-];
+export const DEFAULT_NOTIFICATIONS: SystemNotification[] = [];
 
-const DEFAULT_ANNOUNCEMENTS: Announcement[] = [
-  {
-    id: 'ANN-001',
-    title: '🏆 Monthly Auction Winner Declared - Group CG-AUC-501',
-    category: 'PRIZE_WINNER',
-    content: 'Congratulations to S. Murugan (Ticket #05) for successfully securing the October prize bid for Group CG-AUC-501. The winning dividend discount of ₹75,000 has been credited equally across all active group members.',
-    publishedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-    author: 'Jenista Chit Administration',
-    targetRole: 'ALL',
-    pinned: true,
-    metadata: {
-      winnerName: 'S. Murugan',
-      winnerId: 'TC-10045',
-      groupId: 'CG-AUC-501',
-      chitValue: 500000,
-      prizeAmount: 425000,
-      discountPercent: 15,
-      monthNumber: 8
-    }
-  },
-  {
-    id: 'ANN-002',
-    title: '📢 Diwali Special Chit Enrollment Rewards',
-    category: 'FESTIVAL_OFFER',
-    content: 'Special festival incentive: Enroll in any 25-Month Fixed or Auction Chit this month and receive zero documentation processing fee plus guaranteed priority dividend bonuses on first draw.',
-    publishedAt: new Date(Date.now() - 86400000 * 5).toISOString(),
-    author: 'Branch Management Desk',
-    targetRole: 'CUSTOMERS',
-    pinned: false
-  }
-];
+export const DEFAULT_ANNOUNCEMENTS: Announcement[] = [];
 
 // --- Notifications Operations ---
 
@@ -135,12 +78,25 @@ export const getStoredNotifications = (): SystemNotification[] => {
   try {
     const raw = localStorage.getItem('systemNotifications');
     if (!raw) {
-      localStorage.setItem('systemNotifications', JSON.stringify(DEFAULT_NOTIFICATIONS));
-      return DEFAULT_NOTIFICATIONS;
+      return [];
     }
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    // Purge mock notifications (e.g. Karthik Subramanian, S. Murugan, NOTIF-101, NOTIF-102, etc.)
+    const cleaned = parsed.filter((n: any) => 
+      !['NOTIF-101', 'NOTIF-102'].includes(n.id) &&
+      n.metadata?.customerName !== 'Karthik Subramanian' &&
+      n.metadata?.customerName !== 'S. Murugan' &&
+      !n.message?.includes('Karthik Subramanian') &&
+      !n.message?.includes('S. Murugan won the October Auction')
+    );
+    if (cleaned.length !== parsed.length) {
+      localStorage.setItem('systemNotifications', JSON.stringify(cleaned));
+    }
+    return cleaned;
   } catch {
-    return DEFAULT_NOTIFICATIONS;
+    return [];
   }
 };
 
@@ -366,12 +322,21 @@ export const getStoredAnnouncements = (): Announcement[] => {
   try {
     const raw = localStorage.getItem('companyAnnouncements');
     if (!raw) {
-      localStorage.setItem('companyAnnouncements', JSON.stringify(DEFAULT_ANNOUNCEMENTS));
-      return DEFAULT_ANNOUNCEMENTS;
+      return [];
     }
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const cleaned = parsed.filter((a: any) =>
+      !['ANN-001', 'ANN-002'].includes(a.id) &&
+      !a.title?.includes('Murugan') &&
+      !a.content?.includes('Murugan')
+    );
+    if (cleaned.length !== parsed.length) {
+      localStorage.setItem('companyAnnouncements', JSON.stringify(cleaned));
+    }
+    return cleaned;
   } catch {
-    return DEFAULT_ANNOUNCEMENTS;
+    return [];
   }
 };
 

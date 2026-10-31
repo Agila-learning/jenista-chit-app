@@ -334,6 +334,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+    maxWidth: 800,
+    width: '100%',
+    alignSelf: 'center',
   },
   topControlRow: {
     flexDirection: 'row',

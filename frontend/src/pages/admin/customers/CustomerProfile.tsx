@@ -78,6 +78,54 @@ export const CustomerProfile = () => {
   const [statusActionLoading, setStatusActionLoading] = useState(false);
   const [statusActionSuccess, setStatusActionSuccess] = useState<string | null>(null);
 
+  const handleApproveAccount = async () => {
+    if (!customer) return;
+    setStatusActionLoading(true);
+    const targetId = customer.id || customer.customerCode || id;
+    const phone = (customer.mobile || customer.phone || '').replace(/\D/g, '');
+
+    // 1. Update local storage
+    const customers = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
+    const updatedCustomers = customers.map((c: any) => {
+      const cPhone = (c.mobile || c.phone || '').replace(/\D/g, '');
+      if (c.id === targetId || c.mongoId === targetId || c.customerCode === targetId || (phone && cPhone === phone)) {
+        return { ...c, status: 'ACTIVE' };
+      }
+      return c;
+    });
+    localStorage.setItem('mockCustomers', JSON.stringify(updatedCustomers));
+
+    setCustomer((prev: any) => ({ ...prev, status: 'ACTIVE' }));
+
+    // 2. Sync to MongoDB backend
+    try {
+      await fetchClient(`/customers/${encodeURIComponent(customer.mongoId || targetId)}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'ACTIVE' })
+      });
+    } catch (err) {
+      console.warn('Backend approval sync fallback in profile:', err);
+    }
+
+    // 3. Send real-time notification
+    addSystemNotification({
+      type: 'SYSTEM',
+      title: 'Account Approved! 🎉',
+      message: `Congratulations ${customer.name}! Your Jenista Chits account has been approved by the Administrator. You can now log into your customer portal using your registered mobile number.`,
+      targetRole: 'CUSTOMER',
+      targetUserId: customer.id || customer.phone || customer.mobile,
+      metadata: {
+        customerId: customer.id,
+        customerName: customer.name
+      }
+    });
+
+    window.dispatchEvent(new Event('storage'));
+    setStatusActionLoading(false);
+    setStatusActionSuccess('Customer approved successfully! Credentials are now active for portal login.');
+    setTimeout(() => setStatusActionSuccess(null), 4000);
+  };
+
   const handleToggleCustomerStatus = async () => {
     if (!customer) return;
     setStatusActionLoading(true);
@@ -1148,6 +1196,11 @@ export const CustomerProfile = () => {
                     <UserX className="w-3.5 h-3.5 text-danger" />
                     Deactivated
                   </span>
+                ) : (customer?.status === 'PENDING_APPROVAL' || customer?.status === 'PENDING') ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                    <Clock className="w-3.5 h-3.5 text-amber-700" />
+                    Pending Approval
+                  </span>
                 ) : (
                   <CheckCircle2 className="w-5 h-5 text-success" />
                 )}
@@ -1160,6 +1213,10 @@ export const CustomerProfile = () => {
                   <span className="text-[11px] font-semibold text-danger bg-danger/5 border border-danger/20 px-2 py-0.5 rounded">
                     App Access Restricted
                   </span>
+                ) : (customer?.status === 'PENDING_APPROVAL' || customer?.status === 'PENDING') ? (
+                  <span className="text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded">
+                    Awaiting Admin Approval
+                  </span>
                 ) : (
                   <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
                     App Active
@@ -1167,6 +1224,28 @@ export const CustomerProfile = () => {
                 )}
               </div>
             </div>
+
+            {/* Pending Approval Action Banner */}
+            {(customer?.status === 'PENDING_APPROVAL' || customer?.status === 'PENDING') && (
+              <div className="mt-3 p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 space-y-2.5">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-700" />
+                  <div>
+                    <p className="font-bold">Approval Required</p>
+                    <p className="text-[11px] text-amber-800 leading-tight">Credentials are locked until approved. Click below to activate this member account.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleApproveAccount}
+                  disabled={statusActionLoading}
+                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95 transition-all"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{statusActionLoading ? 'Approving...' : '✓ Approve & Activate Account'}</span>
+                </button>
+              </div>
+            )}
 
             {/* Warning banner if deactivated */}
             {(customer?.status === 'INACTIVE' || customer?.status === 'DEACTIVATED') && (

@@ -264,6 +264,7 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
   return (
     <ScrollView
       style={styles.container}
+      contentContainerStyle={styles.scrollContentContainer}
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
@@ -1046,6 +1047,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  scrollContentContainer: {
+    maxWidth: 900,
+    width: '100%',
+    alignSelf: 'center',
+    paddingBottom: 40,
   },
 
   // 1. Deep Navy Header

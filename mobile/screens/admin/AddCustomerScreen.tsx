@@ -254,6 +254,9 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingBottom: 40,
+    maxWidth: 600,
+    width: '100%',
+    alignSelf: 'center',
   },
   headerTitle: {
     fontSize: 20,

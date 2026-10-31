@@ -17,13 +17,14 @@ import { formatCurrency } from '../../../utils/format';
 import { Link } from 'react-router-dom';
 import { fetchClient } from '../../../api/client';
 import { isMockCustomer, isMockGroup } from '../../../utils/cleanMockData';
+import { addSystemNotification } from '../../../utils/notificationsData';
 
 export const CustomerList = () => {
   const [searchName, setSearchName] = useState('');
   const [searchMobile, setSearchMobile] = useState('');
   const [searchAadhar, setSearchAadhar] = useState('');
   const [searchPan, setSearchPan] = useState('');
-  const [schemeFilter, setSchemeFilter] = useState<'ALL' | 'AUCTION' | 'FIXED' | 'REGULAR' | 'UNASSIGNED'>('ALL');
+  const [schemeFilter, setSchemeFilter] = useState<'ALL' | 'AUCTION' | 'FIXED' | 'REGULAR' | 'UNASSIGNED' | 'PENDING'>('ALL');
 
   // Customer data loaded from MongoDB API + localStorage
   const [allCustomers, setAllCustomers] = useState<any[]>(() => {
@@ -210,8 +211,10 @@ export const CustomerList = () => {
   // Filtered customers with scheme & search criteria
   const displayedCustomers = useMemo(() => {
     return allCustomers.filter((c: any) => {
-      // Scheme Filter
-      if (schemeFilter !== 'ALL') {
+      // Scheme / Status Filter
+      if (schemeFilter === 'PENDING') {
+        if (c.status !== 'PENDING_APPROVAL' && c.status !== 'PENDING') return false;
+      } else if (schemeFilter !== 'ALL') {
         const cScheme = (c.scheme || (c.chits?.[0]?.scheme) || '').toUpperCase();
         if (schemeFilter === 'AUCTION' && !cScheme.includes('AUC')) return false;
         if (schemeFilter === 'FIXED' && !cScheme.includes('FIX')) return false;
@@ -229,14 +232,16 @@ export const CustomerList = () => {
     });
   }, [allCustomers, schemeFilter, searchName, searchMobile, searchAadhar, searchPan]);
 
-  // Counts by scheme
+  // Counts by scheme & approvals
   const schemeCounts = useMemo(() => {
     let auction = 0;
     let fixed = 0;
     let regular = 0;
     let unassigned = 0;
+    let pending = 0;
 
     allCustomers.forEach((c: any) => {
+      if (c.status === 'PENDING_APPROVAL' || c.status === 'PENDING') pending++;
       const s = (c.scheme || (c.chits?.[0]?.scheme) || '').toUpperCase();
       if (s.includes('AUC')) auction++;
       else if (s.includes('FIX')) fixed++;
@@ -244,7 +249,7 @@ export const CustomerList = () => {
       else unassigned++;
     });
 
-    return { total: allCustomers.length, auction, fixed, regular, unassigned };
+    return { total: allCustomers.length, auction, fixed, regular, unassigned, pending };
   }, [allCustomers]);
 
   const handleDeleteCustomer = (id: string) => {
@@ -322,6 +327,50 @@ export const CustomerList = () => {
     setAssignMonths(existingChit?.duration ? String(existingChit.duration) : '20');
   };
 
+  const handleApproveCustomer = async (customer: any) => {
+    const updatedCustomers = allCustomers.map((c: any) => {
+      if (c.id === customer.id || (customer.mongoId && c.mongoId === customer.mongoId)) {
+        return {
+          ...c,
+          status: 'ACTIVE'
+        };
+      }
+      return c;
+    });
+
+    setAllCustomers(updatedCustomers);
+    localStorage.setItem('mockCustomers', JSON.stringify(updatedCustomers));
+    window.dispatchEvent(new Event('storage'));
+
+    // Sync status to MongoDB backend
+    const targetId = customer.mongoId || customer.id || customer.customerCode || customer.phone || customer.mobile;
+    if (targetId) {
+      try {
+        await fetchClient(`/customers/${encodeURIComponent(targetId)}/status`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: 'ACTIVE' })
+        });
+      } catch (err) {
+        console.warn('Backend approval sync fallback:', err);
+      }
+    }
+
+    // Live notification to the customer
+    addSystemNotification({
+      type: 'SYSTEM',
+      title: 'Account Approved! 🎉',
+      message: `Congratulations ${customer.name}! Your Jenista Chits account has been approved by the Administrator. You can now log into your customer portal using your registered mobile number.`,
+      targetRole: 'CUSTOMER',
+      targetUserId: customer.id || customer.phone || customer.mobile,
+      metadata: {
+        customerId: customer.id,
+        customerName: customer.name
+      }
+    });
+
+    alert(`Customer ${customer.name} approved successfully!\nCredentials are now active for login.`);
+  };
+
   const handleSavePlan = () => {
     if (!editingCustomer) return;
 
@@ -330,20 +379,20 @@ export const CustomerList = () => {
     const installmentNum = Number(assignInstallment) || (monthsNum > 0 ? Math.round(chitValNum / monthsNum) : 5000);
     const groupNameStr = assignGroup.trim() || `${assignScheme} Series Plan`;
 
+    const updatedChit = {
+      groupId: groupNameStr.replace(/\s+/g, '-').toUpperCase(),
+      groupName: groupNameStr,
+      scheme: assignScheme,
+      chitValue: chitValNum,
+      monthlyInstallment: installmentNum,
+      duration: monthsNum,
+      ticketNumber: editingCustomer.chits?.[0]?.ticketNumber || '1',
+      paymentStatus: 'ACTIVE',
+      joiningDate: editingCustomer.chits?.[0]?.joiningDate || new Date().toISOString()
+    };
+
     const updatedCusts = allCustomers.map((c: any) => {
       if (c.id === editingCustomer.id) {
-        const updatedChit = {
-          groupId: groupNameStr.replace(/\s+/g, '-').toUpperCase(),
-          groupName: groupNameStr,
-          scheme: assignScheme,
-          chitValue: chitValNum,
-          monthlyInstallment: installmentNum,
-          duration: monthsNum,
-          ticketNumber: c.chits?.[0]?.ticketNumber || '1',
-          paymentStatus: 'ACTIVE',
-          joiningDate: c.chits?.[0]?.joiningDate || new Date().toISOString()
-        };
-
         return {
           ...c,
           scheme: assignScheme,
@@ -358,6 +407,31 @@ export const CustomerList = () => {
     setAllCustomers(updatedCusts);
     localStorage.setItem('mockCustomers', JSON.stringify(updatedCusts));
     window.dispatchEvent(new Event('storage'));
+
+    // Sync to MongoDB backend so it reflects across all devices
+    const targetLookupId = editingCustomer.mongoId || editingCustomer._id || editingCustomer.customerCode || editingCustomer.id || editingCustomer.phone || editingCustomer.mobile;
+    if (targetLookupId) {
+      fetchClient(`/customers/${encodeURIComponent(targetLookupId)}/chits`, {
+        method: 'POST',
+        body: JSON.stringify(updatedChit)
+      }).catch(err => console.warn('Could not sync chit to backend:', err));
+    }
+
+    // Live notification to customer
+    addSystemNotification({
+      type: 'SYSTEM',
+      title: `Plan Allocated: ${groupNameStr}`,
+      message: `Your chit allocation has been set to ${groupNameStr} (${assignScheme} Scheme). Monthly installment: ₹${installmentNum.toLocaleString('en-IN')}.`,
+      targetRole: 'CUSTOMER',
+      targetUserId: editingCustomer.id || editingCustomer.phone,
+      metadata: {
+        customerId: editingCustomer.id,
+        customerName: editingCustomer.name,
+        amount: installmentNum,
+        groupId: updatedChit.groupId,
+        groupName: groupNameStr
+      }
+    });
 
     setSaveSuccessMsg(`Successfully updated plan for ${editingCustomer.name}!`);
     setTimeout(() => {
@@ -481,6 +555,19 @@ export const CustomerList = () => {
                 >
                   <Clock className="w-3.5 h-3.5" />
                   <span>Regular Scheme ({schemeCounts.regular})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSchemeFilter('PENDING')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    schemeFilter === 'PENDING'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                  <span>Pending Approvals ({schemeCounts.pending})</span>
                 </button>
 
                 {schemeCounts.unassigned > 0 && (
@@ -677,6 +764,16 @@ export const CustomerList = () => {
                           {/* Actions */}
                           <td className="px-4 py-3 text-center whitespace-nowrap">
                             <div className="flex items-center justify-center space-x-2">
+                              {(c.status === 'PENDING_APPROVAL' || c.status === 'PENDING') && (
+                                <button
+                                  onClick={() => handleApproveCustomer(c)}
+                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95"
+                                  title="Approve Customer & Activate Credentials"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>Approve</span>
+                                </button>
+                              )}
                               <button
                                 onClick={() => handleOpenAssignModal(c)}
                                 className="p-1 text-neutral-400 hover:text-primary-700 transition-colors"

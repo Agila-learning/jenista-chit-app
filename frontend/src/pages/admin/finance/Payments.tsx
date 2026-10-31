@@ -81,9 +81,30 @@ export const Payments = () => {
     const reqs = await syncPaymentRequestsWithBackend();
     setPaymentRequests(reqs);
 
-    // Withdrawal requests
-    const wReqs = JSON.parse(localStorage.getItem('withdrawalRequests') || '[]');
-    setWithdrawalRequests(wReqs);
+    // Withdrawal requests (synced with backend & local)
+    let backendWithdrawals: any[] | null = null;
+    try {
+      const wRes = await fetchClient('/payments/withdrawals');
+      if (wRes && wRes.data && Array.isArray(wRes.data)) {
+        backendWithdrawals = wRes.data;
+      }
+    } catch (e) {
+      console.warn('Backend withdrawals fetch error:', e);
+    }
+
+    const localWReqs = JSON.parse(localStorage.getItem('withdrawalRequests') || '[]');
+    if (backendWithdrawals && backendWithdrawals.length > 0) {
+      const merged = [...backendWithdrawals];
+      localWReqs.forEach((lw: any) => {
+        if (!merged.some(m => m.id === lw.id || m._id === lw.id)) {
+          merged.push(lw);
+        }
+      });
+      setWithdrawalRequests(merged);
+      localStorage.setItem('withdrawalRequests', JSON.stringify(merged));
+    } else {
+      setWithdrawalRequests(localWReqs);
+    }
   };
 
   useEffect(() => {
@@ -210,6 +231,17 @@ export const Payments = () => {
         } : r
       );
       localStorage.setItem('withdrawalRequests', JSON.stringify(updatedWReqs));
+
+      // 1a. Sync to backend MongoDB so customer sees disbursal on any device
+      fetchClient(`/payments/withdrawals/${encodeURIComponent(req.id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: 'DISBURSED',
+          disbursedRef: payoutRefNo,
+          payoutMethod: disburseModeInput,
+          remarks: `Disbursed by Admin via ${disburseModeInput}`
+        })
+      }).catch(err => console.warn('Could not sync disbursal to MongoDB backend:', err));
 
       // 1b. Dispatch System Notification to Customer & Admin / Staff
       try {

@@ -13,6 +13,7 @@ import {
   Alert,
   Linking,
   Image,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
@@ -39,6 +40,8 @@ import {
 
 export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { user, logout } = useAuth();
+  const { width } = useWindowDimensions();
+  const isTabletOrWeb = width >= 640;
   const [activeTab, setActiveTab] = useState<'myChits' | 'regularPlan' | 'fixedPlan' | 'auctionPlan' | 'prizesRewards'>('myChits');
   const [customerRecord, setCustomerRecord] = useState<any>(null);
   const [chits, setChits] = useState<CustomerChit[]>([]);
@@ -365,6 +368,7 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
   return (
     <ScrollView
       style={styles.container}
+      contentContainerStyle={styles.scrollContentContainer}
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.gold.primary} />}
     >
@@ -413,19 +417,19 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
 
       {/* 4-Stat Metric Cards Grid (Same as Web App) */}
       <View style={styles.metricsGrid}>
-        <View style={styles.metricBox}>
+        <View style={[styles.metricBox, isTabletOrWeb && styles.metricBoxWide]}>
           <Text style={styles.metricLabel}>ACTIVE CHITS</Text>
           <Text style={styles.metricVal}>{chits.length}</Text>
         </View>
-        <View style={styles.metricBox}>
+        <View style={[styles.metricBox, isTabletOrWeb && styles.metricBoxWide]}>
           <Text style={styles.metricLabel}>TOTAL INVESTED</Text>
           <Text style={[styles.metricVal, styles.metricValInvested]}>{formatCurrency(totalInvested)}</Text>
         </View>
-        <View style={styles.metricBox}>
+        <View style={[styles.metricBox, isTabletOrWeb && styles.metricBoxWide]}>
           <Text style={styles.metricLabel}>TOTAL WITHDRAWN</Text>
           <Text style={[styles.metricVal, styles.metricValGold]}>{formatCurrency(totalWithdrawnAmount)}</Text>
         </View>
-        <View style={styles.metricBox}>
+        <View style={[styles.metricBox, isTabletOrWeb && styles.metricBoxWide]}>
           <Text style={styles.metricLabel}>NEXT DUE</Text>
           <Text style={[styles.metricVal, pendingDues > 0 ? { color: '#dc2626' } : { color: '#059669' }]}>
             {formatCurrency(pendingDues > 0 ? pendingDues : chits[0]?.monthlyInstallment || 0)}
@@ -1651,6 +1655,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  scrollContentContainer: {
+    maxWidth: 768,
+    width: '100%',
+    alignSelf: 'center',
+    paddingBottom: 40,
+  },
   heroCard: {
     backgroundColor: Colors.navy.primary,
     margin: 16,
@@ -1727,8 +1737,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   metricBox: {
-    flex: 1,
-    minWidth: '47%',
+    flexBasis: '47%',
+    flexGrow: 1,
+    maxWidth: '48.5%',
     backgroundColor: Colors.white,
     padding: 14,
     borderRadius: 14,
@@ -1739,6 +1750,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04,
     shadowRadius: 4,
     elevation: 1,
+  },
+  metricBoxWide: {
+    flexBasis: '23%',
+    maxWidth: '23.5%',
   },
   metricLabel: {
     fontSize: 11,
@@ -2281,14 +2296,18 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.55)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
   },
   modalCard: {
     backgroundColor: Colors.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderRadius: 24,
     padding: 20,
     maxHeight: '90%',
+    width: '100%',
+    maxWidth: 540,
+    alignSelf: 'center',
   },
   modalHeader: {
     flexDirection: 'row',

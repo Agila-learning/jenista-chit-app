@@ -248,6 +248,9 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     gap: 16,
+    maxWidth: 600,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   // 1. Group Selector Card

@@ -212,6 +212,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+    maxWidth: 768,
+    width: '100%',
+    alignSelf: 'center',
   },
   heroCard: {
     backgroundColor: Colors.navy.primary,

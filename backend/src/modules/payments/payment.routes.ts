@@ -10,6 +10,11 @@ router.post('/requests', PaymentController.createPaymentRequest);
 router.get('/requests', PaymentController.getPaymentRequests);
 router.patch('/requests/:id', PaymentController.updatePaymentRequestStatus);
 
+// Prize Money Withdrawal / Disbursal Claims
+router.post('/withdrawals', PaymentController.createWithdrawalRequest);
+router.get('/withdrawals', PaymentController.getWithdrawalRequests);
+router.patch('/withdrawals/:id', PaymentController.updateWithdrawalRequestStatus);
+
 // Internal Ledger Payments
 router.use(authenticate);
 router.post('/', authorize(['payments.create']), PaymentController.processPayment);

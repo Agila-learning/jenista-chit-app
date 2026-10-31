@@ -74,6 +74,8 @@ export class CustomerController {
         pan: cleanPan || undefined,
         email: cleanEmail || undefined,
         passwordHash,
+        status: 'PENDING_APPROVAL',
+        kycStatus: 'PENDING',
         createdBy: req.user?.userId,
       });
       res.status(201).json({ success: true, data: customer });
@@ -98,11 +100,16 @@ export class CustomerController {
       }
       
       if (search) {
-        filter.$or = [
-          { fullName: { $regex: search, $options: 'i' } },
-          { customerCode: { $regex: search, $options: 'i' } },
-          { phone: { $regex: search, $options: 'i' } },
+        const searchStr = search.toString().trim();
+        const orConditions: any[] = [
+          { fullName: { $regex: searchStr, $options: 'i' } },
+          { customerCode: { $regex: searchStr, $options: 'i' } },
+          { phone: { $regex: searchStr, $options: 'i' } },
         ];
+        if (/^[0-9a-fA-F]{24}$/.test(searchStr)) {
+          orConditions.push({ _id: searchStr });
+        }
+        filter.$or = orConditions;
       }
 
       const customers = await Customer.find(filter)
@@ -111,6 +118,35 @@ export class CustomerController {
         .sort({ createdAt: -1 });
         
       res.status(200).json({ success: true, data: customers });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getCustomerById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const customerId = Array.isArray(id) ? id[0] : id;
+      const isObjectId = typeof customerId === 'string' && /^[0-9a-fA-F]{24}$/.test(customerId);
+
+      const orConditions: any[] = [];
+      if (isObjectId) {
+        orConditions.push({ _id: customerId });
+      }
+      if (customerId) {
+        orConditions.push({ customerCode: customerId });
+        orConditions.push({ phone: customerId });
+      }
+
+      const customer = await Customer.findOne(
+        orConditions.length > 0 ? { $or: orConditions } : { customerCode: customerId }
+      );
+
+      if (!customer) {
+        throw new ApiError(404, 'Customer not found', 'NOT_FOUND');
+      }
+
+      res.status(200).json({ success: true, data: customer });
     } catch (error) {
       next(error);
     }
@@ -182,16 +218,14 @@ export class CustomerController {
         throw new ApiError(401, 'Customer not found with these credentials', 'UNAUTHORIZED');
       }
 
-      if (customer.status === 'PENDING_APPROVAL') {
-        throw new ApiError(403, 'Your account is pending admin approval', 'ACCOUNT_PENDING');
-      }
-
-      if (customer.status === 'REJECTED') {
-        throw new ApiError(403, 'Your account registration was rejected', 'ACCOUNT_REJECTED');
-      }
-
-      if (customer.status === 'INACTIVE') {
-        throw new ApiError(403, 'Your account has been deactivated by administrator. Please contact your branch.', 'ACCOUNT_DEACTIVATED');
+      if (customer.status !== 'ACTIVE') {
+        if (customer.status === 'REJECTED') {
+          throw new ApiError(403, 'Your account registration was rejected by administrator. Please contact support.', 'ACCOUNT_REJECTED');
+        }
+        if (customer.status === 'INACTIVE') {
+          throw new ApiError(403, 'Your account has been deactivated by administrator. Please contact your branch.', 'ACCOUNT_DEACTIVATED');
+        }
+        throw new ApiError(403, 'Your account registration is awaiting Admin Approval. You can access your account once approved by the administrator.', 'ACCOUNT_PENDING');
       }
 
       if (customer.passwordHash) {
@@ -338,6 +372,45 @@ export class CustomerController {
       }
 
       res.status(200).json({ success: true, message: 'Customer deleted successfully', data: deleted });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async addChitToCustomer(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const chit = req.body;
+      const customerId = Array.isArray(id) ? id[0] : id;
+      const isObjectId = typeof customerId === 'string' && /^[0-9a-fA-F]{24}$/.test(customerId);
+
+      const orConditions: any[] = [];
+      if (isObjectId) {
+        orConditions.push({ _id: customerId });
+      }
+      if (customerId) {
+        orConditions.push({ customerCode: customerId });
+        orConditions.push({ phone: customerId });
+      }
+
+      const customer = await Customer.findOne(
+        orConditions.length > 0 ? { $or: orConditions } : { customerCode: customerId }
+      );
+
+      if (!customer) {
+        throw new ApiError(404, 'Customer not found', 'NOT_FOUND');
+      }
+
+      const existingChits = Array.isArray(customer.chits) ? customer.chits : [];
+      const filteredChits = existingChits.filter((c: any) => c.groupId !== chit.groupId && c.groupName !== chit.groupName);
+      customer.chits = [...filteredChits, chit];
+      if (chit.monthlyInstallment) {
+        customer.pending = (Number(customer.pending) || 0) + Number(chit.monthlyInstallment);
+      }
+      customer.markModified('chits');
+      await customer.save();
+
+      res.status(200).json({ success: true, message: 'Chit added to customer successfully', data: customer });
     } catch (error) {
       next(error);
     }

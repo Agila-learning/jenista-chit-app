@@ -7,6 +7,7 @@ import { Button } from '../../../components/common/Button';
 import { fetchClient } from '../../../api/client';
 import { useAuth } from '../../../store/AuthContext';
 import { isMockCustomer } from '../../../utils/cleanMockData';
+import { addSystemNotification } from '../../../utils/notificationsData';
 
 export const AddModifyCustomer = () => {
   const { user } = useAuth();
@@ -459,7 +460,7 @@ export const AddModifyCustomer = () => {
           dob: (formData.get('dob') as string) || '',
           gender: (formData.get('gender') as string) || '',
           address: addressVal,
-          status: isStaff ? 'PENDING_APPROVAL' : 'ACTIVE',
+          status: 'PENDING_APPROVAL',
           referredBy: user?.name || (isStaff ? 'Staff User' : 'Admin User'),
           registeredBy: user?.name || (isStaff ? 'Staff User' : 'Admin User'),
           chits: [],
@@ -482,7 +483,7 @@ export const AddModifyCustomer = () => {
               pan: panRaw || undefined,
               password: passwordVal,
               gender: newCustomer.gender ? newCustomer.gender.toUpperCase() : undefined,
-              status: isStaff ? 'PENDING_APPROVAL' : 'ACTIVE',
+              status: 'PENDING_APPROVAL',
               referredBy: newCustomer.referredBy,
             })
           });
@@ -504,13 +505,23 @@ export const AddModifyCustomer = () => {
           localStorage.setItem('mockCustomers', JSON.stringify(updated));
           return updated;
         });
+
+        // Dispatch live real-time notification to Admin
+        addSystemNotification({
+          type: 'NEW_REGISTRATION',
+          title: 'Customer Account Created - Approval Required',
+          message: `${nameVal} (${cleanMobile}) created by ${user?.name || 'Administrator'}. Requires Admin Approval to activate credentials.`,
+          targetRole: 'ADMIN',
+          metadata: {
+            customerId: newCustomer.id,
+            customerName: nameVal,
+            phone: cleanMobile
+          }
+        });
+
         window.dispatchEvent(new Event('storage'));
         
-        if (isStaff) {
-          alert(`Success: Customer ${newCustomer.name} has been enrolled and submitted for Admin verification!\n\nApproval Status: Pending Admin Verification`);
-        } else {
-          alert(`Success: Customer ${newCustomer.name} has been successfully registered and activated!\n\nCustomer Login Credentials:\nUser Name (Mobile Number): ${newCustomer.mobile}\nPassword: ${passwordVal}`);
-        }
+        alert(`Success: Customer ${newCustomer.name} has been created in "PENDING APPROVAL" status!\n\nNote: As per security policy, credentials will be active once approved by the administrator in the Customer Directory.`);
       } else {
         alert('Success: New customer has been successfully registered!');
       }

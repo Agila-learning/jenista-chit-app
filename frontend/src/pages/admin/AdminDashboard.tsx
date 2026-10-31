@@ -46,6 +46,7 @@ import {
   type PaymentRequest
 } from '../../utils/paymentRequestsData';
 import { purgeMockData, isMockGroup, isMockCustomer } from '../../utils/cleanMockData';
+import { addSystemNotification } from '../../utils/notificationsData';
 
 export const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -917,13 +918,34 @@ export const AdminDashboard = () => {
     ];
     localStorage.setItem('chitGroupMemberships', JSON.stringify(newMemberships));
 
-    // 4. Record new Chit in MongoDB backend if customer has mongoId
-    const targetMongoId = foundCustomer.mongoId || foundCustomer._id || (foundCustomer.id?.length === 24 ? foundCustomer.id : null);
-    if (targetMongoId) {
-      fetchClient(`/customers/${targetMongoId}/chits`, {
+    // 4. Record new Chit in MongoDB backend so it reflects across all devices
+    const targetLookupId = foundCustomer.mongoId || foundCustomer._id || foundCustomer.customerCode || foundCustomer.id || cleanMobile;
+    if (targetLookupId) {
+      fetchClient(`/customers/${encodeURIComponent(targetLookupId)}/chits`, {
         method: 'POST',
         body: JSON.stringify(newChit),
-      }).catch(err => console.log('Could not sync chit to MongoDB:', err));
+      }).catch(err => console.warn('Could not sync chit to MongoDB:', err));
+    }
+
+    // 4b. Dispatch real-time live notification to the customer
+    try {
+      addSystemNotification({
+        type: 'SYSTEM',
+        title: `Chit Group Allocation: ${selectedGroup.name}`,
+        message: `Congratulations ${foundCustomer.name}! You have been allocated to chit group "${selectedGroup.name}" as Ticket #${newTicketNum} (${memberScheme} Scheme, Monthly Installment: ₹${installment.toLocaleString('en-IN')}).`,
+        targetRole: 'CUSTOMER',
+        targetUserId: foundCustomer.id || cleanMobile,
+        metadata: {
+          customerId: foundCustomer.id || cleanMobile,
+          customerName: foundCustomer.name,
+          groupId: selectedGroup.id,
+          groupName: selectedGroup.name,
+          amount: installment,
+          ticketNumber: newTicketNum.toString()
+        }
+      });
+    } catch (notifErr) {
+      console.warn('Could not dispatch group allocation notification:', notifErr);
     }
 
     // 5. Reset modal & trigger storage event

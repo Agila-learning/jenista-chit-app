@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
 import { fetchClient } from '../../api/client';
+import { addSystemNotification } from '../../utils/notificationsData';
 
 export const CustomerRegistrationPage = () => {
   const [name, setName] = useState('');
@@ -42,17 +43,68 @@ export const CustomerRegistrationPage = () => {
     }
 
     try {
-      await fetchClient('/customers', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: name.trim(),
-          mobile: cleanMobile,
-          phone: cleanMobile,
-          address: address.trim(),
-          password
-        })
+      let createdCustomerCode = `TC-${Math.floor(Math.random() * 90000) + 10000}`;
+      let createdMongoId = null;
+
+      try {
+        const res = await fetchClient('/customers', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: name.trim(),
+            mobile: cleanMobile,
+            phone: cleanMobile,
+            address: address.trim(),
+            password
+          })
+        });
+        if (res && res.data) {
+          createdCustomerCode = res.data.customerCode || createdCustomerCode;
+          createdMongoId = res.data._id;
+        }
+      } catch (apiErr: any) {
+        console.warn('Backend customer registration fallback:', apiErr);
+      }
+
+      // Record in local cache in PENDING_APPROVAL status
+      const newEntry = {
+        id: createdCustomerCode,
+        customerCode: createdCustomerCode,
+        mongoId: createdMongoId,
+        name: name.trim(),
+        fullName: name.trim(),
+        mobile: cleanMobile,
+        phone: cleanMobile,
+        address: address.trim(),
+        password,
+        status: 'PENDING_APPROVAL',
+        registeredBy: 'Self Registered',
+        chits: [],
+        pending: 0,
+        totalPaid: 0,
+        createdAt: new Date().toISOString()
+      };
+      const updatedCustomers = [newEntry, ...saved];
+      localStorage.setItem('mockCustomers', JSON.stringify(updatedCustomers));
+      window.dispatchEvent(new Event('storage'));
+
+      // Dispatch live real-time notification to Admin
+      addSystemNotification({
+        type: 'NEW_REGISTRATION',
+        title: 'New Customer Registered - Approval Required',
+        message: `${name.trim()} (${cleanMobile}) registered a new account. Approval is required before credentials can be used.`,
+        targetRole: 'ADMIN',
+        metadata: {
+          customerId: createdCustomerCode,
+          customerName: name.trim(),
+          phone: cleanMobile
+        }
       });
-      navigate('/customer-login', { state: { message: 'Registration successful! Your account is pending admin approval.' } });
+
+      navigate('/customer-login', { 
+        state: { 
+          message: 'Registration submitted! Your account is pending admin approval. Credentials will be active once approved by administrator.' 
+        } 
+      });
     } catch (err: any) {
       const msg = err.message || '';
       if (

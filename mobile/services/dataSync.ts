@@ -9,12 +9,16 @@ import { isMockCustomer, isMockGroup } from './cleanMockData';
  * Ledger entries, Payment Requests, and Bank Accounts).
  */
 
+const envPort = process.env.PORT || process.env.EXPO_PUBLIC_BACKEND_PORT || '3000';
+const customEnvUrl = process.env.EXPO_PUBLIC_API_URL;
 const LIVE_RENDER_API = 'https://jenista-chits.onrender.com/api/v1';
 const CANDIDATE_LOCAL_APIS = [
-  'http://localhost:3000/api/v1',
-  'http://192.168.1.35:3000/api/v1',
-  'http://10.0.2.2:3000/api/v1',
-  'http://192.168.1.39:3000/api/v1',
+  ...(customEnvUrl ? [customEnvUrl] : []),
+  `http://localhost:${envPort}/api/v1`,
+  `http://127.0.0.1:${envPort}/api/v1`,
+  `http://192.168.1.35:${envPort}/api/v1`,
+  `http://10.0.2.2:${envPort}/api/v1`,
+  `http://192.168.1.39:${envPort}/api/v1`,
 ];
 
 export const getActiveBaseUrl = async (): Promise<string> => {

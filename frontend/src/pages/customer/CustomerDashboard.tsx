@@ -31,7 +31,7 @@ import {
 export const CustomerDashboard = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'myChits' | 'prizesRewards' | 'regularPlanChart' | 'fixedPlanChart' | 'auctionPlanChart'>('myChits');
+  const [activeTab, setActiveTab] = useState<'myChits' | 'paymentRequests' | 'payoutClaims' | 'prizesRewards' | 'regularPlanChart' | 'fixedPlanChart' | 'auctionPlanChart'>('myChits');
   const [activeChits, setActiveChits] = useState(0);
   const [totalInvested, setTotalInvested] = useState(0);
   const [customerData, setCustomerData] = useState<any | null>(null);
@@ -93,20 +93,34 @@ export const CustomerDashboard = () => {
         let chitsFromApi: any[] | null = null;
         let totalInvestedFromApi: number | null = null;
         let apiStatus: string | null = null;
+        let foundMongoCust: any = null;
         try {
-          const res = await fetchClient(`/customers?search=${user.id}`);
-          if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
-            const found = res.data.find((c: any) => 
-              c.customerCode === user.id || 
-              c._id === user.id || 
-              (user.phone && (c.phone === user.phone || c.mobile === user.phone))
-            ) || res.data[0];
-            if (found) {
-              apiStatus = found.status;
-              if (Array.isArray(found.chits) && found.chits.length > 0) {
-                chitsFromApi = found.chits;
-                totalInvestedFromApi = found.totalPaid;
-              }
+          try {
+            const directRes = await fetchClient(`/customers/${encodeURIComponent(user.id)}`);
+            if (directRes && directRes.data) {
+              foundMongoCust = directRes.data;
+            }
+          } catch {}
+
+          if (!foundMongoCust) {
+            const searchKey = user.phone || user.id;
+            const res = await fetchClient(`/customers?search=${encodeURIComponent(searchKey)}`);
+            if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
+              const cleanP = (user.phone || user.id || '').replace(/\D/g, '');
+              foundMongoCust = res.data.find((c: any) => 
+                c.customerCode === user.id || 
+                c._id === user.id || 
+                (c.phone && c.phone.replace(/\D/g, '') === cleanP) ||
+                (c.mobile && c.mobile.replace(/\D/g, '') === cleanP)
+              ) || res.data[0];
+            }
+          }
+
+          if (foundMongoCust) {
+            apiStatus = foundMongoCust.status;
+            if (Array.isArray(foundMongoCust.chits) && foundMongoCust.chits.length > 0) {
+              chitsFromApi = foundMongoCust.chits;
+              totalInvestedFromApi = foundMongoCust.totalPaid;
             }
           }
         } catch (e) {
@@ -281,9 +295,20 @@ export const CustomerDashboard = () => {
       const userReqs = allReqs.filter((r: any) => r.customerId === user?.id || (user?.phone && r.mobile === user?.phone));
       setPendingRequests(userReqs);
 
+      let backendW: any[] | null = null;
+      try {
+        const wRes = await fetchClient(`/payments/withdrawals?customerId=${encodeURIComponent(user?.id || '')}`);
+        if (wRes && wRes.data && Array.isArray(wRes.data)) {
+          backendW = wRes.data;
+        }
+      } catch (wErr) {
+        console.warn('Could not fetch backend withdrawals:', wErr);
+      }
+
       const allWReqs = JSON.parse(localStorage.getItem('withdrawalRequests') || '[]');
-      const userWReqs = allWReqs.filter((r: any) => r.customerId === user?.id || (user?.phone && r.mobile === user?.phone));
-      setPendingWithdrawals(userWReqs);
+      const localUserWReqs = allWReqs.filter((r: any) => r.customerId === user?.id || (user?.phone && r.mobile === user?.phone));
+      const mergedW = (backendW && backendW.length > 0) ? backendW : localUserWReqs;
+      setPendingWithdrawals(mergedW);
     };
     checkRequests();
     const unsub = onPaymentSync(checkRequests);
@@ -568,6 +593,12 @@ export const CustomerDashboard = () => {
     localStorage.setItem('withdrawalRequests', JSON.stringify(updated));
     window.dispatchEvent(new Event('storage'));
 
+    // Post to MongoDB backend so it persists across all devices
+    fetchClient('/payments/withdrawals', {
+      method: 'POST',
+      body: JSON.stringify(newWReq)
+    }).catch(err => console.warn('Could not post withdrawal request to backend:', err));
+
     // Dispatch real-time system alert to Admin
     try {
       addSystemNotification({
@@ -805,6 +836,41 @@ export const CustomerDashboard = () => {
               <Layers className="w-4 h-4 mr-2" />
               My Portfolio & Chits
             </button>
+
+            <button
+              onClick={() => setActiveTab('paymentRequests')}
+              className={`pb-3 px-4 font-bold text-sm border-b-2 flex items-center whitespace-nowrap transition-colors ${
+                activeTab === 'paymentRequests'
+                  ? 'border-emerald-600 text-emerald-900'
+                  : 'border-transparent text-neutral-500 hover:text-neutral-700'
+              }`}
+            >
+              <CreditCard className="w-4 h-4 mr-2 text-emerald-600" />
+              Payment Requests
+              {pendingRequests.filter(r => r.status === 'PENDING_VERIFICATION').length > 0 && (
+                <span className="ml-2 px-2 py-0.5 text-[10px] bg-amber-100 text-amber-900 rounded-full font-bold animate-pulse">
+                  {pendingRequests.filter(r => r.status === 'PENDING_VERIFICATION').length}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setActiveTab('payoutClaims')}
+              className={`pb-3 px-4 font-bold text-sm border-b-2 flex items-center whitespace-nowrap transition-colors ${
+                activeTab === 'payoutClaims'
+                  ? 'border-indigo-600 text-indigo-900'
+                  : 'border-transparent text-neutral-500 hover:text-neutral-700'
+              }`}
+            >
+              <Wallet className="w-4 h-4 mr-2 text-indigo-600" />
+              Prize Disbursement Requests
+              {pendingWithdrawals.filter(w => w.status === 'PENDING_ADMIN_DISBURSAL').length > 0 && (
+                <span className="ml-2 px-2 py-0.5 text-[10px] bg-amber-100 text-amber-900 rounded-full font-bold">
+                  {pendingWithdrawals.filter(w => w.status === 'PENDING_ADMIN_DISBURSAL').length}
+                </span>
+              )}
+            </button>
+
             <button
               onClick={() => setActiveTab('prizesRewards')}
               className={`pb-3 px-4 font-bold text-sm border-b-2 flex items-center whitespace-nowrap transition-colors ${
@@ -1183,6 +1249,285 @@ export const CustomerDashboard = () => {
             <FixedPlanSchedule />
           ) : activeTab === 'auctionPlanChart' ? (
             <AuctionPlanSchedule />
+          ) : activeTab === 'paymentRequests' ? (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              {/* Payment Requests Hub */}
+              <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-lg">
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                  <div className="space-y-2 max-w-2xl">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-xs font-bold uppercase tracking-wider text-emerald-300">
+                      <CreditCard className="w-3.5 h-3.5" />
+                      Payment Submissions & Live Verification Tracker
+                    </div>
+                    <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
+                      My Payment Requests & Receipts
+                    </h2>
+                    <p className="text-sm text-emerald-100 font-medium">
+                      Track the verification status of your online bank and UPI transfers. Once approved by the administrator, receipts are generated and credited immediately.
+                    </p>
+                  </div>
+                  {myChits.length > 0 && (
+                    <button
+                      onClick={() => handlePayNow(myChits[0])}
+                      className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs transition-all shadow-md active:scale-95 cursor-pointer shrink-0"
+                    >
+                      + Submit New Payment
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* KPI Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-white rounded-2xl p-5 border border-neutral-200 shadow-2xs">
+                  <span className="text-xs font-bold uppercase tracking-wider text-neutral-500">Total Submissions</span>
+                  <h3 className="text-2xl font-black text-neutral-900 mt-2">{pendingRequests.length}</h3>
+                  <p className="text-xs text-neutral-500 mt-1">Payment requests recorded</p>
+                </div>
+
+                <div className="bg-white rounded-2xl p-5 border border-amber-200 shadow-2xs bg-amber-50/20">
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-700">Awaiting Verification</span>
+                  <h3 className="text-2xl font-black text-amber-600 mt-2">
+                    {pendingRequests.filter(r => r.status === 'PENDING_VERIFICATION').length}
+                  </h3>
+                  <p className="text-xs text-amber-700/80 mt-1">Under admin review</p>
+                </div>
+
+                <div className="bg-white rounded-2xl p-5 border border-emerald-200 shadow-2xs bg-emerald-50/20">
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">Verified & Approved</span>
+                  <h3 className="text-2xl font-black text-emerald-700 mt-2">
+                    {pendingRequests.filter(r => r.status === 'APPROVED').length}
+                  </h3>
+                  <p className="text-xs text-emerald-700/80 mt-1">Credited to customer passbook</p>
+                </div>
+              </div>
+
+              {/* Payment Requests List */}
+              <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
+                <div className="p-5 border-b border-neutral-200 bg-white flex items-center justify-between">
+                  <h3 className="font-bold text-neutral-900 text-sm">Submitted Payment Details</h3>
+                  <span className="text-xs text-neutral-500">{pendingRequests.length} Records</span>
+                </div>
+
+                {pendingRequests.length === 0 ? (
+                  <div className="p-12 text-center text-neutral-400">
+                    <CreditCard className="w-10 h-10 mx-auto text-neutral-300 mb-2" />
+                    <p className="font-bold text-neutral-700 text-sm">No Payment Requests Yet</p>
+                    <p className="text-xs text-neutral-400 mt-1">When you pay via UPI or Bank Transfer, your submissions will appear here with live verification tracking.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-neutral-200 text-xs">
+                      <thead className="bg-neutral-50 text-neutral-600 font-bold uppercase">
+                        <tr>
+                          <th className="px-4 py-3 text-left">Chit Group / Month</th>
+                          <th className="px-4 py-3 text-left">Amount</th>
+                          <th className="px-4 py-3 text-left">Payment Mode & Ref</th>
+                          <th className="px-4 py-3 text-left">Company Bank</th>
+                          <th className="px-4 py-3 text-left">Submitted Date</th>
+                          <th className="px-4 py-3 text-center">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-neutral-200">
+                        {pendingRequests.map((req, idx) => (
+                          <tr key={idx} className="hover:bg-neutral-50/60">
+                            <td className="px-4 py-3">
+                              <span className="font-bold text-neutral-900 block">{req.groupName || req.groupId}</span>
+                              <span className="text-[11px] text-neutral-500">Month {req.monthNumber || '1'}</span>
+                            </td>
+                            <td className="px-4 py-3 font-extrabold text-neutral-900">
+                              {formatCurrency(req.amount)}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="font-semibold text-neutral-800 block">{req.paymentMode}</span>
+                              <span className="text-[10px] text-neutral-500 font-mono">Ref: {req.referenceNo}</span>
+                            </td>
+                            <td className="px-4 py-3 text-neutral-600 font-medium">
+                              {req.bankName || 'Company Bank Account'}
+                            </td>
+                            <td className="px-4 py-3 text-neutral-500 whitespace-nowrap">
+                              {formatDate(req.timestamp || req.submittedAt)}
+                            </td>
+                            <td className="px-4 py-3 text-center whitespace-nowrap">
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
+                                req.status === 'APPROVED'
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                  : req.status === 'REJECTED'
+                                    ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                                    : 'bg-amber-100 text-amber-900 border border-amber-300'
+                              }`}>
+                                {req.status === 'PENDING_VERIFICATION' ? 'Awaiting Verification' : req.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : activeTab === 'payoutClaims' ? (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              {/* Prize Payout Hub */}
+              <div className="bg-gradient-to-r from-indigo-900 via-purple-900 to-slate-900 rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-lg">
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                  <div className="space-y-2 max-w-2xl">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-xs font-bold uppercase tracking-wider text-amber-300">
+                      <Award className="w-3.5 h-3.5" />
+                      Prize Disbursement Request Center
+                    </div>
+                    <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
+                      Prize Money Claims & Disbursal Status
+                    </h2>
+                    <p className="text-sm text-purple-100 font-medium">
+                      Submit prize disbursement requests for your chit plans and track your payouts directly into your bank or UPI account.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* KPI Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-white rounded-2xl p-5 border border-neutral-200 shadow-2xs">
+                  <span className="text-xs font-bold uppercase tracking-wider text-neutral-500">Total Claims</span>
+                  <h3 className="text-2xl font-black text-neutral-900 mt-2">{pendingWithdrawals.length}</h3>
+                  <p className="text-xs text-neutral-500 mt-1">Disbursement claims submitted</p>
+                </div>
+
+                <div className="bg-white rounded-2xl p-5 border border-amber-200 shadow-2xs bg-amber-50/20">
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-700">Awaiting Admin Disbursal</span>
+                  <h3 className="text-2xl font-black text-amber-600 mt-2">
+                    {pendingWithdrawals.filter(w => w.status === 'PENDING_ADMIN_DISBURSAL').length}
+                  </h3>
+                  <p className="text-xs text-amber-700/80 mt-1">In settlement review</p>
+                </div>
+
+                <div className="bg-white rounded-2xl p-5 border border-emerald-200 shadow-2xs bg-emerald-50/20">
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">Disbursed Successfully</span>
+                  <h3 className="text-2xl font-black text-emerald-700 mt-2">
+                    {pendingWithdrawals.filter(w => w.status === 'DISBURSED').length}
+                  </h3>
+                  <p className="text-xs text-emerald-700/80 mt-1">Amount credited to account</p>
+                </div>
+              </div>
+
+              {/* Eligible Chits for Claim */}
+              {myChits.some(c => !c.isWithdrawn) && (
+                <div className="bg-white rounded-2xl border border-neutral-200 p-5 shadow-sm space-y-4">
+                  <h3 className="font-bold text-neutral-900 text-sm flex items-center gap-2">
+                    <Award className="w-4 h-4 text-purple-600" />
+                    <span>Active Chits Available to Claim</span>
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {myChits.filter(c => !c.isWithdrawn).map((c, i) => {
+                      const hasPendingClaim = pendingWithdrawals.some(w => w.groupId === c.groupId && w.status === 'PENDING_ADMIN_DISBURSAL');
+                      return (
+                        <div key={i} className="p-4 rounded-xl border border-neutral-200 bg-neutral-50/60 flex items-center justify-between gap-3">
+                          <div>
+                            <p className="font-black text-neutral-900 text-sm">{c.groupName || c.groupId}</p>
+                            <p className="text-xs text-neutral-500">Ticket #{c.ticketNumber || '1'} · Chit Value: {formatCurrency(c.chitValue || 100000)}</p>
+                          </div>
+                          {hasPendingClaim ? (
+                            <span className="px-3 py-1 bg-amber-100 text-amber-900 rounded-lg text-xs font-bold border border-amber-300">
+                              Claim In Review
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleOpenWithdraw(c)}
+                              className="px-3.5 py-1.5 bg-primary-900 hover:bg-primary-800 text-white rounded-xl text-xs font-bold shadow-xs active:scale-95 cursor-pointer"
+                            >
+                              Claim Prize
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Claims History */}
+              <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
+                <div className="p-5 border-b border-neutral-200 bg-white flex items-center justify-between">
+                  <h3 className="font-bold text-neutral-900 text-sm">Disbursement Claims History</h3>
+                  <span className="text-xs text-neutral-500">{pendingWithdrawals.length} Claims</span>
+                </div>
+
+                {pendingWithdrawals.length === 0 ? (
+                  <div className="p-12 text-center text-neutral-400">
+                    <Wallet className="w-10 h-10 mx-auto text-neutral-300 mb-2" />
+                    <p className="font-bold text-neutral-700 text-sm">No Prize Claims Submitted Yet</p>
+                    <p className="text-xs text-neutral-400 mt-1">Submit prize disbursement claims above to receive your chit winnings into your bank or UPI.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-neutral-200 text-xs">
+                      <thead className="bg-neutral-50 text-neutral-600 font-bold uppercase">
+                        <tr>
+                          <th className="px-4 py-3 text-left">Claim ID / Group</th>
+                          <th className="px-4 py-3 text-left">Prize Amount</th>
+                          <th className="px-4 py-3 text-left">Payout Method</th>
+                          <th className="px-4 py-3 text-left">Payout Account Details</th>
+                          <th className="px-4 py-3 text-left">Requested Date</th>
+                          <th className="px-4 py-3 text-center">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-neutral-200">
+                        {pendingWithdrawals.map((w, idx) => (
+                          <tr key={idx} className="hover:bg-neutral-50/60">
+                            <td className="px-4 py-3">
+                              <span className="font-mono text-primary-900 font-bold block">{w.id}</span>
+                              <span className="text-[11px] text-neutral-500">{w.groupName || w.groupId} (Ticket #{w.ticketNumber || '1'})</span>
+                            </td>
+                            <td className="px-4 py-3 font-extrabold text-emerald-700 text-sm">
+                              {formatCurrency(w.eligibleAmount)}
+                            </td>
+                            <td className="px-4 py-3 font-semibold text-neutral-800">
+                              {w.payoutMethod}
+                            </td>
+                            <td className="px-4 py-3 text-neutral-600 font-mono text-[11px]">
+                              {w.payoutMethod === 'Bank Transfer' ? (
+                                <>
+                                  <div>Bank: {w.payoutDetails?.bankName || 'Bank'}</div>
+                                  <div>A/C: {w.payoutDetails?.accountNumber || '—'}</div>
+                                  <div>IFSC: {w.payoutDetails?.ifsc || '—'}</div>
+                                </>
+                              ) : (
+                                <div>UPI: {w.payoutDetails?.upiId || '—'}</div>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-neutral-500 whitespace-nowrap">
+                              {formatDate(w.requestedAt)}
+                            </td>
+                            <td className="px-4 py-3 text-center whitespace-nowrap">
+                              {w.status === 'DISBURSED' ? (
+                                <div className="flex flex-col items-center">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 uppercase">
+                                    ✓ Disbursed
+                                  </span>
+                                  {w.disbursedRef && (
+                                    <span className="text-[10px] font-mono text-neutral-500 mt-0.5">Ref: {w.disbursedRef}</span>
+                                  )}
+                                </div>
+                              ) : w.status === 'REJECTED' ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300 uppercase">
+                                  Rejected
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 uppercase animate-pulse">
+                                  <Clock className="w-3 h-3" /> Awaiting Disbursal
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
           ) : (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">

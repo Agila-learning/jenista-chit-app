@@ -49,6 +49,8 @@ export const CustomerLoginPage = () => {
         // If API returned a specific business status error, throw it directly
         if (
           apiErr.message?.includes('pending admin approval') || 
+          apiErr.message?.includes('awaiting Admin Approval') ||
+          apiErr.message?.includes('admin approval') ||
           apiErr.message?.includes('rejected') ||
           apiErr.message?.includes('deactivated')
         ) {
@@ -60,19 +62,19 @@ export const CustomerLoginPage = () => {
       // 2. Fallback to localStorage
       const customers = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
       const customer = customers.find((c: any) => 
-        (c.mobile === identifier || c.phone === identifier || c.id === identifier) && 
+        (c.mobile === identifier || c.phone === identifier || c.id === identifier || c.customerCode === identifier) && 
         (!c.password || c.password === password)
       );
       
       if (customer) {
-        if (customer.status === 'PENDING_APPROVAL') {
-          throw new Error('Your account is pending admin approval.');
-        }
-        if (customer.status === 'REJECTED') {
-          throw new Error('Your account registration was rejected.');
-        }
-        if (customer.status === 'INACTIVE' || customer.status === 'DEACTIVATED') {
-          throw new Error('Your account has been deactivated by administrator. Access restricted.');
+        if (customer.status !== 'ACTIVE') {
+          if (customer.status === 'REJECTED') {
+            throw new Error('Your account registration was rejected by administrator.');
+          }
+          if (customer.status === 'INACTIVE' || customer.status === 'DEACTIVATED') {
+            throw new Error('Your account has been deactivated by administrator. Access restricted.');
+          }
+          throw new Error('Your account registration is awaiting Admin Approval. You can access your account once approved by the administrator.');
         }
         
         login(`token-${customer.id}`, {

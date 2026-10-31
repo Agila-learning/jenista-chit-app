@@ -232,6 +232,9 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingBottom: 24,
+    maxWidth: 768,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   // 1. Navy Profile Header Card
