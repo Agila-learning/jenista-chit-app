@@ -90,12 +90,12 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
   const fetchCustomerProfile = async () => {
     try {
       if (!user) return;
-      const [allCustomers, banks, ledgerRaw, reqsRaw, wReqsRaw, notifs, anns, groups] = await Promise.all([
+      const [allCustomers, banks, ledgerRaw, reqsList, wReqsList, notifs, anns, groups] = await Promise.all([
         DataSyncManager.getCustomers(),
         DataSyncManager.getBankAccounts(),
         secureStorage.getItem('synced_ledger'),
-        secureStorage.getItem('payment_requests'),
-        secureStorage.getItem('withdrawal_requests'),
+        DataSyncManager.getPaymentRequests().catch(() => []),
+        DataSyncManager.getWithdrawalRequests().catch(() => []),
         MobileNotificationsManager.getNotificationsForUser(user?.id, 'CUSTOMER'),
         MobileNotificationsManager.getAnnouncements(),
         DataSyncManager.getChitGroups().catch(() => []),
@@ -141,36 +141,21 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
       }
       setTransactions(userTrx);
 
-      // Parse Payment Requests
-      let userReqs: any[] = [];
-      if (reqsRaw) {
-        try {
-          const parsedReqs = JSON.parse(reqsRaw);
-          if (Array.isArray(parsedReqs)) {
-            userReqs = parsedReqs.filter(
-              (r: any) =>
-                r.customerId === user.id ||
-                (user.phone && r.mobile?.replace(/\D/g, '') === cleanUserPhone)
-            );
-          }
-        } catch {}
-      }
+      // Filter Payment Requests for user
+      const userReqs = (reqsList || []).filter(
+        (r: any) =>
+          r.customerId === user.id ||
+          (user.phone && r.customerMobile?.replace(/\D/g, '') === cleanUserPhone) ||
+          (user.phone && r.mobile?.replace(/\D/g, '') === cleanUserPhone)
+      );
       setPendingRequests(userReqs);
 
-      // Parse Withdrawal Requests
-      let userWReqs: any[] = [];
-      if (wReqsRaw) {
-        try {
-          const parsedWReqs = JSON.parse(wReqsRaw);
-          if (Array.isArray(parsedWReqs)) {
-            userWReqs = parsedWReqs.filter(
-              (w: any) =>
-                w.customerId === user.id ||
-                (user.phone && w.mobile?.replace(/\D/g, '') === cleanUserPhone)
-            );
-          }
-        } catch {}
-      }
+      // Filter Withdrawal Requests for user
+      const userWReqs = (wReqsList || []).filter(
+        (w: any) =>
+          w.customerId === user.id ||
+          (user.phone && w.mobile?.replace(/\D/g, '') === cleanUserPhone)
+      );
       setPendingWithdrawals(userWReqs);
 
       if (found) {
@@ -256,17 +241,13 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
         bankAccountId: activeBank?.id,
         bankName: activeBank?.bankName || 'Company Bank',
         requestedAt: new Date().toISOString(),
-        status: 'PENDING',
+        status: 'PENDING' as const,
         adminNotes: isAdvancePayment 
           ? `[Advance Payment] Submitted from mobile app via ${payMode}`
           : `Submitted from mobile app via ${payMode}`,
       };
 
-      const existingRaw = await secureStorage.getItem('payment_requests');
-      const existing = existingRaw ? JSON.parse(existingRaw) : [];
-      const updated = [newReq, ...existing.filter((r: any) => r.id !== newReq.id)];
-      await secureStorage.setItem('payment_requests', JSON.stringify(updated));
-
+      await DataSyncManager.submitPaymentRequest(newReq);
       setPendingRequests((prev) => [newReq, ...prev.filter((r) => r.id !== newReq.id)]);
       setPaymentModalChit(null);
       Alert.alert(
@@ -333,11 +314,7 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
         status: 'PENDING_ADMIN_DISBURSAL',
       };
 
-      const existingRaw = await secureStorage.getItem('withdrawal_requests');
-      const existing = existingRaw ? JSON.parse(existingRaw) : [];
-      const updated = [newWReq, ...existing.filter((w: any) => w.id !== newWReq.id)];
-      await secureStorage.setItem('withdrawal_requests', JSON.stringify(updated));
-
+      await DataSyncManager.submitWithdrawalRequest(newWReq);
       setPendingWithdrawals((prev) => [newWReq, ...prev.filter((w) => w.id !== newWReq.id)]);
       setWithdrawModalChit(null);
       Alert.alert(

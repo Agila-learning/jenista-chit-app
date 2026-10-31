@@ -143,6 +143,10 @@ export const MobileNotificationsManager = {
     return newNotif;
   },
 
+  async addLiveNotification(notif: Omit<SystemNotification, 'id' | 'timestamp' | 'isRead'>): Promise<SystemNotification> {
+    return this.addNotification(notif);
+  },
+
   async markAsRead(id: string): Promise<void> {
     const current = await this.getNotifications();
     const updated = current.map(n => n.id === id ? { ...n, isRead: true } : n);

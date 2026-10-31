@@ -93,6 +93,9 @@ export interface LedgerTransaction {
   description: string;
   collectedBy: string;
   paymentMode: string;
+  customerName?: string;
+  customerId?: string;
+  groupName?: string;
 }
 
 export interface StaffReceipt {
@@ -121,11 +124,14 @@ export interface PaymentRequest {
   groupName?: string;
   ticketNumber?: string;
   amount: number;
-  paymentMode: 'UPI' | 'Bank Transfer' | 'Cash';
+  paymentMode: 'UPI' | 'Bank Transfer' | 'Cash' | 'BANK_TRANSFER' | 'CASH' | string;
   referenceNumber: string;
   screenshotUrl?: string;
   requestedAt: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   adminNotes?: string;
   approvedAt?: string;
+  rejectedAt?: string;
+  bankAccountId?: string;
+  bankName?: string;
 }

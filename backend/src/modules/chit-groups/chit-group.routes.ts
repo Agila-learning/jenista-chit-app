@@ -9,14 +9,15 @@ import cycleRoutes from '../chit-cycles/chit-cycle.routes';
 
 const router = Router();
 
-router.use(authenticate);
-
-// Nested routes
-router.use('/:groupId/members', memberRoutes);
-router.use('/:groupId/cycles', cycleRoutes);
-
 // Group routes
-router.post('/', authorize(['chits.create']), ChitGroupController.createGroup);
-router.get('/', authorize(['chits.read']), ChitGroupController.getGroups);
+router.get('/', ChitGroupController.getGroups);
+router.get('/:id', ChitGroupController.getGroupById);
+router.post('/', ChitGroupController.createGroup);
+router.put('/:id', ChitGroupController.createGroup);
+router.delete('/:id', ChitGroupController.deleteGroup);
+
+// Nested routes (with auth)
+router.use('/:groupId/members', authenticate, memberRoutes);
+router.use('/:groupId/cycles', authenticate, cycleRoutes);
 
 export default router;

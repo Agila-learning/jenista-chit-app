@@ -7,8 +7,10 @@ import {
   Image,
   Dimensions,
   Platform,
-  ActivityIndicator,
+  TouchableOpacity,
+  SafeAreaView,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 
 interface SplashScreenProps {
@@ -16,114 +18,181 @@ interface SplashScreenProps {
   minDurationMs?: number;
 }
 
+const SCREENS = [
+  {
+    id: 1,
+    title: 'Jenista CHITS',
+    subtitle: 'Your Trust • Our Commitment',
+    tagline: 'Together Towards Your Bigger Dreams',
+    image: require('../../assets/loading-screen-1.png'),
+    progress: '33%',
+    progressStep: 1,
+  },
+  {
+    id: 2,
+    title: 'Jenista CHITS',
+    subtitle: 'Save Today • Grow Tomorrow',
+    tagline: 'Small Steps Build Big Futures',
+    image: require('../../assets/loading-screen-2.png'),
+    progress: '66%',
+    progressStep: 2,
+  },
+  {
+    id: 3,
+    title: 'Jenista CHITS',
+    subtitle: 'Plan • Save • Achieve',
+    tagline: 'Your Growth Is Our Success',
+    image: require('../../assets/loading-screen-3.png'),
+    progress: '100%',
+    progressStep: 3,
+  },
+];
+
 export const SplashScreen: React.FC<SplashScreenProps> = ({
   onFinish,
-  minDurationMs = 1800,
+  minDurationMs = 2000,
 }) => {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.85)).current;
-  const glowAnim = useRef(new Animated.Value(0.4)).current;
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
   const exitAnim = useRef(new Animated.Value(1)).current;
-  const [visible, setVisible] = useState(true);
+  const progressAnim = useRef(new Animated.Value(0.33)).current;
 
+  // Auto progression timer across the 3 screens
   useEffect(() => {
-    // 1. Entrance animation
-    Animated.parallel([
+    const timer = setInterval(() => {
+      setCurrentIndex((prev) => {
+        if (prev < SCREENS.length - 1) {
+          const nextIndex = prev + 1;
+          animateToStep(nextIndex);
+          return nextIndex;
+        } else {
+          clearInterval(timer);
+          finishSequence();
+          return prev;
+        }
+      });
+    }, minDurationMs);
+
+    return () => clearInterval(timer);
+  }, [minDurationMs]);
+
+  const animateToStep = (index: number) => {
+    // Quick cross fade
+    Animated.sequence([
       Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 600,
+        toValue: 0.3,
+        duration: 180,
         useNativeDriver: Platform.OS !== 'web',
       }),
-      Animated.spring(scaleAnim, {
+      Animated.timing(fadeAnim, {
         toValue: 1,
-        friction: 6,
-        tension: 40,
+        duration: 250,
         useNativeDriver: Platform.OS !== 'web',
       }),
     ]).start();
 
-    // 2. Pulse glow animation
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(glowAnim, {
-          toValue: 1,
-          duration: 900,
-          useNativeDriver: Platform.OS !== 'web',
-        }),
-        Animated.timing(glowAnim, {
-          toValue: 0.4,
-          duration: 900,
-          useNativeDriver: Platform.OS !== 'web',
-        }),
-      ])
-    ).start();
+    // Progress bar fill
+    Animated.timing(progressAnim, {
+      toValue: (index + 1) / SCREENS.length,
+      duration: 350,
+      useNativeDriver: false,
+    }).start();
+  };
 
-    // 3. Exit animation after duration
-    const timer = setTimeout(() => {
-      Animated.timing(exitAnim, {
-        toValue: 0,
-        duration: 400,
-        useNativeDriver: Platform.OS !== 'web',
-      }).start(() => {
-        setVisible(false);
-        if (onFinish) onFinish();
-      });
-    }, minDurationMs);
+  const handleNext = () => {
+    if (currentIndex < SCREENS.length - 1) {
+      const nextIndex = currentIndex + 1;
+      setCurrentIndex(nextIndex);
+      animateToStep(nextIndex);
+    } else {
+      finishSequence();
+    }
+  };
 
-    return () => clearTimeout(timer);
-  }, []);
+  const finishSequence = () => {
+    Animated.timing(exitAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: Platform.OS !== 'web',
+    }).start(() => {
+      if (onFinish) onFinish();
+    });
+  };
 
-  if (!visible) return null;
+  const currentScreen = SCREENS[currentIndex];
 
   return (
     <Animated.View style={[styles.container, { opacity: exitAnim }]}>
-      <Animated.View
-        style={[
-          styles.contentBox,
-          {
-            opacity: fadeAnim,
-            transform: [{ scale: scaleAnim }],
-          },
-        ]}
-      >
-        {/* Glowing Badge Container */}
-        <Animated.View style={[styles.logoWrapper, { opacity: glowAnim }]}>
-          <View style={styles.glowOuterCircle} />
+      <SafeAreaView style={styles.safeArea}>
+        {/* Top Header with Skip Button */}
+        <View style={styles.topBar}>
+          <View style={styles.brandBadge}>
+            <Ionicons name="shield-checkmark" size={14} color={Colors.gold.primary} />
+            <Text style={styles.brandBadgeText}>GOVERNMENT REGISTERED</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.skipButton}
+            onPress={finishSequence}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.skipButtonText}>Skip</Text>
+            <Ionicons name="chevron-forward" size={16} color={Colors.gold.primary} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Screen Content */}
+        <Animated.View style={[styles.mainContent, { opacity: fadeAnim }]}>
+          {/* Main Cropped Screen Image */}
+          <View style={styles.imageCard}>
+            <Image
+              source={currentScreen.image}
+              style={styles.screenImage}
+              resizeMode="contain"
+            />
+          </View>
+
+          {/* Stepper Dots & Indicator */}
+          <View style={styles.stepperRow}>
+            {SCREENS.map((s, idx) => (
+              <View
+                key={s.id}
+                style={[
+                  styles.stepDot,
+                  idx === currentIndex && styles.stepDotActive,
+                  idx < currentIndex && styles.stepDotCompleted,
+                ]}
+              />
+            ))}
+          </View>
         </Animated.View>
 
-        <View style={styles.logoCircle}>
-          <Image
-            source={require('../../assets/splash-icon.png')}
-            style={styles.logoImage}
-            resizeMode="contain"
-          />
+        {/* Bottom Bar: Action & Continuous Progress */}
+        <View style={styles.bottomBar}>
+          <TouchableOpacity
+            style={styles.nextButton}
+            onPress={handleNext}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.nextButtonText}>
+              {currentIndex === SCREENS.length - 1 ? 'Get Started' : 'Next'}
+            </Text>
+            <Ionicons
+              name={currentIndex === SCREENS.length - 1 ? 'arrow-forward' : 'arrow-forward-outline'}
+              size={18}
+              color="#0B1A30"
+            />
+          </TouchableOpacity>
+
+          <Text style={styles.footerLegal}>
+            Jenista Chit Funds • Secure & Transparent Savings
+          </Text>
         </View>
-
-        {/* Brand Titles */}
-        <View style={styles.tagBadge}>
-          <Text style={styles.tagBadgeText}>GOVERNMENT APPROVED</Text>
-        </View>
-
-        <Text style={styles.brandTitle}>JENISTA CHITS</Text>
-        <Text style={styles.brandSubtitle}>Smart Chit Fund Management</Text>
-
-        {/* Loader Indicator */}
-        <View style={styles.loaderContainer}>
-          <ActivityIndicator size="small" color={Colors.gold.primary} />
-          <Text style={styles.loadingText}>Initializing secure workspace...</Text>
-        </View>
-      </Animated.View>
-
-      {/* Footer Branding */}
-      <View style={styles.footer}>
-        <Text style={styles.footerTag}>100% Transparent & Legally Registered</Text>
-        <Text style={styles.footerVersion}>v1.0.6 • Enterprise Edition</Text>
-      </View>
+      </SafeAreaView>
     </Animated.View>
   );
 };
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 const styles = StyleSheet.create({
   container: {
@@ -133,112 +202,126 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: '#070E1A',
-    alignItems: 'center',
-    justifyContent: 'center',
     zIndex: 99999,
     elevation: 99999,
   },
-  contentBox: {
+  safeArea: {
+    flex: 1,
+    justifyContent: 'space-between',
+    paddingVertical: Platform.OS === 'android' ? 24 : 12,
+  },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    maxWidth: 420,
-    width: '100%',
+    paddingHorizontal: 20,
+    paddingTop: 8,
   },
-  logoWrapper: {
-    position: 'absolute',
-    top: -20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  glowOuterCircle: {
-    width: 170,
-    height: 170,
-    borderRadius: 85,
-    backgroundColor: 'rgba(255, 191, 50, 0.15)',
-  },
-  logoCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 32,
-    backgroundColor: 'rgba(15, 23, 42, 0.9)',
-    borderWidth: 2,
-    borderColor: 'rgba(255, 191, 50, 0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: Colors.gold.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 18,
-    elevation: 10,
-    marginBottom: 20,
-  },
-  logoImage: {
-    width: 86,
-    height: 86,
-  },
-  tagBadge: {
-    backgroundColor: 'rgba(255, 191, 50, 0.12)',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 191, 50, 0.35)',
-    marginBottom: 10,
-  },
-  tagBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: Colors.gold.primary,
-    letterSpacing: 1,
-  },
-  brandTitle: {
-    fontSize: 26,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    letterSpacing: 1.5,
-    textAlign: 'center',
-  },
-  brandSubtitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.gold.primary,
-    marginTop: 4,
-    textAlign: 'center',
-    letterSpacing: 0.5,
-  },
-  loaderContainer: {
+  brandBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginTop: 36,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    gap: 6,
+    backgroundColor: 'rgba(217, 119, 6, 0.15)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(217, 119, 6, 0.4)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
   },
-  loadingText: {
+  brandBadgeText: {
+    color: Colors.gold.primary,
     fontSize: 11,
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.7)',
+    fontWeight: '700',
+    letterSpacing: 0.8,
   },
-  footer: {
-    position: 'absolute',
-    bottom: 32,
+  skipButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 2,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
   },
-  footerTag: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.5)',
-    letterSpacing: 0.2,
+  skipButtonText: {
+    color: Colors.gold.primary,
+    fontSize: 13,
+    fontWeight: '700',
   },
-  footerVersion: {
-    fontSize: 10,
-    fontWeight: '500',
-    color: 'rgba(255, 191, 50, 0.7)',
+  mainContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  imageCard: {
+    width: Math.min(width * 0.88, 360),
+    height: Math.min(height * 0.65, 580),
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#0A1322',
+    borderWidth: 1.5,
+    borderColor: 'rgba(217, 119, 6, 0.35)',
+    shadowColor: Colors.gold.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  screenImage: {
+    width: '100%',
+    height: '100%',
+  },
+  stepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 18,
+  },
+  stepDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  stepDotActive: {
+    width: 28,
+    backgroundColor: Colors.gold.primary,
+  },
+  stepDotCompleted: {
+    backgroundColor: 'rgba(217, 119, 6, 0.6)',
+  },
+  bottomBar: {
+    paddingHorizontal: 24,
+    paddingBottom: 16,
+    gap: 12,
+  },
+  nextButton: {
+    backgroundColor: Colors.gold.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: Colors.gold.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  nextButtonText: {
+    color: '#0B1A30',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+  footerLegal: {
+    textAlign: 'center',
+    color: Colors.textSecondary,
+    fontSize: 12,
   },
 });

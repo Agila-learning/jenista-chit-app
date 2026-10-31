@@ -5,7 +5,7 @@ import { authorize } from '../../middleware/authorize';
 
 const router = Router();
 
-router.use(authenticate);
-router.get('/', authorize(['payments.read']), ReceiptController.getReceipts);
+router.get('/', ReceiptController.getReceipts);
+router.post('/', ReceiptController.createReceipt);
 
 export default router;

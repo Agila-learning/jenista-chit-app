@@ -39,18 +39,37 @@ const AdminDrawer = () => {
   return (
     <Drawer.Navigator
       drawerContent={(props) => <CustomDrawerContent {...props} />}
-      screenOptions={({ navigation }) => ({
+      screenOptions={({ navigation, route }) => ({
         headerShown: true,
         headerStyle: { backgroundColor: Colors.navy.primary },
         headerTintColor: Colors.white,
         headerTitleStyle: { fontWeight: '800', fontSize: 17 },
         drawerType: 'front',
         headerLeft: () => (
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {route.name !== 'AdminDashboard' ? (
+              <TouchableOpacity
+                style={{ paddingLeft: 16, paddingRight: 8, paddingVertical: 4 }}
+                onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('AdminDashboard'))}
+              >
+                <Ionicons name="arrow-back" size={24} color={Colors.white} />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={{ paddingLeft: 16, paddingRight: 8 }}
+                onPress={() => navigation.openDrawer()}
+              >
+                <Ionicons name="menu" size={26} color={Colors.white} />
+              </TouchableOpacity>
+            )}
+          </View>
+        ),
+        headerRight: () => (
           <TouchableOpacity
-            style={{ paddingLeft: 16, paddingRight: 8 }}
+            style={{ paddingRight: 16, paddingLeft: 8 }}
             onPress={() => navigation.openDrawer()}
           >
-            <Ionicons name="menu" size={26} color={Colors.white} />
+            <Ionicons name="grid-outline" size={22} color={Colors.gold.primary} />
           </TouchableOpacity>
         ),
       })}
@@ -78,7 +97,7 @@ const AdminDrawer = () => {
       <Drawer.Screen
         name="ReceiptEntry"
         component={ReceiptEntryScreen}
-        options={{ title: 'Receipt Desk & Collections' }}
+        options={{ title: 'Receipt Desk & Collections', headerShown: false }}
       />
       <Drawer.Screen
         name="Ledger"
@@ -88,7 +107,7 @@ const AdminDrawer = () => {
       <Drawer.Screen
         name="PaymentVerifications"
         component={PaymentVerificationsScreen}
-        options={{ title: 'Payment Verifications' }}
+        options={{ title: 'Payment & Prize Requests' }}
       />
       <Drawer.Screen
         name="Notifications"
@@ -129,18 +148,37 @@ const StaffDrawer = () => {
   return (
     <Drawer.Navigator
       drawerContent={(props) => <CustomDrawerContent {...props} />}
-      screenOptions={({ navigation }) => ({
+      screenOptions={({ navigation, route }) => ({
         headerShown: true,
         headerStyle: { backgroundColor: Colors.navy.primary },
         headerTintColor: Colors.white,
         headerTitleStyle: { fontWeight: '800', fontSize: 17 },
         drawerType: 'front',
         headerLeft: () => (
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {route.name !== 'StaffDashboard' ? (
+              <TouchableOpacity
+                style={{ paddingLeft: 16, paddingRight: 8, paddingVertical: 4 }}
+                onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('StaffDashboard'))}
+              >
+                <Ionicons name="arrow-back" size={24} color={Colors.white} />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={{ paddingLeft: 16, paddingRight: 8 }}
+                onPress={() => navigation.openDrawer()}
+              >
+                <Ionicons name="menu" size={26} color={Colors.white} />
+              </TouchableOpacity>
+            )}
+          </View>
+        ),
+        headerRight: () => (
           <TouchableOpacity
-            style={{ paddingLeft: 16, paddingRight: 8 }}
+            style={{ paddingRight: 16, paddingLeft: 8 }}
             onPress={() => navigation.openDrawer()}
           >
-            <Ionicons name="menu" size={26} color={Colors.white} />
+            <Ionicons name="grid-outline" size={22} color={Colors.gold.primary} />
           </TouchableOpacity>
         ),
       })}
@@ -163,7 +201,7 @@ const StaffDrawer = () => {
       <Drawer.Screen
         name="ReceiptEntry"
         component={ReceiptEntryScreen}
-        options={{ title: 'Issue Receipt Voucher' }}
+        options={{ title: 'Issue Receipt Voucher', headerShown: false }}
       />
       <Drawer.Screen
         name="Reports"
@@ -178,11 +216,20 @@ const StaffDrawer = () => {
 const CustomerStack = () => {
   return (
     <Stack.Navigator
-      screenOptions={{
+      screenOptions={({ navigation, route }) => ({
         headerStyle: { backgroundColor: Colors.navy.primary },
         headerTintColor: Colors.white,
         headerTitleStyle: { fontWeight: '800' },
-      }}
+        headerLeft: () =>
+          route.name !== 'CustomerHome' ? (
+            <TouchableOpacity
+              style={{ paddingLeft: 16, paddingRight: 8, paddingVertical: 4 }}
+              onPress={() => navigation.goBack()}
+            >
+              <Ionicons name="arrow-back" size={24} color={Colors.white} />
+            </TouchableOpacity>
+          ) : undefined,
+      })}
     >
       <Stack.Screen
         name="CustomerHome"
@@ -232,17 +279,56 @@ export const RootNavigator = () => {
             <Stack.Screen
               name="ChitGroupDetail"
               component={ChitGroupDetailScreen}
-              options={{ headerShown: true, title: 'Group & Enrolled Members', headerStyle: { backgroundColor: Colors.navy.primary }, headerTintColor: Colors.white }}
+              options={({ navigation }) => ({
+                headerShown: true,
+                title: 'Group & Enrolled Members',
+                headerStyle: { backgroundColor: Colors.navy.primary },
+                headerTintColor: Colors.white,
+                headerLeft: () => (
+                  <TouchableOpacity
+                    style={{ paddingLeft: 16, paddingRight: 8 }}
+                    onPress={() => navigation.goBack()}
+                  >
+                    <Ionicons name="arrow-back" size={24} color={Colors.white} />
+                  </TouchableOpacity>
+                ),
+              })}
             />
             <Stack.Screen
               name="CustomerDetail"
               component={CustomerDetailScreen}
-              options={{ headerShown: true, title: 'Member Profile', headerStyle: { backgroundColor: Colors.navy.primary }, headerTintColor: Colors.white }}
+              options={({ navigation }) => ({
+                headerShown: true,
+                title: 'Member Profile',
+                headerStyle: { backgroundColor: Colors.navy.primary },
+                headerTintColor: Colors.white,
+                headerLeft: () => (
+                  <TouchableOpacity
+                    style={{ paddingLeft: 16, paddingRight: 8 }}
+                    onPress={() => navigation.goBack()}
+                  >
+                    <Ionicons name="arrow-back" size={24} color={Colors.white} />
+                  </TouchableOpacity>
+                ),
+              })}
             />
             <Stack.Screen
               name="CustomerSchedule"
               component={CustomerScheduleScreen}
-              options={{ headerShown: true, title: 'Installment Breakdown', headerStyle: { backgroundColor: Colors.navy.primary }, headerTintColor: Colors.white }}
+              options={({ navigation }) => ({
+                headerShown: true,
+                title: 'Installment Breakdown',
+                headerStyle: { backgroundColor: Colors.navy.primary },
+                headerTintColor: Colors.white,
+                headerLeft: () => (
+                  <TouchableOpacity
+                    style={{ paddingLeft: 16, paddingRight: 8 }}
+                    onPress={() => navigation.goBack()}
+                  >
+                    <Ionicons name="arrow-back" size={24} color={Colors.white} />
+                  </TouchableOpacity>
+                ),
+              })}
             />
           </>
         ) : (
@@ -252,17 +338,56 @@ export const RootNavigator = () => {
             <Stack.Screen
               name="ChitGroupDetail"
               component={ChitGroupDetailScreen}
-              options={{ headerShown: true, title: 'Group & Enrolled Members', headerStyle: { backgroundColor: Colors.navy.primary }, headerTintColor: Colors.white }}
+              options={({ navigation }) => ({
+                headerShown: true,
+                title: 'Group & Enrolled Members',
+                headerStyle: { backgroundColor: Colors.navy.primary },
+                headerTintColor: Colors.white,
+                headerLeft: () => (
+                  <TouchableOpacity
+                    style={{ paddingLeft: 16, paddingRight: 8 }}
+                    onPress={() => navigation.goBack()}
+                  >
+                    <Ionicons name="arrow-back" size={24} color={Colors.white} />
+                  </TouchableOpacity>
+                ),
+              })}
             />
             <Stack.Screen
               name="CustomerDetail"
               component={CustomerDetailScreen}
-              options={{ headerShown: true, title: 'Member Profile', headerStyle: { backgroundColor: Colors.navy.primary }, headerTintColor: Colors.white }}
+              options={({ navigation }) => ({
+                headerShown: true,
+                title: 'Member Profile',
+                headerStyle: { backgroundColor: Colors.navy.primary },
+                headerTintColor: Colors.white,
+                headerLeft: () => (
+                  <TouchableOpacity
+                    style={{ paddingLeft: 16, paddingRight: 8 }}
+                    onPress={() => navigation.goBack()}
+                  >
+                    <Ionicons name="arrow-back" size={24} color={Colors.white} />
+                  </TouchableOpacity>
+                ),
+              })}
             />
             <Stack.Screen
               name="CustomerSchedule"
               component={CustomerScheduleScreen}
-              options={{ headerShown: true, title: 'Installment Breakdown', headerStyle: { backgroundColor: Colors.navy.primary }, headerTintColor: Colors.white }}
+              options={({ navigation }) => ({
+                headerShown: true,
+                title: 'Installment Breakdown',
+                headerStyle: { backgroundColor: Colors.navy.primary },
+                headerTintColor: Colors.white,
+                headerLeft: () => (
+                  <TouchableOpacity
+                    style={{ paddingLeft: 16, paddingRight: 8 }}
+                    onPress={() => navigation.goBack()}
+                  >
+                    <Ionicons name="arrow-back" size={24} color={Colors.white} />
+                  </TouchableOpacity>
+                ),
+              })}
             />
           </>
         )}
