@@ -37,7 +37,7 @@ export const CustomerChitScheduleScreen = () => {
   const { id: customerIdParam } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   const groupParam = searchParams.get('group') || searchParams.get('groupId') || searchParams.get('chitGroup') || '';
   const [scheduleData, setScheduleData] = useState<CustomerChitScheduleSummary | null>(null);
@@ -590,16 +590,59 @@ export const CustomerChitScheduleScreen = () => {
   }
 
   const isStaffOrAdmin = user?.role === 'ADMIN' || user?.role === 'STAFF';
+  const isCustomerView = user?.role === 'CUSTOMER' || !isStaffOrAdmin || window.location.pathname.startsWith('/customer/');
 
   return (
-    <div className="space-y-6 pb-12 max-w-7xl mx-auto animate-in fade-in duration-200">
+    <div className={`space-y-6 pb-12 max-w-7xl mx-auto animate-in fade-in duration-200 ${isCustomerView ? 'pt-0 px-4 sm:px-6' : ''}`}>
       
+      {/* Customer Dedicated Portal Header (When accessed from Customer Dashboard / Customer Login) */}
+      {isCustomerView && (
+        <header className="bg-white border-b border-neutral-200 sticky top-0 z-40 shadow-xs mb-6 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3.5 rounded-2xl">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => navigate('/customer/dashboard')}
+                className="p-2 text-primary-900 hover:bg-neutral-100 rounded-xl transition-colors flex items-center gap-1.5 font-bold text-xs border border-neutral-200 shadow-2xs cursor-pointer"
+                title="Return to Customer Dashboard"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>My Dashboard</span>
+              </button>
+              <img src="/assets/Chit logo.jpg.jpeg" alt="Jenista Chits Logo" className="h-9 w-9 object-contain rounded-lg" />
+              <div>
+                <span className="font-extrabold text-base sm:text-lg text-primary-900 tracking-tight block leading-tight">Jenista Chits</span>
+                <span className="text-[10px] text-amber-800 font-bold tracking-wider uppercase block">Customer Passbook & Full Pre-Chart</span>
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-3">
+              <span className="text-xs font-semibold text-neutral-600 hidden sm:inline-block">
+                Welcome, <strong className="text-neutral-900">{user?.name || scheduleData.customerName}</strong>
+                <span className="font-mono text-primary-900 ml-1 font-bold">({user?.id || scheduleData.customerId})</span>
+              </span>
+              <button 
+                onClick={logout}
+                className="text-xs font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-xl border border-rose-200 transition-colors cursor-pointer"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </header>
+      )}
+
       {/* Top Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs">
         <div className="flex items-center gap-3.5">
           <button
-            onClick={() => navigate(-1)}
-            className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors shrink-0"
+            onClick={() => {
+              if (isCustomerView) {
+                navigate('/customer/dashboard');
+              } else {
+                navigate(-1);
+              }
+            }}
+            className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors shrink-0 cursor-pointer"
             title="Go back"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -643,20 +686,20 @@ export const CustomerChitScheduleScreen = () => {
         </div>
 
         <div className="flex items-center gap-2.5 self-end sm:self-auto">
-          {/* Receive Payment / Bill Paid Entry */}
+          {/* Receive Payment / Pay Online Entry */}
           <button
             onClick={() => {
               setSelectedMonthForPay(null);
               setIsPayModalOpen(true);
             }}
             className="px-4 py-2 bg-[#9a6d25] hover:bg-[#855c1b] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
-            title="Record received installment payment and entry bill paid"
+            title="Record received installment payment or submit online payment proof"
           >
             <CreditCard className="w-4 h-4" />
-            <span>{isStaffOrAdmin ? 'Receive Payment' : 'Pay Online'}</span>
+            <span>{isCustomerView ? 'Pay Online / Submit Proof' : 'Receive Payment'}</span>
           </button>
 
-          {/* Full Customer Profile Navigation (for Admin/Staff if needed) */}
+          {/* Full Customer Profile Navigation (Staff/Admin only) */}
           {isStaffOrAdmin && (
             <Link
               to={`/admin/customers/${scheduleData.customerId}?chitGroup=${encodeURIComponent(scheduleData.groupId)}`}
@@ -1278,16 +1321,51 @@ export const CustomerChitScheduleScreen = () => {
 
                 {/* Amount to Pay */}
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Amount Paid (₹) *
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                      Amount Payable (₹) *
+                    </label>
+                    {!isStaffOrAdmin && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-300 flex items-center gap-1">
+                        <Lock className="w-2.5 h-2.5 text-amber-800" /> Fixed Due Amount
+                      </span>
+                    )}
+                  </div>
                   <input
                     type="number"
-                    className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#9a6d25]"
+                    readOnly={!isStaffOrAdmin}
+                    className={`w-full border rounded-xl px-3.5 py-2.5 text-sm font-bold focus:outline-none transition-colors ${
+                      !isStaffOrAdmin 
+                        ? 'bg-slate-100 text-slate-800 border-slate-300 cursor-not-allowed select-none' 
+                        : 'bg-white text-slate-900 border-slate-300 focus:ring-2 focus:ring-[#9a6d25]'
+                    }`}
                     value={payAmount}
-                    onChange={(e) => setPayAmount(e.target.value)}
+                    onChange={(e) => {
+                      if (isStaffOrAdmin) {
+                        setPayAmount(e.target.value);
+                      }
+                    }}
                     placeholder="Enter amount..."
                   />
+                  {!isStaffOrAdmin && (
+                    <div className="mt-1.5 p-2 bg-amber-50/70 border border-amber-200/80 rounded-lg text-[11px] text-amber-950 space-y-0.5">
+                      <div className="flex justify-between">
+                        <span className="text-amber-800">Base Installment Due:</span>
+                        <span className="font-bold">
+                          {formatCurrency(selectedMonthForPay?.grossDue || Math.round((scheduleData?.chitValue || 100000) / (scheduleData?.totalDurationMonths || 20)))}
+                        </span>
+                      </div>
+                      {selectedMonthForPay?.isPostDisbursalMonth && (
+                        <div className="flex justify-between text-purple-900">
+                          <span>Post-Draw Prize Fee (+1%):</span>
+                          <span className="font-bold">+{formatCurrency(Math.round((scheduleData?.chitValue || 100000) * 0.01))}</span>
+                        </div>
+                      )}
+                      <p className="text-[10px] text-slate-500 pt-1 border-t border-amber-200/50">
+                        🔒 Note: Amount is strictly fixed by the system to match your official due schedule. Partial payments cannot be submitted.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Payment Mode Selector */}

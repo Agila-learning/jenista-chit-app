@@ -5,7 +5,7 @@ import {
   Gavel, Award, Building2, Wallet, CheckCircle2, Upload, Printer, X, Search, FileText, 
   Landmark, QrCode, Check, Lock, ArrowLeft, Megaphone, Gift, Clock, Users, ChevronDown, ChevronUp, Info 
 } from 'lucide-react';
-import { formatCurrency, formatDate } from '../../utils/format';
+import { formatCurrency, formatDate, formatDateTime } from '../../utils/format';
 import { printCashReceipt } from '../../utils/receiptPrinter';
 import { useAuth } from '../../store/AuthContext';
 import { fetchClient } from '../../api/client';
@@ -307,7 +307,31 @@ export const CustomerDashboard = () => {
 
       const allWReqs = JSON.parse(localStorage.getItem('withdrawalRequests') || '[]');
       const localUserWReqs = allWReqs.filter((r: any) => r.customerId === user?.id || (user?.phone && r.mobile === user?.phone));
-      const mergedW = (backendW && backendW.length > 0) ? backendW : localUserWReqs;
+
+      // Auto-sync any local withdrawal requests to MongoDB backend if missing
+      if (localUserWReqs.length > 0) {
+        for (const lw of localUserWReqs) {
+          const inBackend = backendW && backendW.some((bw: any) => bw.id === lw.id || bw._id === lw.id);
+          if (!inBackend) {
+            try {
+              await fetchClient('/payments/withdrawals', {
+                method: 'POST',
+                body: JSON.stringify(lw)
+              });
+            } catch (syncErr) {
+              console.warn('Auto-syncing local withdrawal to backend failed:', syncErr);
+            }
+          }
+        }
+      }
+
+      // Merge backend and local cleanly
+      const mergedW = (backendW && backendW.length > 0) ? [...backendW] : [...localUserWReqs];
+      localUserWReqs.forEach((lw: any) => {
+        if (!mergedW.some((m: any) => m.id === lw.id || m._id === lw.id)) {
+          mergedW.push(lw);
+        }
+      });
       setPendingWithdrawals(mergedW);
     };
     checkRequests();
@@ -542,7 +566,40 @@ export const CustomerDashboard = () => {
     setWithdrawSuccessMsg('');
   };
 
-  const handleSubmitWithdrawal = (e: React.FormEvent) => {
+  const handleConfirmReceiptOfPrize = async (wReq: any) => {
+    if (!window.confirm(`Confirm that you have received the prize money of ${formatCurrency(wReq.eligibleAmount)} into your bank / UPI account?`)) {
+      return;
+    }
+    const ackTime = new Date().toISOString();
+    
+    // 1. Update local storage
+    const local = JSON.parse(localStorage.getItem('withdrawalRequests') || '[]');
+    const updated = local.map((w: any) => {
+      if (w.id === wReq.id || w._id === wReq.id) {
+        return { ...w, customerAcknowledged: true, customerAcknowledgedAt: ackTime };
+      }
+      return w;
+    });
+    localStorage.setItem('withdrawalRequests', JSON.stringify(updated));
+    setPendingWithdrawals(prev => prev.map(w => (w.id === wReq.id || w._id === wReq.id) ? { ...w, customerAcknowledged: true, customerAcknowledgedAt: ackTime } : w));
+    window.dispatchEvent(new Event('storage'));
+
+    // 2. Patch backend
+    try {
+      await fetchClient(`/payments/withdrawals/${encodeURIComponent(wReq.id || wReq._id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          customerAcknowledged: true,
+          customerAcknowledgedAt: ackTime
+        })
+      });
+    } catch (e) {
+      console.warn('Could not patch withdrawal receipt to backend:', e);
+    }
+    alert('Thank you! Your receipt of funds has been confirmed and officially recorded.');
+  };
+
+  const handleSubmitWithdrawal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!withdrawModalChit) return;
 
@@ -565,14 +622,16 @@ export const CustomerDashboard = () => {
       ? (calculateFixedPlanSchedule(chitVal).minPayout || Math.round(chitVal * 0.70))
       : Math.round(chitVal * 0.95);
 
+    const finalGroupId = withdrawModalChit.groupId || withdrawModalChit.groupName || withdrawModalChit.id || 'CHIT-GROUP';
+
     const newWReq = {
       id: `WDR-${Date.now().toString().slice(-6)}`,
       customerId: user?.id || 'CUST',
       customerName: user?.name || 'Customer',
       mobile: user?.phone || '',
-      groupId: withdrawModalChit.groupId,
-      groupName: withdrawModalChit.groupName || withdrawModalChit.groupId,
-      ticketNumber: withdrawModalChit.ticketNumber || '',
+      groupId: finalGroupId,
+      groupName: withdrawModalChit.groupName || finalGroupId,
+      ticketNumber: withdrawModalChit.ticketNumber || '1',
       chitValue: chitVal,
       eligibleAmount: prizeAmount,
       payoutMethod: withdrawPayoutMethod,
@@ -585,6 +644,7 @@ export const CustomerDashboard = () => {
       },
       requestedAt: new Date().toISOString(),
       status: 'PENDING_ADMIN_DISBURSAL',
+      customerAcknowledged: false,
       remarks: `Prize payout claim requested by ${user?.name || 'Customer'}`
     };
 
@@ -594,10 +654,14 @@ export const CustomerDashboard = () => {
     window.dispatchEvent(new Event('storage'));
 
     // Post to MongoDB backend so it persists across all devices
-    fetchClient('/payments/withdrawals', {
-      method: 'POST',
-      body: JSON.stringify(newWReq)
-    }).catch(err => console.warn('Could not post withdrawal request to backend:', err));
+    try {
+      await fetchClient('/payments/withdrawals', {
+        method: 'POST',
+        body: JSON.stringify(newWReq)
+      });
+    } catch (err) {
+      console.warn('Could not post withdrawal request to backend:', err);
+    }
 
     // Dispatch real-time system alert to Admin
     try {
@@ -1346,7 +1410,7 @@ export const CustomerDashboard = () => {
                               {req.bankName || 'Company Bank Account'}
                             </td>
                             <td className="px-4 py-3 text-neutral-500 whitespace-nowrap">
-                              {formatDate(req.timestamp || req.submittedAt)}
+                              {formatDateTime(req.timestamp || req.submittedAt)}
                             </td>
                             <td className="px-4 py-3 text-center whitespace-nowrap">
                               <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
@@ -1498,16 +1562,34 @@ export const CustomerDashboard = () => {
                               )}
                             </td>
                             <td className="px-4 py-3 text-neutral-500 whitespace-nowrap">
-                              {formatDate(w.requestedAt)}
+                              {formatDateTime(w.requestedAt)}
                             </td>
                             <td className="px-4 py-3 text-center whitespace-nowrap">
                               {w.status === 'DISBURSED' ? (
-                                <div className="flex flex-col items-center">
+                                <div className="flex flex-col items-center gap-1">
                                   <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 uppercase">
                                     ✓ Disbursed
                                   </span>
-                                  {w.disbursedRef && (
-                                    <span className="text-[10px] font-mono text-neutral-500 mt-0.5">Ref: {w.disbursedRef}</span>
+                                  {(w.disbursedRef || w.transactionReference) && (
+                                    <span className="text-[10px] font-mono text-neutral-600 font-bold">
+                                      UTR: {w.disbursedRef || w.transactionReference}
+                                    </span>
+                                  )}
+                                  {w.customerAcknowledged ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                      Receipt Confirmed
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleConfirmReceiptOfPrize(w)}
+                                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[10px] font-black shadow-xs flex items-center gap-1 cursor-pointer transition-transform hover:scale-105 active:scale-95 animate-pulse"
+                                      title="Confirm you have received the disbursed prize funds into your account"
+                                    >
+                                      <Check className="w-3 h-3" />
+                                      <span>Confirm Receipt of Funds</span>
+                                    </button>
                                   )}
                                 </div>
                               ) : w.status === 'REJECTED' ? (
@@ -2262,7 +2344,7 @@ export const CustomerDashboard = () => {
                             <div className="flex items-center gap-2.5">
                               <p className="text-xs text-neutral-500 font-mono font-semibold">{trx.id}</p>
                               <p className="text-xs text-neutral-400 flex items-center">
-                                <Calendar className="w-3 h-3 mr-1" /> {formatDate(trx.date)}
+                                <Calendar className="w-3 h-3 mr-1" /> {formatDateTime(trx.date)}
                               </p>
                             </div>
                             <button
@@ -2369,16 +2451,69 @@ export const CustomerDashboard = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-600 mb-1.5">
-                    Amount Paid (₹)
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-neutral-600">
+                      Amount Payable (₹)
+                    </label>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-300 flex items-center gap-1">
+                      <Lock className="w-2.5 h-2.5 text-amber-800" /> Fixed Due Amount
+                    </span>
+                  </div>
                   <input
                     type="number"
                     required
+                    readOnly={true}
                     value={payAmount}
-                    onChange={(e) => setPayAmount(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-neutral-50 border border-neutral-300 rounded-lg text-sm font-semibold text-neutral-900 focus:bg-white focus:border-primary-600 focus:outline-none transition-colors"
+                    className="w-full px-3.5 py-2.5 bg-neutral-100 border border-neutral-300 rounded-lg text-sm font-bold text-neutral-800 cursor-not-allowed select-none"
                   />
+                  {/* Fee Breakdown & Status Notice */}
+                  {(() => {
+                    const chitVal = Number(paymentModalChit?.chitValue || paymentModalChit?.amount || 100000);
+                    const totalDur = Number(paymentModalChit?.duration || 20);
+                    const baseGross = Math.round(chitVal / totalDur);
+                    const matchingDisbursed = pendingWithdrawals.find(
+                      w => (w.groupId === paymentModalChit?.groupId || w.groupName === paymentModalChit?.groupName) && w.status === 'DISBURSED'
+                    );
+                    const isPrizeDisbursed = Boolean(paymentModalChit?.isWithdrawn || matchingDisbursed);
+                    const postDrawFee = Math.round(chitVal * 0.01);
+                    const lastRejected = pendingRequests.find(
+                      r => r.status === 'REJECTED' && (r.groupId === paymentModalChit?.groupId || r.groupName === paymentModalChit?.groupName)
+                    );
+
+                    return (
+                      <div className="mt-2 space-y-2">
+                        {lastRejected && (
+                          <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-800 flex items-start gap-2">
+                            <span className="font-bold shrink-0">⚠️ Notice:</span>
+                            <span>
+                              Your previous submission of {formatCurrency(lastRejected.amount)} was rejected by Admin (partial / incorrect amount). Please transfer the exact scheduled due of {formatCurrency(Number(payAmount))} for approval.
+                            </span>
+                          </div>
+                        )}
+                        <div className="p-2 bg-amber-50/70 border border-amber-200/80 rounded-lg text-[11px] text-amber-950 space-y-0.5">
+                          <div className="flex justify-between">
+                            <span className="text-amber-800">Base Installment Due:</span>
+                            <span className="font-bold">
+                              {formatCurrency(baseGross)}
+                            </span>
+                          </div>
+                          {isPrizeDisbursed && (
+                            <div className="flex justify-between text-purple-900">
+                              <span>Post-Draw Prize Fee (+1%):</span>
+                              <span className="font-bold">+{formatCurrency(postDrawFee)}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between pt-1 border-t border-amber-200/60 font-black text-neutral-900">
+                            <span>Total Payable Amount:</span>
+                            <span>{formatCurrency(Number(payAmount))}</span>
+                          </div>
+                          <p className="text-[10px] text-slate-500 pt-1">
+                            🔒 Amount is strictly fixed by the system to match your official due schedule. Partial payments cannot be submitted.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div>

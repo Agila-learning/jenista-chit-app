@@ -164,12 +164,18 @@ export const assignBankToGroup = (groupId: string, bankId: string) => {
   saveStoredBankAssignments(current);
 };
 
-export const assignBankToCustomer = (customerId: string, bankId: string) => {
+export const assignBankToCustomer = (customerId: string, bankId: string, groupId?: string) => {
   const current = getStoredBankAssignments();
   if (!bankId || bankId === 'INHERIT') {
     delete current.customerAssignments[customerId];
+    if (groupId) {
+      delete current.customerAssignments[`${customerId}_${groupId}`];
+    }
   } else {
     current.customerAssignments[customerId] = bankId;
+    if (groupId) {
+      current.customerAssignments[`${customerId}_${groupId}`] = bankId;
+    }
   }
   saveStoredBankAssignments(current);
 };
@@ -183,9 +189,10 @@ export interface BankResolutionResult {
 /**
  * Resolves the designated receiving bank account for a given customer and group.
  * Hierarchy:
- * 1. Individual customer custom assignment
- * 2. Chit group assignment
- * 3. Default company master bank account
+ * 1. Customer in specific group assignment (compound key: `${customerId}_${groupId}`)
+ * 2. Individual customer custom assignment (by ID, code, or mobile)
+ * 3. Chit group assignment
+ * 4. Default company master bank account
  */
 export const resolveBankForPayment = (
   customerId?: string,
@@ -197,26 +204,77 @@ export const resolveBankForPayment = (
   const defaultBank = activeBanks.find(b => b.isDefault) || activeBanks[0] || banks[0] || DEFAULT_BANKS[0];
   const assignments = getStoredBankAssignments();
 
-  // 1. Customer level custom assignment
-  if (customerId && assignments.customerAssignments[customerId]) {
-    const assignedId = assignments.customerAssignments[customerId];
-    const match = activeBanks.find(b => b.id === assignedId);
-    if (match) {
-      return { bank: match, scope: 'CUSTOMER', sourceName: 'Individual Customer Custom Bank' };
+  // Helper to find customer aliases (phone, code, mongoId)
+  let customerAliases: string[] = [];
+  if (customerId) {
+    customerAliases.push(customerId);
+    try {
+      const storedCusts = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
+      const found = storedCusts.find((c: any) =>
+        c.id === customerId ||
+        c.customerCode === customerId ||
+        c.mongoId === customerId ||
+        (c.mobile && customerId.includes(c.mobile)) ||
+        (c.phone && customerId.includes(c.phone))
+      );
+      if (found) {
+        if (found.id && !customerAliases.includes(found.id)) customerAliases.push(found.id);
+        if (found.customerCode && !customerAliases.includes(found.customerCode)) customerAliases.push(found.customerCode);
+        if (found.mongoId && !customerAliases.includes(found.mongoId)) customerAliases.push(found.mongoId);
+        if (found.mobile && !customerAliases.includes(found.mobile)) customerAliases.push(found.mobile);
+        if (found.phone && !customerAliases.includes(found.phone)) customerAliases.push(found.phone);
+      }
+    } catch {}
+  }
+
+  // 1. Specific Customer + Group Compound assignment
+  if (customerAliases.length > 0 && (groupId || groupName)) {
+    const groupKeys = [groupId, groupName].filter(Boolean) as string[];
+    for (const alias of customerAliases) {
+      for (const gKey of groupKeys) {
+        const compoundKey = `${alias}_${gKey}`;
+        const assignedId = assignments.customerAssignments[compoundKey];
+        if (assignedId) {
+          const match = activeBanks.find(b => b.id === assignedId);
+          if (match) {
+            return { bank: match, scope: 'CUSTOMER', sourceName: `Customer Custom Bank for ${gKey}` };
+          }
+        }
+      }
     }
   }
 
-  // 2. Group level assignment
-  const targetGroupKey = groupId || groupName;
-  if (targetGroupKey && assignments.groupAssignments[targetGroupKey]) {
-    const assignedId = assignments.groupAssignments[targetGroupKey];
-    const match = activeBanks.find(b => b.id === assignedId);
-    if (match) {
-      return { bank: match, scope: 'GROUP', sourceName: `Assigned for Group ${targetGroupKey}` };
+  // 2. Individual Customer level custom assignment
+  if (customerAliases.length > 0) {
+    for (const alias of customerAliases) {
+      const assignedId = assignments.customerAssignments[alias];
+      if (assignedId) {
+        const match = activeBanks.find(b => b.id === assignedId);
+        if (match) {
+          return { bank: match, scope: 'CUSTOMER', sourceName: 'Individual Customer Custom Bank' };
+        }
+      }
     }
   }
 
-  // 3. Fallback to default
+  // 3. Group level assignment
+  const targetGroupKeys = [groupId, groupName].filter(Boolean) as string[];
+  for (const gKey of targetGroupKeys) {
+    // Exact or case-insensitive match
+    const assignedId = assignments.groupAssignments[gKey] ||
+      Object.entries(assignments.groupAssignments).find(
+        ([k]) => k.toLowerCase() === gKey.toLowerCase()
+      )?.[1];
+
+    if (assignedId) {
+      const match = activeBanks.find(b => b.id === assignedId);
+      if (match) {
+        return { bank: match, scope: 'GROUP', sourceName: `Assigned for Group ${gKey}` };
+      }
+    }
+  }
+
+  // 4. Fallback to default company bank
   return { bank: defaultBank, scope: 'DEFAULT', sourceName: 'Company Default Bank Account' };
 };
 

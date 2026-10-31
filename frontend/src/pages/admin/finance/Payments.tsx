@@ -11,6 +11,7 @@ import {
   Award,
   Eye,
   ExternalLink,
+  Landmark,
   X
 } from 'lucide-react';
 import { fetchClient } from '../../../api/client';
@@ -26,6 +27,7 @@ import {
 } from '../../../utils/paymentRequestsData';
 import { addSystemNotification } from '../../../utils/notificationsData';
 import { calculateFixedPlanSchedule } from '../../../utils/chitCalculations';
+import { resolveBankForPayment } from '../../../utils/bankAccountsData';
 
 type TabType = 'VERIFICATION' | 'WITHDRAWALS';
 
@@ -39,7 +41,7 @@ interface WithdrawalRequest {
   ticketNumber?: string;
   chitValue?: number;
   eligibleAmount: number;
-  payoutMethod: 'Bank Transfer' | 'UPI';
+  payoutMethod: string;
   payoutDetails: {
     bankName?: string;
     accountNumber?: string;
@@ -51,6 +53,9 @@ interface WithdrawalRequest {
   status: 'PENDING_ADMIN_DISBURSAL' | 'DISBURSED' | 'REJECTED';
   disbursedAt?: string;
   disbursedRef?: string;
+  transactionReference?: string;
+  customerAcknowledged?: boolean;
+  customerAcknowledgedAt?: string;
   remarks?: string;
 }
 
@@ -93,18 +98,30 @@ export const Payments = () => {
     }
 
     const localWReqs = JSON.parse(localStorage.getItem('withdrawalRequests') || '[]');
-    if (backendWithdrawals && backendWithdrawals.length > 0) {
-      const merged = [...backendWithdrawals];
-      localWReqs.forEach((lw: any) => {
-        if (!merged.some(m => m.id === lw.id || m._id === lw.id)) {
-          merged.push(lw);
+
+    // Auto-sync any local withdrawal requests to backend if not already present
+    if (localWReqs.length > 0) {
+      for (const lw of localWReqs) {
+        const inBackend = backendWithdrawals && backendWithdrawals.some(m => m.id === lw.id || m._id === lw.id);
+        if (!inBackend) {
+          try {
+            await fetchClient('/payments/withdrawals', {
+              method: 'POST',
+              body: JSON.stringify(lw)
+            });
+          } catch {}
         }
-      });
-      setWithdrawalRequests(merged);
-      localStorage.setItem('withdrawalRequests', JSON.stringify(merged));
-    } else {
-      setWithdrawalRequests(localWReqs);
+      }
     }
+
+    const merged = backendWithdrawals ? [...backendWithdrawals] : [];
+    localWReqs.forEach((lw: any) => {
+      if (!merged.some(m => m.id === lw.id || m._id === lw.id)) {
+        merged.push(lw);
+      }
+    });
+    setWithdrawalRequests(merged);
+    localStorage.setItem('withdrawalRequests', JSON.stringify(merged));
   };
 
   useEffect(() => {
@@ -516,7 +533,7 @@ export const Payments = () => {
                       <th className="py-3.5 px-4">Request ID & Date</th>
                       <th className="py-3.5 px-4">Customer Details</th>
                       <th className="py-3.5 px-4">Chit Group & Ticket</th>
-                      <th className="py-3.5 px-4">Mode & UTR / Ref No.</th>
+                      <th className="py-3.5 px-4">Mode & Allocated Bank</th>
                       <th className="py-3.5 px-4 text-center">Receipt Proof</th>
                       <th className="py-3.5 px-4 text-right">Amount Paid</th>
                       <th className="py-3.5 px-4 text-center">Status</th>
@@ -565,11 +582,23 @@ export const Payments = () => {
                           </td>
 
                           <td className="py-4 px-4">
-                            <span className="inline-block px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[11px] font-bold">
-                              {req.paymentMode}
-                            </span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="inline-block px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[11px] font-bold">
+                                {req.paymentMode}
+                              </span>
+                              {(() => {
+                                const resolved = resolveBankForPayment(req.customerId, req.groupId, req.groupName);
+                                const allocatedBankName = req.bankName || resolved.bank.bankName;
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-900 border border-amber-300 rounded text-[10px] font-bold" title={`Allocated receiving bank: ${allocatedBankName} (A/C: ${resolved.bank.accountNumber})`}>
+                                    <Landmark className="w-2.5 h-2.5 text-amber-700" />
+                                    <span>{allocatedBankName}</span>
+                                  </span>
+                                );
+                              })()}
+                            </div>
                             <p className="text-xs font-mono font-bold text-neutral-800 mt-1">
-                              {req.referenceNo}
+                              Ref: {req.referenceNo || '—'}
                             </p>
                           </td>
 
@@ -820,10 +849,21 @@ export const Payments = () => {
                                 </span>
                               )}
                               {isDisbursed && (
-                                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                  <Check className="w-3 h-3 mr-1" />
-                                  Disbursed
-                                </span>
+                                <div className="flex flex-col items-center gap-1">
+                                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <Check className="w-3 h-3 mr-1" />
+                                    Disbursed
+                                  </span>
+                                  {req.customerAcknowledged ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                      <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" /> Member Confirmed Receipt
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300" title="Customer has not yet pressed 'Confirm Receipt of Funds' on their dashboard">
+                                      <Clock className="w-2.5 h-2.5 text-amber-600" /> Awaiting Member Confirmation
+                                    </span>
+                                  )}
+                                </div>
                               )}
                               {isRejected && (
                                 <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
@@ -852,8 +892,26 @@ export const Payments = () => {
                                     Process Disbursal
                                   </button>
                                 </div>
-                              ) : isDisbursed && req.disbursedRef ? (
-                                <span className="text-[11px] font-mono font-medium text-neutral-500">Ref: {req.disbursedRef}</span>
+                              ) : isDisbursed ? (
+                                <div className="text-right">
+                                  <span className="text-[11px] font-mono font-bold text-neutral-800 block">
+                                    UTR: {req.disbursedRef || req.transactionReference || 'DISBURSED'}
+                                  </span>
+                                  {req.disbursedAt && (
+                                    <span className="text-[10px] text-neutral-400 block mt-0.5">
+                                      {new Date(req.disbursedAt).toLocaleDateString('en-IN', {
+                                        day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                                      })}
+                                    </span>
+                                  )}
+                                  {req.customerAcknowledgedAt && (
+                                    <span className="text-[9px] text-emerald-700 font-medium block">
+                                      Ack: {new Date(req.customerAcknowledgedAt).toLocaleDateString('en-IN', {
+                                        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+                                      })}
+                                    </span>
+                                  )}
+                                </div>
                               ) : (
                                 <span className="text-xs text-neutral-400 italic">—</span>
                               )}

@@ -7,12 +7,14 @@ import {
   Mail, 
   ArrowRight, 
   UserCheck, 
-  Sparkles
+  Sparkles,
+  Trash2
 } from 'lucide-react';
 import { Button } from '../../../components/common/Button';
 import { 
   getStoredLeads, 
   updateLeadStatus, 
+  deleteWebsiteLead,
   onNotificationSync, 
   addSystemNotification,
   type WebsiteLead 
@@ -196,6 +198,16 @@ export const LeadsManagement: React.FC = () => {
     updateLeadStatus(lead.id, 'REJECTED');
     loadData();
     setActionSuccessMsg(`Enquiry from ${lead.fullName} marked as Rejected.`);
+    setTimeout(() => setActionSuccessMsg(null), 4000);
+  };
+
+  const handleDeleteLead = (lead: WebsiteLead) => {
+    if (!window.confirm(`Are you sure you want to permanently delete lead ${lead.fullName} (${lead.phone})? This action cannot be undone.`)) {
+      return;
+    }
+    const updated = deleteWebsiteLead(lead.id);
+    setLeads(updated);
+    setActionSuccessMsg(`Lead "${lead.fullName}" deleted successfully.`);
     setTimeout(() => setActionSuccessMsg(null), 4000);
   };
 
@@ -410,43 +422,55 @@ export const LeadsManagement: React.FC = () => {
                       </td>
 
                       <td className="py-4 px-4 sm:px-6 text-right whitespace-nowrap">
-                        {isNew ? (
-                          <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-2">
+                          {isNew ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleRejectLead(lead)}
+                                className="px-2.5 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors border border-rose-200"
+                              >
+                                Reject
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleConvertToCustomer(lead)}
+                                disabled={convertingLeadId === lead.id}
+                                className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-all shadow-sm flex items-center gap-1 cursor-pointer"
+                              >
+                                <UserCheck className="w-3.5 h-3.5" />
+                                {convertingLeadId === lead.id ? 'Converting...' : 'Convert to Customer'}
+                              </button>
+                            </>
+                          ) : isConverted ? (
                             <button
                               type="button"
-                              onClick={() => handleRejectLead(lead)}
-                              className="px-2.5 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors border border-rose-200"
+                              onClick={() => navigate(`/admin/customers/${lead.convertedCustomerId}`)}
+                              className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1"
                             >
-                              Reject
+                              <span>View Customer Profile</span>
+                              <ArrowRight className="w-3 h-3" />
                             </button>
+                          ) : (
                             <button
                               type="button"
                               onClick={() => handleConvertToCustomer(lead)}
-                              disabled={convertingLeadId === lead.id}
-                              className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-all shadow-sm flex items-center gap-1"
+                              className="text-xs font-semibold text-slate-500 hover:text-slate-800 underline"
                             >
-                              <UserCheck className="w-3.5 h-3.5" />
-                              {convertingLeadId === lead.id ? 'Converting...' : 'Convert to Customer'}
+                              Re-activate & Convert
                             </button>
-                          </div>
-                        ) : isConverted ? (
+                          )}
+
+                          {/* Delete Lead Button */}
                           <button
                             type="button"
-                            onClick={() => navigate(`/admin/customers/${lead.convertedCustomerId}`)}
-                            className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 ml-auto"
+                            onClick={() => handleDeleteLead(lead)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-200 cursor-pointer"
+                            title={`Delete Lead "${lead.fullName}"`}
                           >
-                            <span>View Customer Profile</span>
-                            <ArrowRight className="w-3 h-3" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleConvertToCustomer(lead)}
-                            className="text-xs font-semibold text-slate-500 hover:text-slate-800 underline"
-                          >
-                            Re-activate & Convert
-                          </button>
-                        )}
+                        </div>
                       </td>
                     </tr>
                   );

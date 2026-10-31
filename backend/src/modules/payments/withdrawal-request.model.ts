@@ -10,7 +10,7 @@ export interface IWithdrawalRequest extends Document {
   ticketNumber?: string;
   chitValue?: number;
   eligibleAmount: number;
-  payoutMethod: 'Bank Transfer' | 'UPI';
+  payoutMethod: string;
   payoutDetails: {
     bankName?: string;
     accountNumber?: string;
@@ -22,6 +22,10 @@ export interface IWithdrawalRequest extends Document {
   status: 'PENDING_ADMIN_DISBURSAL' | 'DISBURSED' | 'REJECTED';
   disbursedAt?: string;
   disbursedRef?: string;
+  disbursedAmount?: number;
+  disbursedMode?: string;
+  customerAcknowledged?: boolean;
+  customerAcknowledgedAt?: string;
   remarks?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -30,15 +34,15 @@ export interface IWithdrawalRequest extends Document {
 const WithdrawalRequestSchema: Schema = new Schema(
   {
     id: { type: String, required: true, unique: true },
-    customerId: { type: String, required: true },
-    customerName: { type: String, required: true },
+    customerId: { type: String, required: false },
+    customerName: { type: String, required: false },
     mobile: { type: String },
-    groupId: { type: String, required: true },
+    groupId: { type: String, required: false },
     groupName: { type: String },
     ticketNumber: { type: String },
     chitValue: { type: Number, default: 100000 },
     eligibleAmount: { type: Number, required: true },
-    payoutMethod: { type: String, enum: ['Bank Transfer', 'UPI'], default: 'Bank Transfer' },
+    payoutMethod: { type: String, default: 'Bank Transfer' },
     payoutDetails: {
       bankName: { type: String },
       accountNumber: { type: String },
@@ -49,11 +53,14 @@ const WithdrawalRequestSchema: Schema = new Schema(
     requestedAt: { type: String, default: () => new Date().toISOString() },
     status: {
       type: String,
-      enum: ['PENDING_ADMIN_DISBURSAL', 'DISBURSED', 'REJECTED'],
       default: 'PENDING_ADMIN_DISBURSAL',
     },
     disbursedAt: { type: String },
     disbursedRef: { type: String },
+    disbursedAmount: { type: Number },
+    disbursedMode: { type: String },
+    customerAcknowledged: { type: Boolean, default: false },
+    customerAcknowledgedAt: { type: String },
     remarks: { type: String },
   },
   { timestamps: true }

@@ -30,7 +30,8 @@ import {
   Download,
   Printer,
   FileSpreadsheet,
-  AlertTriangle
+  AlertTriangle,
+  Filter
 } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip as RechartsTooltip } from 'recharts';
 import { formatCurrency, formatDate } from '../../utils/format';
@@ -47,6 +48,10 @@ import {
 } from '../../utils/paymentRequestsData';
 import { purgeMockData, isMockGroup, isMockCustomer } from '../../utils/cleanMockData';
 import { addSystemNotification } from '../../utils/notificationsData';
+import {
+  getStoredBankAccounts,
+  resolveBankForPayment
+} from '../../utils/bankAccountsData';
 
 export const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -105,6 +110,11 @@ export const AdminDashboard = () => {
   const [selectedMonthForTracking, setSelectedMonthForTracking] = useState<number>(1);
   const [monthStatusFilter, setMonthStatusFilter] = useState<'ALL' | 'PAID' | 'UNPAID'>('ALL');
   const [groupMemberQuery, setGroupMemberQuery] = useState('');
+  
+  // Bank Allocation Metrics & Interactive Filter States
+  const [isBankAllocationModalOpen, setIsBankAllocationModalOpen] = useState(false);
+  const [selectedBankFilterId, setSelectedBankFilterId] = useState<string>('ALL');
+  const [bankMemberSearchQuery, setBankMemberSearchQuery] = useState('');
 
   // Live greeting determination
   const currentHour = new Date().getHours();
@@ -2812,6 +2822,164 @@ export const AdminDashboard = () => {
     })
     : filteredSchemeCustomers;
 
+  // Active Company Banks for Allocation Metrics
+  const companyBanks = getStoredBankAccounts().filter(b => b.status === 'ACTIVE');
+
+  // Comprehensive Enrolled Members List across all Groups with Resolved Bank Allocation
+  const allBankAllocatedMembers = (() => {
+    const deletedList: string[] = JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]');
+    const deletedSet = new Set(deletedList.map(s => String(s).toLowerCase().trim()));
+    const isDeleted = (id?: string, phone?: string, mongoId?: string) => {
+      if (id && deletedSet.has(String(id).toLowerCase().trim())) return true;
+      if (mongoId && deletedSet.has(String(mongoId).toLowerCase().trim())) return true;
+      const cleanP = (phone || '').replace(/\D/g, '');
+      if (cleanP && (deletedSet.has(cleanP) || deletedSet.has((phone || '').toLowerCase().trim()))) return true;
+      return false;
+    };
+
+    const map = new Map<string, any>();
+
+    chitGroups.forEach((g: any) => {
+      if (Array.isArray(g.enrolledMembers)) {
+        g.enrolledMembers.forEach((m: any) => {
+          if (!isMockCustomer(m)) {
+            const custId = m.customerId || m.id || m.mobile;
+            if (isDeleted(custId, m.mobile || m.phone, m.mongoId)) return;
+            const uniqueKey = `${custId}_${g.id || g.name}`;
+            const resolved = resolveBankForPayment(custId, g.id, g.name);
+            map.set(uniqueKey, {
+              id: custId,
+              mongoId: m.mongoId,
+              name: m.customerName || m.name || 'Member',
+              mobile: m.mobile || m.phone || '—',
+              groupId: g.id,
+              groupName: g.name || g.id,
+              scheme: m.scheme || 'Regular',
+              chitValue: Number(m.chitValue || g.value || 0),
+              monthlyInstallment: Number(m.monthlyInstallment || g.customerChitAmount || 0),
+              ticketNumber: m.ticketNumber || '#1',
+              allocatedBank: resolved.bank,
+              bankScope: resolved.scope,
+              bankSourceName: resolved.sourceName
+            });
+          }
+        });
+      }
+    });
+
+    try {
+      const storedMems = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
+      if (Array.isArray(storedMems)) {
+        storedMems.forEach((m: any) => {
+          if (!isMockCustomer(m)) {
+            const custId = m.customerId || m.id || m.mobile;
+            if (isDeleted(custId, m.mobile || m.phone, m.mongoId)) return;
+            const gId = m.groupId || m.groupName;
+            const uniqueKey = `${custId}_${gId}`;
+            if (!map.has(uniqueKey)) {
+              const resolved = resolveBankForPayment(custId, m.groupId, m.groupName);
+              map.set(uniqueKey, {
+                id: custId,
+                mongoId: m.mongoId,
+                name: m.customerName || m.name || 'Member',
+                mobile: m.mobile || m.phone || '—',
+                groupId: m.groupId,
+                groupName: m.groupName || m.groupId,
+                scheme: m.scheme || 'Regular',
+                chitValue: Number(m.chitValue || 0),
+                monthlyInstallment: Number(m.monthlyInstallment || 0),
+                ticketNumber: m.ticketNumber || '#1',
+                allocatedBank: resolved.bank,
+                bankScope: resolved.scope,
+                bankSourceName: resolved.sourceName
+              });
+            }
+          }
+        });
+      }
+    } catch {}
+
+    try {
+      const storedCusts = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
+      if (Array.isArray(storedCusts)) {
+        storedCusts.forEach((c: any) => {
+          if (!isMockCustomer(c) && Array.isArray(c.chits)) {
+            const custId = c.id || c.customerCode || c.mongoId || c.mobile;
+            if (isDeleted(custId, c.mobile || c.phone, c.mongoId)) return;
+            c.chits.forEach((ch: any) => {
+              const gId = ch.groupId || ch.groupName;
+              const uniqueKey = `${custId}_${gId}`;
+              if (!map.has(uniqueKey)) {
+                const resolved = resolveBankForPayment(custId, ch.groupId, ch.groupName);
+                map.set(uniqueKey, {
+                  id: custId,
+                  mongoId: c.mongoId,
+                  name: c.name || c.fullName || 'Member',
+                  mobile: c.mobile || c.phone || '—',
+                  groupId: ch.groupId,
+                  groupName: ch.groupName || ch.groupId,
+                  scheme: ch.scheme || c.scheme || 'Regular',
+                  chitValue: Number(ch.chitValue || 0),
+                  monthlyInstallment: Number(ch.monthlyInstallment || 0),
+                  ticketNumber: ch.ticketNumber || '#1',
+                  allocatedBank: resolved.bank,
+                  bankScope: resolved.scope,
+                  bankSourceName: resolved.sourceName
+                });
+              }
+            });
+          }
+        });
+      }
+    } catch {}
+
+    return Array.from(map.values());
+  })();
+
+  // Filtered members for the bank allocation modal
+  const modalBankMembers = allBankAllocatedMembers.filter(m => {
+    if (selectedBankFilterId !== 'ALL' && m.allocatedBank?.id !== selectedBankFilterId) {
+      return false;
+    }
+    if (bankMemberSearchQuery.trim()) {
+      const q = bankMemberSearchQuery.toLowerCase();
+      return (
+        (m.name || '').toLowerCase().includes(q) ||
+        (m.id || '').toLowerCase().includes(q) ||
+        (m.mobile || '').includes(q) ||
+        (m.groupName || '').toLowerCase().includes(q) ||
+        (m.ticketNumber || '').toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
+  // Calculate this month's collections per bank
+  const getBankMonthCollections = (bankId: string) => {
+    const currentMonthStr = new Date().toISOString().slice(0, 7);
+    let total = 0;
+    paymentRequests.forEach(req => {
+      if (req.status === 'APPROVED') {
+        const reqDate = (req as any).date || req.submittedAt || req.verifiedAt || '';
+        if (reqDate.startsWith(currentMonthStr)) {
+          const resolved = resolveBankForPayment(req.customerId, req.groupId, req.groupName);
+          if (req.bankAccountId === bankId || resolved.bank?.id === bankId) {
+            total += Number(req.amount || 0);
+          }
+        }
+      }
+    });
+    staffReceiptsList.forEach((r: any) => {
+      const rDate = r.date || r.createdAt || '';
+      if (rDate.startsWith(currentMonthStr)) {
+        if (r.bankAccountId === bankId) {
+          total += Number(r.amount || 0);
+        }
+      }
+    });
+    return total;
+  };
+
   // Search filtered Groups for In-Dashboard Groups Panel
   const visibleGroups = groupSearchQuery.trim()
     ? chitGroups.filter(g =>
@@ -3587,6 +3755,127 @@ export const AdminDashboard = () => {
         </div>
       </div>
 
+      {/* 2.5. Bank Allocation & Member Routing Overview */}
+      <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/80 shadow-2xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="p-2.5 bg-gradient-to-br from-indigo-50 to-blue-50 text-indigo-700 rounded-xl border border-indigo-100 shrink-0">
+              <Landmark className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="font-bold text-slate-900 text-base">
+                  Bank Allocation & Member Distribution (This Month)
+                </h2>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  {allBankAllocatedMembers.length} Members Total
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 font-medium">
+                Real-time breakdown of members routed to each company bank account with interactive filter & directory
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setSelectedBankFilterId('ALL');
+                setBankMemberSearchQuery('');
+                setIsBankAllocationModalOpen(true);
+              }}
+              className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-semibold rounded-xl transition-colors flex items-center gap-1.5 shadow-2xs"
+            >
+              <Filter className="w-3.5 h-3.5" />
+              <span>Filter & View Members</span>
+            </button>
+            <button
+              onClick={() => navigate('/admin/banks')}
+              className="px-3.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors flex items-center gap-1.5 shadow-2xs"
+            >
+              <span>Manage Bank A/Cs</span>
+              <span className="text-xs">&rarr;</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Bank Allocation Cards Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {companyBanks.map((bank) => {
+            const memberCount = allBankAllocatedMembers.filter(m => m.allocatedBank?.id === bank.id).length;
+            const monthTotal = getBankMonthCollections(bank.id);
+            const isPrimary = bank.isDefault;
+
+            return (
+              <div
+                key={bank.id}
+                onClick={() => {
+                  setSelectedBankFilterId(bank.id);
+                  setBankMemberSearchQuery('');
+                  setIsBankAllocationModalOpen(true);
+                }}
+                className={`rounded-xl p-4 border transition-all cursor-pointer hover:shadow-md hover:-translate-y-0.5 ${
+                  isPrimary
+                    ? 'bg-gradient-to-br from-blue-50/50 via-white to-slate-50 border-blue-200 hover:border-blue-300'
+                    : 'bg-white border-slate-200 hover:border-indigo-300'
+                }`}
+                title={`Click to filter and view ${memberCount} members routed to ${bank.bankName}`}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center font-black text-sm shrink-0 ${
+                      bank.bankName.includes('HDFC')
+                        ? 'bg-blue-600 text-white'
+                        : bank.bankName.includes('ICICI')
+                          ? 'bg-orange-600 text-white'
+                          : 'bg-emerald-600 text-white'
+                    }`}>
+                      {bank.bankName.includes('HDFC') ? 'H' : bank.bankName.includes('ICICI') ? 'I' : 'S'}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <h3 className="font-bold text-slate-900 text-sm">{bank.bankName}</h3>
+                        {isPrimary && (
+                          <span className="px-1.5 py-0.2 text-[9px] font-bold bg-blue-100 text-blue-800 rounded">Default</span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-mono">A/C: ...{bank.accountNumber.slice(-4)} · {bank.branch.split(' ')[0]}</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md">
+                    IFSC: {bank.ifscCode}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-100 text-xs">
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Allocated Members</span>
+                    <span className="text-lg font-black text-slate-900">
+                      {memberCount} <span className="text-xs font-semibold text-slate-500">Members</span>
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">This Month Received</span>
+                    <span className="text-lg font-black text-emerald-600">
+                      {formatCurrency(monthTotal)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-3 pt-2.5 flex items-center justify-between text-[11px]">
+                  <span className="text-slate-400 font-mono text-[10px] truncate max-w-[170px]">
+                    UPI: {bank.upiId}
+                  </span>
+                  <span className="font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-0.5">
+                    Filter Members &rarr;
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* 3. Main Dashboard Two-Column Operations Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* LEFT COLUMN: Customer Payment Requests Desk (~65% width) */}
@@ -4238,6 +4527,228 @@ export const AdminDashboard = () => {
                   Close
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Bank Allocation & Member Routing Modal with Live Filter */}
+      {isBankAllocationModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-[#0d1527] text-white flex justify-between items-center border-b border-slate-800 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-xl text-amber-400">
+                  <Landmark className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base flex items-center gap-2 text-white">
+                    Bank Allocation & Member Directory (This Month)
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Filter and view which chit members are allocated to specific company bank accounts for collections
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsBankAllocationModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Filter Bar & Bank Selector Tabs */}
+            <div className="p-4 bg-slate-50 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+              {/* Tabs */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  onClick={() => setSelectedBankFilterId('ALL')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                    selectedBankFilterId === 'ALL'
+                      ? 'bg-slate-900 text-white shadow-2xs'
+                      : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  All Banks ({allBankAllocatedMembers.length})
+                </button>
+                {companyBanks.map(b => {
+                  const bCount = allBankAllocatedMembers.filter(m => m.allocatedBank?.id === b.id).length;
+                  return (
+                    <button
+                      key={b.id}
+                      onClick={() => setSelectedBankFilterId(b.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 ${
+                        selectedBankFilterId === b.id
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                      }`}
+                    >
+                      <span>{b.bankName}</span>
+                      <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                        selectedBankFilterId === b.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+                      }`}>
+                        {bCount}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative w-full sm:w-64 shrink-0">
+                <input
+                  type="text"
+                  placeholder="Search member, group, phone..."
+                  value={bankMemberSearchQuery}
+                  onChange={(e) => setBankMemberSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-7 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
+                {bankMemberSearchQuery && (
+                  <button
+                    onClick={() => setBankMemberSearchQuery('')}
+                    className="absolute right-2 top-2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Selected Bank Details Banner (if a single bank is selected) */}
+            {selectedBankFilterId !== 'ALL' && (() => {
+              const b = companyBanks.find(bk => bk.id === selectedBankFilterId);
+              if (!b) return null;
+              return (
+                <div className="px-6 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-900">{b.bankName} ({b.accountHolderName})</span>
+                    <span className="text-slate-400">·</span>
+                    <span className="font-mono text-slate-700">A/C: {b.accountNumber}</span>
+                    <span className="text-slate-400">·</span>
+                    <span className="font-mono text-slate-700">IFSC: {b.ifscCode}</span>
+                    <span className="text-slate-400">·</span>
+                    <span className="text-slate-600">{b.branch}</span>
+                  </div>
+                  <div className="font-mono text-blue-700 font-semibold">
+                    UPI ID: {b.upiId}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Members Table */}
+            <div className="overflow-y-auto flex-1 p-4">
+              <table className="min-w-full divide-y divide-slate-100 text-xs">
+                <thead className="bg-slate-50 sticky top-0 z-10 whitespace-nowrap shadow-2xs">
+                  <tr>
+                    <th className="px-3.5 py-2.5 text-left font-bold text-slate-500 uppercase tracking-wider">#</th>
+                    <th className="px-3.5 py-2.5 text-left font-bold text-slate-500 uppercase tracking-wider">Member Details</th>
+                    <th className="px-3.5 py-2.5 text-left font-bold text-slate-500 uppercase tracking-wider">Group & Ticket</th>
+                    <th className="px-3.5 py-2.5 text-left font-bold text-slate-500 uppercase tracking-wider">Scheme</th>
+                    <th className="px-3.5 py-2.5 text-right font-bold text-slate-500 uppercase tracking-wider">Monthly Due</th>
+                    <th className="px-3.5 py-2.5 text-left font-bold text-slate-500 uppercase tracking-wider">Allocated Bank</th>
+                    <th className="px-3.5 py-2.5 text-center font-bold text-slate-500 uppercase tracking-wider">Routing Scope</th>
+                    <th className="px-3.5 py-2.5 text-center font-bold text-slate-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white whitespace-nowrap">
+                  {modalBankMembers.length > 0 ? (
+                    modalBankMembers.map((m, idx) => {
+                      const bank = m.allocatedBank;
+                      return (
+                        <tr key={`${m.id}_${m.groupId}_${idx}`} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="px-3.5 py-3 text-slate-400 font-bold">{idx + 1}</td>
+                          <td className="px-3.5 py-3">
+                            <div className="font-bold text-slate-900">{m.name}</div>
+                            <div className="text-[11px] text-slate-400 font-mono">ID: {m.id} · 📞 {m.mobile}</div>
+                          </td>
+                          <td className="px-3.5 py-3">
+                            <div className="font-bold text-slate-800">{m.groupName}</div>
+                            <div className="text-[11px] text-slate-500">Ticket {m.ticketNumber}</div>
+                          </td>
+                          <td className="px-3.5 py-3">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700">
+                              {m.scheme}
+                            </span>
+                          </td>
+                          <td className="px-3.5 py-3 text-right font-black text-slate-900">
+                            {formatCurrency(m.monthlyInstallment)}
+                          </td>
+                          <td className="px-3.5 py-3">
+                            <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                              <Landmark className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                              <span>{bank?.bankName || 'Default Bank'}</span>
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono">A/C: {bank?.accountNumber}</div>
+                          </td>
+                          <td className="px-3.5 py-3 text-center">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              m.bankScope === 'CUSTOMER'
+                                ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                : m.bankScope === 'GROUP'
+                                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                  : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              {m.bankScope === 'CUSTOMER' ? 'Member Custom' : m.bankScope === 'GROUP' ? 'Group Assigned' : 'Company Primary'}
+                            </span>
+                          </td>
+                          <td className="px-3.5 py-3 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() => {
+                                  setIsBankAllocationModalOpen(false);
+                                  navigate(`/admin/customers/${m.id}`);
+                                }}
+                                className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold transition-colors shadow-2xs"
+                              >
+                                Profile
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setIsBankAllocationModalOpen(false);
+                                  navigate('/admin/banks');
+                                }}
+                                className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-lg text-[11px] font-semibold transition-colors"
+                              >
+                                Reallocate
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={8} className="px-6 py-12 text-center text-slate-500 bg-slate-50/50">
+                        <Landmark className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                        <p className="font-bold text-slate-800 text-sm">
+                          {bankMemberSearchQuery ? 'No members match your search' : 'No members allocated to this bank'}
+                        </p>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {bankMemberSearchQuery ? 'Try clearing your search query' : 'Go to Manage Banks to assign members or groups to this bank.'}
+                        </p>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs shrink-0">
+              <span className="text-slate-500 font-medium">
+                Showing {modalBankMembers.length} of {allBankAllocatedMembers.length} enrolled members
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsBankAllocationModalOpen(false)}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-colors shadow-2xs"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

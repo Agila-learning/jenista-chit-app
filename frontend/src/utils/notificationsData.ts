@@ -449,6 +449,14 @@ export const updateLeadStatus = (leadId: string, status: 'CONVERTED' | 'REJECTED
   return updated;
 };
 
+export const deleteWebsiteLead = (leadId: string): WebsiteLead[] => {
+  const current = getStoredLeads();
+  const updated = current.filter(l => l.id !== leadId);
+  localStorage.setItem('websiteLeads', JSON.stringify(updated));
+  window.dispatchEvent(new Event('storage'));
+  return updated;
+};
+
 export const onNotificationSync = (callback: () => void) => {
   const handler = () => callback();
   window.addEventListener('storage', handler);

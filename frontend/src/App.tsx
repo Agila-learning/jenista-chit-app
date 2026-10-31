@@ -54,6 +54,7 @@ function App() {
           {/* Protected Routes */}
           <Route element={<ProtectedRoute />}>
             <Route path="/customer/dashboard" element={<CustomerDashboard />} />
+            <Route path="/customer/chits/:id/schedule" element={<CustomerChitScheduleScreen />} />
             <Route element={<AdminLayout />}>
               <Route path="/admin/dashboard" element={<AdminDashboard />} />
               <Route path="/staff/dashboard" element={<StaffDashboard />} />
@@ -63,7 +64,6 @@ function App() {
               <Route path="/admin/customers/approvals" element={<AddModifyCustomerChit />} />
               <Route path="/admin/customers/:id" element={<CustomerProfile />} />
               <Route path="/admin/customers/:id/schedule" element={<CustomerChitScheduleScreen />} />
-              <Route path="/customer/chits/:id/schedule" element={<CustomerChitScheduleScreen />} />
               <Route path="/admin/chit-groups" element={<ChitGroupList />} />
               <Route path="/admin/chit-groups/:id" element={<ChitGroupDetail />} />
               <Route path="/admin/ledger" element={<Ledger />} />
