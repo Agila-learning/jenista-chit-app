@@ -1,17 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MapPin, Phone, Mail, Clock, CheckCircle2, ArrowRight } from 'lucide-react';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
 import { saveWebsiteLead } from '../../utils/notificationsData';
+import { isMockGroup } from '../../utils/cleanMockData';
 
 export const ContactSection = () => {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [interestedPlan, setInterestedPlan] = useState('Auction Chit Plan');
+  const [adminGroups, setAdminGroups] = useState<any[]>([]);
+  const [interestedPlan, setInterestedPlan] = useState('Regular Chit Plan');
   const [message, setMessage] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('mockChitGroups');
+      if (raw) {
+        const groups = JSON.parse(raw).filter((g: any) => !isMockGroup(g));
+        setAdminGroups(groups);
+        if (groups.length > 0) {
+          setInterestedPlan(groups[0].name);
+        }
+      }
+    } catch {}
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,10 +207,19 @@ export const ContactSection = () => {
                       onChange={(e) => setInterestedPlan(e.target.value)}
                       className="w-full h-10 px-3 border border-neutral-300 rounded-md bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium"
                     >
-                      <option value="Auction Chit Plan (Monthly Bidding)">Auction Chit Plan (Monthly Bidding)</option>
-                      <option value="Fixed Chit Plan (Guaranteed Draw)">Fixed Chit Plan (Guaranteed Draw)</option>
-                      <option value="Regular Chit Plan (Milestone Seniority)">Regular Chit Plan (Milestone Seniority)</option>
-                      <option value="Custom High Value Chit (10L - 25L)">Custom High Value Chit (10L - 25L)</option>
+                      {adminGroups.length > 0 ? (
+                        adminGroups.map((g: any) => (
+                          <option key={g.id || g.name} value={g.name}>
+                            {g.name} — ₹{Number(g.value || 100000).toLocaleString('en-IN')} ({g.duration || 20}M · {g.scheme || 'Regular'})
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="Regular Chit Plan">Regular Chit Plan (Milestone Seniority)</option>
+                          <option value="Fixed Chit Plan">Fixed Chit Plan (Guaranteed Draw)</option>
+                          <option value="Auction Chit Plan">Auction Chit Plan (Monthly Bidding)</option>
+                        </>
+                      )}
                     </select>
                   </div>
                 </div>

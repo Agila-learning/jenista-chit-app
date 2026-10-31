@@ -60,11 +60,15 @@ export const CustomerLoginPage = () => {
       }
 
       // 2. Fallback to localStorage
+      const cleanInput = identifier.trim().replace(/\D/g, '');
       const customers = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
-      const customer = customers.find((c: any) => 
-        (c.mobile === identifier || c.phone === identifier || c.id === identifier || c.customerCode === identifier) && 
-        (!c.password || c.password === password)
-      );
+      const customer = customers.find((c: any) => {
+        const cPhone = String(c.mobile || c.phone || '').replace(/\D/g, '');
+        const matchesMobile = cleanInput && cPhone && (cPhone === cleanInput || cPhone.endsWith(cleanInput) || cleanInput.endsWith(cPhone));
+        const matchesId = c.id === identifier.trim() || c.customerCode === identifier.trim();
+        const matchesPassword = !c.password || c.password === password;
+        return (matchesMobile || matchesId) && matchesPassword;
+      });
       
       if (customer) {
         if (customer.status !== 'ACTIVE') {

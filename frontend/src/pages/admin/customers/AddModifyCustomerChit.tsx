@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { CheckCircle2, XCircle, Search, UserCheck } from 'lucide-react';
 import { fetchClient } from '../../../api/client';
+import { isMockGroup } from '../../../utils/cleanMockData';
 
 export const AddModifyCustomerChit = () => {
   const [pendingCustomers, setPendingCustomers] = useState<any[]>([]);
@@ -94,29 +95,120 @@ export const AddModifyCustomerChit = () => {
         localStorage.setItem('websiteLeads', JSON.stringify(storedLeads));
       }
 
-      // 2. Update in local cache with active scheme and default enrollment chit
+      // 2. Resolve target group from customer request or active Admin-created groups
+      const diskGroups = JSON.parse(localStorage.getItem('mockChitGroups') || '[]');
+      const cleanGroups = diskGroups.filter((g: any) => !isMockGroup(g));
+
+      const targetGroupId = targetCustomer?.requestedGroupId || targetCustomer?.chits?.[0]?.groupId;
+      let targetGroup = cleanGroups.find((g: any) => g.id === targetGroupId || g.name === targetGroupId || g.code === targetGroupId);
+      if (!targetGroup && cleanGroups.length > 0) {
+        targetGroup = cleanGroups[0];
+      }
+
+      const now = new Date();
+      const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 15);
+      const monthJoined = targetCustomer?.monthJoined || now.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+      const paymentStartsMonth = targetCustomer?.paymentStartsMonth || nextMonthDate.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+
+      let assignedTicket = targetCustomer?.chits?.[0]?.ticketNumber || '1';
+      if (targetGroup) {
+        const existingMembers = Array.isArray(targetGroup.enrolledMembers) ? targetGroup.enrolledMembers : [];
+        const cleanPhone = (targetCustomer?.mobile || targetCustomer?.phone || '').replace(/\D/g, '');
+        const alreadyEnrolled = existingMembers.some((m: any) => 
+          m.customerId === id || (cleanPhone && (m.mobile || m.phone || '').replace(/\D/g, '') === cleanPhone)
+        );
+
+        if (!alreadyEnrolled) {
+          assignedTicket = `#0${existingMembers.length + 1}`;
+          const newMember = {
+            customerId: id,
+            customerName: targetCustomer?.name || targetCustomer?.fullName,
+            mobile: targetCustomer?.mobile || targetCustomer?.phone,
+            phone: targetCustomer?.mobile || targetCustomer?.phone,
+            ticketNumber: assignedTicket,
+            scheme: targetGroup.scheme || chosenScheme || 'Regular',
+            chitValue: targetGroup.value,
+            monthlyInstallment: Math.round(Number(targetGroup.value) / Number(targetGroup.duration || 20)),
+            monthJoined,
+            paymentStartsMonth,
+            joiningDate: targetCustomer?.joiningDate || now.toISOString(),
+            dueDate: nextMonthDate.toISOString().split('T')[0],
+            paymentStatus: 'DUE',
+            status: 'Active'
+          };
+
+          const updatedEnrolled = [...existingMembers, newMember];
+          const updatedGroups = diskGroups.map((g: any) => {
+            if (g.id === targetGroup.id || g.name === targetGroup.name) {
+              return {
+                ...g,
+                enrolledMembers: updatedEnrolled,
+                filled: updatedEnrolled.length
+              };
+            }
+            return g;
+          });
+
+          localStorage.setItem('mockChitGroups', JSON.stringify(updatedGroups));
+
+          // Update chitGroupMemberships
+          const diskMemberships = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
+          const updatedMemberships = [
+            ...diskMemberships.filter((m: any) => !(m.customerId === id && m.groupId === targetGroup.id)),
+            {
+              customerId: id,
+              customerName: targetCustomer?.name || targetCustomer?.fullName,
+              mobile: targetCustomer?.mobile || targetCustomer?.phone,
+              phone: targetCustomer?.mobile || targetCustomer?.phone,
+              groupId: targetGroup.id,
+              groupName: targetGroup.name,
+              ticketNumber: assignedTicket,
+              scheme: targetGroup.scheme || chosenScheme || 'Regular',
+              chitValue: targetGroup.value,
+              monthlyInstallment: Math.round(Number(targetGroup.value) / Number(targetGroup.duration || 20)),
+              monthJoined,
+              paymentStartsMonth,
+              joiningDate: targetCustomer?.joiningDate || now.toISOString(),
+              dueDate: nextMonthDate.toISOString().split('T')[0],
+              paymentStatus: 'DUE'
+            }
+          ];
+          localStorage.setItem('chitGroupMemberships', JSON.stringify(updatedMemberships));
+        }
+      }
+
+      // 3. Update customer in mockCustomers with active scheme, confirmed group, and next month payment start
       const updated = customers.map((c: any) => {
         if (c.id === id || c.mongoId === mongoId || c.customerCode === id) {
-          const hasExistingChits = Array.isArray(c.chits) && c.chits.length > 0;
+          const hasExistingValidChit = Array.isArray(c.chits) && c.chits.length > 0 && c.chits[0].groupId !== 'PENDING';
+          const assignedChits = hasExistingValidChit ? c.chits : (
+            targetGroup ? [{
+              groupId: targetGroup.id,
+              groupName: targetGroup.name,
+              scheme: targetGroup.scheme || chosenScheme || 'Regular',
+              chitValue: Number(targetGroup.value || 100000),
+              monthlyInstallment: Math.round(Number(targetGroup.value || 100000) / Number(targetGroup.duration || 20)),
+              duration: Number(targetGroup.duration || 20),
+              months: Number(targetGroup.duration || 20),
+              ticketNumber: assignedTicket,
+              paymentStatus: 'DUE',
+              joiningDate: c.joiningDate || now.toISOString(),
+              monthJoined,
+              paymentStartsMonth,
+              dueDate: nextMonthDate.toISOString().split('T')[0],
+              installmentsPaid: 0
+            }] : []
+          );
+
           return {
             ...c,
             status: 'ACTIVE',
             kycStatus: 'VERIFIED',
             scheme: chosenScheme,
-            interestedPlan: planName,
-            chits: hasExistingChits ? c.chits : [
-              {
-                groupId: 'PENDING',
-                groupName: planName,
-                scheme: chosenScheme,
-                chitValue: 100000,
-                monthlyInstallment: 5000,
-                duration: 20,
-                ticketNumber: '1',
-                paymentStatus: 'ACTIVE',
-                joiningDate: new Date().toISOString()
-              }
-            ]
+            interestedPlan: targetGroup?.name || planName,
+            monthJoined,
+            paymentStartsMonth,
+            chits: assignedChits
           };
         }
         return c;

@@ -220,33 +220,45 @@ export const syncOverdueAndDisbursementAlerts = (): void => {
       const overdueList: { customer: any; amount: number; groupName?: string; groupId?: string }[] = [];
       const clearedCustomerIds = new Set<string>();
 
+      const today = new Date();
       customers.forEach((c: any) => {
-        if (c.status === 'REJECTED') return;
+        // Pending approval, rejected, or inactive customers should never have overdue alerts
+        if (c.status !== 'ACTIVE') {
+          if (c.id || c.customerCode) clearedCustomerIds.add(c.id || c.customerCode);
+          return;
+        }
         const custId = c.id || c.customerCode || c._id;
         if (!custId) return;
 
-        let totalDue = Number(c.pending || 0);
+        let totalOverdue = 0;
         let groupName = '';
         let groupId = '';
 
         if (Array.isArray(c.chits)) {
           c.chits.forEach((ch: any) => {
+            // Check if due date has actually passed
+            let isPastDueDate = false;
+            if (ch.dueDate) {
+              const dParts = String(ch.dueDate).split('-');
+              if (dParts.length >= 3) {
+                const dueEnd = new Date(parseInt(dParts[0], 10), parseInt(dParts[1], 10) - 1, parseInt(dParts[2], 10), 23, 59, 59, 999);
+                isPastDueDate = today.getTime() > dueEnd.getTime();
+              }
+            }
+
+            // An installment is only OVERDUE if the due date has strictly passed and remains unpaid
             const chDue = Number(ch.dueAmount || ch.pendingAmount || ch.pending || 0);
-            if (chDue > 0) {
-              totalDue = Math.max(totalDue, totalDue + chDue);
-              if (!groupName) groupName = ch.groupName || ch.groupId || '';
-              if (!groupId) groupId = ch.groupId || '';
-            } else if (ch.paymentStatus === 'DUE') {
-              const installment = Number(ch.monthlyInstallment || 5000);
-              totalDue = Math.max(totalDue, totalDue + installment);
+            if (isPastDueDate && (chDue > 0 || ch.paymentStatus === 'OVERDUE')) {
+              const amount = chDue > 0 ? chDue : Number(ch.monthlyInstallment || 5000);
+              totalOverdue += amount;
               if (!groupName) groupName = ch.groupName || ch.groupId || '';
               if (!groupId) groupId = ch.groupId || '';
             }
           });
         }
 
-        if (totalDue > 0) {
-          overdueList.push({ customer: c, amount: totalDue, groupName, groupId });
+        if (totalOverdue > 0) {
+          overdueList.push({ customer: c, amount: totalOverdue, groupName, groupId });
         } else {
           clearedCustomerIds.add(custId);
         }

@@ -328,11 +328,115 @@ export const CustomerList = () => {
   };
 
   const handleApproveCustomer = async (customer: any) => {
+    const diskGroups = JSON.parse(localStorage.getItem('mockChitGroups') || '[]');
+    const cleanGroups = diskGroups.filter((g: any) => !isMockGroup(g));
+
+    // Find the target group: customer.requestedGroupId, customer.chits[0], or cleanGroups[0]
+    const targetGroupId = customer.requestedGroupId || customer.chits?.[0]?.groupId;
+    let targetGroup = cleanGroups.find((g: any) => g.id === targetGroupId || g.name === targetGroupId || g.code === targetGroupId);
+    if (!targetGroup && cleanGroups.length > 0) {
+      targetGroup = cleanGroups[0];
+    }
+
+    const now = new Date();
+    const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 15);
+    const monthJoined = customer.monthJoined || now.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+    const paymentStartsMonth = customer.paymentStartsMonth || nextMonthDate.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+
+    let assignedTicket = customer.chits?.[0]?.ticketNumber || '1';
+    if (targetGroup) {
+      const existingMembers = Array.isArray(targetGroup.enrolledMembers) ? targetGroup.enrolledMembers : [];
+      const cleanPhone = (customer.mobile || customer.phone || '').replace(/\D/g, '');
+      const alreadyEnrolled = existingMembers.some((m: any) => 
+        m.customerId === customer.id || (cleanPhone && (m.mobile || m.phone || '').replace(/\D/g, '') === cleanPhone)
+      );
+
+      if (!alreadyEnrolled) {
+        assignedTicket = `#0${existingMembers.length + 1}`;
+        const newMember = {
+          customerId: customer.id || customer.customerCode,
+          customerName: customer.name || customer.fullName,
+          mobile: customer.mobile || customer.phone,
+          phone: customer.mobile || customer.phone,
+          ticketNumber: assignedTicket,
+          scheme: targetGroup.scheme || customer.scheme || 'Regular',
+          chitValue: targetGroup.value,
+          monthlyInstallment: Math.round(Number(targetGroup.value) / Number(targetGroup.duration || 20)),
+          monthJoined,
+          paymentStartsMonth,
+          joiningDate: customer.joiningDate || now.toISOString(),
+          dueDate: nextMonthDate.toISOString().split('T')[0],
+          paymentStatus: 'DUE',
+          status: 'Active'
+        };
+
+        const updatedEnrolled = [...existingMembers, newMember];
+        const updatedGroups = diskGroups.map((g: any) => {
+          if (g.id === targetGroup.id || g.name === targetGroup.name) {
+            return {
+              ...g,
+              enrolledMembers: updatedEnrolled,
+              filled: updatedEnrolled.length
+            };
+          }
+          return g;
+        });
+
+        localStorage.setItem('mockChitGroups', JSON.stringify(updatedGroups));
+
+        // Update chitGroupMemberships
+        const diskMemberships = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
+        const updatedMemberships = [
+          ...diskMemberships.filter((m: any) => !(m.customerId === customer.id && m.groupId === targetGroup.id)),
+          {
+            customerId: customer.id || customer.customerCode,
+            customerName: customer.name || customer.fullName,
+            mobile: customer.mobile || customer.phone,
+            phone: customer.mobile || customer.phone,
+            groupId: targetGroup.id,
+            groupName: targetGroup.name,
+            ticketNumber: assignedTicket,
+            scheme: targetGroup.scheme || customer.scheme || 'Regular',
+            chitValue: targetGroup.value,
+            monthlyInstallment: Math.round(Number(targetGroup.value) / Number(targetGroup.duration || 20)),
+            monthJoined,
+            paymentStartsMonth,
+            joiningDate: customer.joiningDate || now.toISOString(),
+            dueDate: nextMonthDate.toISOString().split('T')[0],
+            paymentStatus: 'DUE'
+          }
+        ];
+        localStorage.setItem('chitGroupMemberships', JSON.stringify(updatedMemberships));
+      }
+    }
+
     const updatedCustomers = allCustomers.map((c: any) => {
       if (c.id === customer.id || (customer.mongoId && c.mongoId === customer.mongoId)) {
+        const chits = (Array.isArray(c.chits) && c.chits.length > 0 && c.chits[0].groupId !== 'PENDING')
+          ? c.chits
+          : targetGroup ? [{
+              groupId: targetGroup.id,
+              groupName: targetGroup.name,
+              chitValue: Number(targetGroup.value || 100000),
+              monthlyInstallment: Math.round(Number(targetGroup.value || 100000) / Number(targetGroup.duration || 20)),
+              duration: Number(targetGroup.duration || 20),
+              months: Number(targetGroup.duration || 20),
+              ticketNumber: assignedTicket,
+              scheme: targetGroup.scheme || 'Regular',
+              joiningDate: c.joiningDate || now.toISOString(),
+              monthJoined,
+              paymentStartsMonth,
+              dueDate: nextMonthDate.toISOString().split('T')[0],
+              paymentStatus: 'DUE',
+              installmentsPaid: 0
+            }] : [];
+
         return {
           ...c,
-          status: 'ACTIVE'
+          status: 'ACTIVE',
+          monthJoined,
+          paymentStartsMonth,
+          chits
         };
       }
       return c;

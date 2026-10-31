@@ -271,8 +271,9 @@ export const buildCustomerChitSchedule = (params: {
   let currentDueMonthIndex = 1;
 
   for (let m = 1; m <= totalDurationMonths; m++) {
-    // Calculate Due Date for Month m (starting from joiningDate with day 15)
-    const rowDate = new Date(startDate.getFullYear(), startDate.getMonth() + (m - 1), dueDayOfMonth);
+    // Customers start making monthly payments from the next month after joining/registration
+    // e.g., Joining in October 2026 starts Month 1 in November 2026 on the dueDayOfMonth
+    const rowDate = new Date(startDate.getFullYear(), startDate.getMonth() + m, dueDayOfMonth);
     const dueDateIso = rowDate.toISOString().split('T')[0];
     const dueDateFormatted = rowDate.toLocaleDateString('en-IN', {
       day: 'numeric',
@@ -359,7 +360,9 @@ export const buildCustomerChitSchedule = (params: {
       rowStatus = 'PARTIALLY_PAID';
     } else {
       const today = new Date();
-      if (today.getTime() > rowDate.getTime() + 86400000) {
+      // Overdue appears ONLY when the actual payment due date has strictly passed and remains unpaid
+      const dueDayEnd = new Date(rowDate.getFullYear(), rowDate.getMonth(), rowDate.getDate(), 23, 59, 59, 999);
+      if (today.getTime() > dueDayEnd.getTime()) {
         rowStatus = 'OVERDUE';
       } else {
         rowStatus = 'DUE';

@@ -196,17 +196,126 @@ export const AdminDashboard = () => {
     } catch { }
 
     const diskCusts = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
+    const diskGroups = JSON.parse(localStorage.getItem('mockChitGroups') || '[]');
+    const cleanGroups = diskGroups.filter((g: any) => !isMockGroup(g));
+
+    // Find the target group: either cust.requestedGroupId, cust.chits[0], or first cleanGroup
+    const targetGroupId = cust.requestedGroupId || cust.chits?.[0]?.groupId;
+    let targetGroup = cleanGroups.find((g: any) => g.id === targetGroupId || g.name === targetGroupId || g.code === targetGroupId);
+    if (!targetGroup && cleanGroups.length > 0) {
+      targetGroup = cleanGroups[0];
+    }
+
+    const now = new Date();
+    const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 15);
+    const monthJoined = cust.monthJoined || now.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+    const paymentStartsMonth = cust.paymentStartsMonth || nextMonthDate.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+
+    let assignedTicket = cust.chits?.[0]?.ticketNumber || '1';
+    if (targetGroup) {
+      const existingMembers = Array.isArray(targetGroup.enrolledMembers) ? targetGroup.enrolledMembers : [];
+      const cleanPhone = (cust.mobile || cust.phone || '').replace(/\D/g, '');
+      const alreadyEnrolled = existingMembers.some((m: any) => 
+        m.customerId === cust.id || (cleanPhone && (m.mobile || m.phone || '').replace(/\D/g, '') === cleanPhone)
+      );
+
+      if (!alreadyEnrolled) {
+        assignedTicket = `#0${existingMembers.length + 1}`;
+        const newMember = {
+          customerId: cust.id || cust.customerCode,
+          customerName: cust.name || cust.fullName,
+          mobile: cust.mobile || cust.phone,
+          phone: cust.mobile || cust.phone,
+          ticketNumber: assignedTicket,
+          scheme: targetGroup.scheme || cust.scheme || 'Regular',
+          chitValue: targetGroup.value,
+          monthlyInstallment: Math.round(Number(targetGroup.value) / Number(targetGroup.duration || 20)),
+          monthJoined,
+          paymentStartsMonth,
+          joiningDate: cust.joiningDate || now.toISOString(),
+          dueDate: nextMonthDate.toISOString().split('T')[0],
+          paymentStatus: 'DUE',
+          status: 'Active'
+        };
+
+        const updatedEnrolled = [...existingMembers, newMember];
+        const updatedGroups = diskGroups.map((g: any) => {
+          if (g.id === targetGroup.id || g.name === targetGroup.name) {
+            return {
+              ...g,
+              enrolledMembers: updatedEnrolled,
+              filled: updatedEnrolled.length
+            };
+          }
+          return g;
+        });
+
+        localStorage.setItem('mockChitGroups', JSON.stringify(updatedGroups));
+        setChitGroups(updatedGroups);
+
+        // Update chitGroupMemberships
+        const diskMemberships = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
+        const updatedMemberships = [
+          ...diskMemberships.filter((m: any) => !(m.customerId === cust.id && m.groupId === targetGroup.id)),
+          {
+            customerId: cust.id || cust.customerCode,
+            customerName: cust.name || cust.fullName,
+            mobile: cust.mobile || cust.phone,
+            phone: cust.mobile || cust.phone,
+            groupId: targetGroup.id,
+            groupName: targetGroup.name,
+            ticketNumber: assignedTicket,
+            scheme: targetGroup.scheme || cust.scheme || 'Regular',
+            chitValue: targetGroup.value,
+            monthlyInstallment: Math.round(Number(targetGroup.value) / Number(targetGroup.duration || 20)),
+            monthJoined,
+            paymentStartsMonth,
+            joiningDate: cust.joiningDate || now.toISOString(),
+            dueDate: nextMonthDate.toISOString().split('T')[0],
+            paymentStatus: 'DUE'
+          }
+        ];
+        localStorage.setItem('chitGroupMemberships', JSON.stringify(updatedMemberships));
+      }
+    }
+
     const updated = diskCusts.map((c: any) => {
       if (c.id === cust.id || c.mongoId === cust.mongoId) {
-        return { ...c, status: 'ACTIVE' };
+        const chits = (Array.isArray(c.chits) && c.chits.length > 0 && c.chits[0].groupId !== 'PENDING')
+          ? c.chits
+          : targetGroup ? [{
+              groupId: targetGroup.id,
+              groupName: targetGroup.name,
+              chitValue: Number(targetGroup.value || 100000),
+              monthlyInstallment: Math.round(Number(targetGroup.value || 100000) / Number(targetGroup.duration || 20)),
+              duration: Number(targetGroup.duration || 20),
+              months: Number(targetGroup.duration || 20),
+              ticketNumber: assignedTicket,
+              scheme: targetGroup.scheme || 'Regular',
+              joiningDate: c.joiningDate || now.toISOString(),
+              monthJoined,
+              paymentStartsMonth,
+              dueDate: nextMonthDate.toISOString().split('T')[0],
+              paymentStatus: 'DUE',
+              installmentsPaid: 0
+            }] : [];
+
+        return {
+          ...c,
+          status: 'ACTIVE',
+          monthJoined,
+          paymentStartsMonth,
+          chits
+        };
       }
       return c;
     });
+
     localStorage.setItem('mockCustomers', JSON.stringify(updated));
     setCustomers(updated);
     setPendingCustomerApprovals(updated.filter((c: any) => c.status === 'PENDING_APPROVAL'));
     window.dispatchEvent(new Event('storage'));
-    alert(`Customer ${cust.name} approved and activated!`);
+    alert(`Customer ${cust.name} approved and assigned to ${targetGroup?.name || 'Chit Group'}!`);
   };
 
   const nowFormatted = new Date().toLocaleString('en-IN', {
@@ -1196,7 +1305,7 @@ export const AdminDashboard = () => {
 
     // Export Specific Group Details alone to Excel (.csv)
     const handleExportGroupExcel = () => {
-      const headers = ['Ticket No', 'Customer Name', 'Member ID', 'Mobile Number', 'Scheme', 'Duration (Months)', 'Monthly Due (Rs)', 'Total Value (Rs)', 'Total Paid (Rs)', 'Pending Due (Rs)', 'Payment Status'];
+      const headers = ['Ticket No', 'Customer Name', 'Member ID', 'Mobile Number', 'Month Joined', 'Payment Starts From', 'Scheme', 'Duration (Months)', 'Monthly Due (Rs)', 'Total Value (Rs)', 'Total Paid (Rs)', 'Pending Due (Rs)', 'Payment Status'];
       const rows = groupCustomers.map((c) => {
         const chit = c.chits?.find((ch: any) => (
           ch.groupId === activeGroup.id || ch.groupId === activeGroup.code || ch.groupName === activeGroup.name || ch.groupId === activeGroup.name
@@ -1210,11 +1319,18 @@ export const AdminDashboard = () => {
         const pendingAmt = Math.max(0, (dueAmt * groupDuration) - custTotalPaid);
         const isPaid = chit?.paymentStatus === 'PAID' || custTotalPaid >= dueAmt;
 
+        const joinDateObj = new Date(chit?.joiningDate || c.joiningDate || c.createdAt || Date.now());
+        const monthJoined = c.monthJoined || chit?.monthJoined || (!isNaN(joinDateObj.getTime()) ? joinDateObj.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : '—');
+        const nextMonthDate = !isNaN(joinDateObj.getTime()) ? new Date(joinDateObj.getFullYear(), joinDateObj.getMonth() + 1, 15) : new Date();
+        const paymentStartsFrom = c.paymentStartsMonth || chit?.paymentStartsMonth || (!isNaN(nextMonthDate.getTime()) ? `${nextMonthDate.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })} (Month 1)` : '—');
+
         return [
           chit?.ticketNumber || '—',
           `"${(c.name || 'Member').replace(/"/g, '""')}"`,
           custTargetId,
           c.mobile || c.phone || '—',
+          monthJoined,
+          paymentStartsFrom,
           chit?.scheme || c.scheme || 'Regular',
           chit?.duration || groupDuration,
           dueAmt,
@@ -1804,6 +1920,8 @@ export const AdminDashboard = () => {
                   <tr>
                     <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Ticket / Customer</th>
                     <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Mobile</th>
+                    <th className="px-5 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider">Month Joined</th>
+                    <th className="px-5 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider">Payment Starts From</th>
                     <th className="px-5 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Scheme</th>
                     <th className="px-5 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider">Duration</th>
                     <th className="px-5 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Monthly Due</th>
@@ -1816,7 +1934,7 @@ export const AdminDashboard = () => {
                 <tbody className="bg-white divide-y divide-slate-100 whitespace-nowrap">
                   {groupCustomers.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-5 py-12 text-center text-xs text-slate-400 font-medium">
+                      <td colSpan={11} className="px-5 py-12 text-center text-xs text-slate-400 font-medium">
                         No customers enrolled in this group yet. Click "+ Add Customer" above to begin enrollment.
                       </td>
                     </tr>
@@ -1847,6 +1965,11 @@ export const AdminDashboard = () => {
                         const isChitPaid = chit?.paymentStatus === 'PAID' || (monthlyDue > 0 && paidForThisGroup >= monthlyDue);
                         const custPending = Math.max(0, (monthlyDue * groupDuration) - paidForThisGroup);
 
+                        const joinDateObj = new Date(chit?.joiningDate || c.joiningDate || c.createdAt || Date.now());
+                        const monthJoined = c.monthJoined || chit?.monthJoined || (!isNaN(joinDateObj.getTime()) ? joinDateObj.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : '—');
+                        const nextMonthDate = !isNaN(joinDateObj.getTime()) ? new Date(joinDateObj.getFullYear(), joinDateObj.getMonth() + 1, 15) : new Date();
+                        const paymentStartsFrom = c.paymentStartsMonth || chit?.paymentStartsMonth || (!isNaN(nextMonthDate.getTime()) ? `${nextMonthDate.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}` : '—');
+
                         return (
                           <tr key={c.id} className="hover:bg-slate-50/70 transition-colors">
                             <td className="px-5 py-3">
@@ -1863,6 +1986,14 @@ export const AdminDashboard = () => {
                             </td>
                             <td className="px-5 py-3 text-xs font-medium text-slate-700">
                               {c.mobile || c.phone || '—'}
+                            </td>
+                            <td className="px-5 py-3 text-center whitespace-nowrap">
+                              <span className="font-bold text-slate-800 text-xs">{monthJoined}</span>
+                            </td>
+                            <td className="px-5 py-3 text-center whitespace-nowrap">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                                {paymentStartsFrom} (Month 1 Due)
+                              </span>
                             </td>
                             <td className="px-5 py-3">
                               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${(chit?.scheme || c.scheme || '').toUpperCase().includes('FIX')
@@ -3159,7 +3290,9 @@ export const AdminDashboard = () => {
                 <tr>
                   <th className="px-5 py-3.5 text-left font-bold text-slate-500 uppercase tracking-wider w-16">#</th>
                   <th className="px-5 py-3.5 text-left font-bold text-slate-500 uppercase tracking-wider">Group Name</th>
-                  <th className="px-5 py-3.5 text-left font-bold text-slate-500 uppercase tracking-wider">Enrolled Members</th>
+                  <th className="px-5 py-3.5 text-left font-bold text-slate-500 uppercase tracking-wider">Scheme & Duration</th>
+                  <th className="px-5 py-3.5 text-right font-bold text-slate-500 uppercase tracking-wider">Chit Value</th>
+                  <th className="px-5 py-3.5 text-center font-bold text-slate-500 uppercase tracking-wider">Enrolled Capacity</th>
                   <th className="px-5 py-3.5 text-center font-bold text-slate-500 uppercase tracking-wider w-60">Actions</th>
                 </tr>
               </thead>
@@ -3167,6 +3300,10 @@ export const AdminDashboard = () => {
                 {visibleGroups.length > 0 ? (
                   visibleGroups.map((g, idx) => {
                     const enrolledCount = Array.isArray(g.enrolledMembers) ? g.enrolledMembers.length : (g.filled || 0);
+                    const totalCap = Number(g.members || 20);
+                    const groupVal = Number(g.value || (g.customerChitAmount && g.members ? g.customerChitAmount * g.members : 100000));
+                    const dur = Number(g.duration || g.months || 20);
+
                     return (
                       <tr
                         key={g.id || idx}
@@ -3178,10 +3315,26 @@ export const AdminDashboard = () => {
                           <div className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors text-sm">
                             {g.name}
                           </div>
+                          <div className="text-[10px] text-slate-400 font-mono mt-0.5">Code: {g.code || g.id}</div>
                         </td>
                         <td className="px-5 py-4">
-                          <span className="px-3 py-1 bg-[#fef5e6] text-[#8c601c] rounded-lg font-bold text-xs border border-[#edd7b6]">
-                            {enrolledCount} {enrolledCount === 1 ? 'Member' : 'Members'}
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                              {g.scheme || 'Regular'}
+                            </span>
+                            <span className="text-xs text-slate-600 font-medium">{dur} Months</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          <strong className="text-xs font-black text-slate-900">{formatCurrency(groupVal)}</strong>
+                        </td>
+                        <td className="px-5 py-4 text-center">
+                          <span className={`inline-flex items-center px-3 py-1 rounded-lg font-bold text-xs border ${
+                            enrolledCount >= totalCap
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : 'bg-[#fef5e6] text-[#8c601c] border-[#edd7b6]'
+                          }`}>
+                            {enrolledCount} / {totalCap} Enrolled {enrolledCount >= totalCap ? '✓ Full' : ''}
                           </span>
                         </td>
                         <td className="px-5 py-4 text-center">

@@ -1,18 +1,40 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
 import { fetchClient } from '../../api/client';
 import { addSystemNotification } from '../../utils/notificationsData';
+import { isMockGroup } from '../../utils/cleanMockData';
 
 export const CustomerRegistrationPage = () => {
   const [name, setName] = useState('');
   const [mobile, setMobile] = useState('');
   const [address, setAddress] = useState('');
   const [password, setPassword] = useState('');
+  const [availableGroups, setAvailableGroups] = useState<any[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+
+  useEffect(() => {
+    // Load dynamic chit groups created by Admin from storage / backend
+    const loadGroups = () => {
+      try {
+        const diskGroups = JSON.parse(localStorage.getItem('mockChitGroups') || '[]');
+        const clean = diskGroups.filter((g: any) => !isMockGroup(g));
+        setAvailableGroups(clean);
+        if (clean.length > 0) {
+          setSelectedGroupId(clean[0].id || clean[0].name);
+        }
+      } catch (e) {
+        console.warn('Error loading groups for registration:', e);
+      }
+    };
+    loadGroups();
+    window.addEventListener('storage', loadGroups);
+    return () => window.removeEventListener('storage', loadGroups);
+  }, []);
 
   const handleMobileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
@@ -65,6 +87,30 @@ export const CustomerRegistrationPage = () => {
         console.warn('Backend customer registration fallback:', apiErr);
       }
 
+      // Find selected group metadata
+      const targetGroup = availableGroups.find((g: any) => (g.id === selectedGroupId || g.name === selectedGroupId)) || availableGroups[0];
+      const now = new Date();
+      const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 15);
+      const currentMonthName = now.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+      const paymentStartsMonthName = nextMonthDate.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+
+      const assignedChits = targetGroup ? [{
+        groupId: targetGroup.id,
+        groupName: targetGroup.name,
+        chitValue: Number(targetGroup.value || 100000),
+        monthlyInstallment: Math.round(Number(targetGroup.value || 100000) / Number(targetGroup.duration || targetGroup.months || 20)),
+        duration: Number(targetGroup.duration || targetGroup.months || 20),
+        months: Number(targetGroup.duration || targetGroup.months || 20),
+        ticketNumber: `#0${(Array.isArray(targetGroup.enrolledMembers) ? targetGroup.enrolledMembers.length : 0) + 1}`,
+        scheme: targetGroup.scheme || 'Regular',
+        joiningDate: now.toISOString(),
+        monthJoined: currentMonthName,
+        paymentStartsMonth: paymentStartsMonthName,
+        dueDate: nextMonthDate.toISOString().split('T')[0],
+        paymentStatus: 'DUE',
+        installmentsPaid: 0
+      }] : [];
+
       // Record in local cache in PENDING_APPROVAL status
       const newEntry = {
         id: createdCustomerCode,
@@ -78,10 +124,15 @@ export const CustomerRegistrationPage = () => {
         password,
         status: 'PENDING_APPROVAL',
         registeredBy: 'Self Registered',
-        chits: [],
+        requestedGroupId: targetGroup?.id,
+        requestedGroupName: targetGroup?.name,
+        joiningDate: now.toISOString(),
+        monthJoined: currentMonthName,
+        paymentStartsMonth: paymentStartsMonthName,
+        chits: assignedChits,
         pending: 0,
         totalPaid: 0,
-        createdAt: new Date().toISOString()
+        createdAt: now.toISOString()
       };
       const updatedCustomers = [newEntry, ...saved];
       localStorage.setItem('mockCustomers', JSON.stringify(updatedCustomers));
@@ -91,12 +142,14 @@ export const CustomerRegistrationPage = () => {
       addSystemNotification({
         type: 'NEW_REGISTRATION',
         title: 'New Customer Registered - Approval Required',
-        message: `${name.trim()} (${cleanMobile}) registered a new account. Approval is required before credentials can be used.`,
+        message: `${name.trim()} (${cleanMobile}) registered for group "${targetGroup?.name || 'Chit Plan'}". Approval is required before credentials can be used.`,
         targetRole: 'ADMIN',
         metadata: {
           customerId: createdCustomerCode,
           customerName: name.trim(),
-          phone: cleanMobile
+          phone: cleanMobile,
+          groupId: targetGroup?.id,
+          groupName: targetGroup?.name
         }
       });
 
@@ -162,6 +215,29 @@ export const CustomerRegistrationPage = () => {
               </span>
             </div>
             
+            {availableGroups.length > 0 && (
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-neutral-700">
+                  Select Chit Group to Join *
+                </label>
+                <select
+                  value={selectedGroupId}
+                  onChange={(e) => setSelectedGroupId(e.target.value)}
+                  className="w-full h-11 px-3 border border-neutral-300 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium"
+                  required
+                >
+                  {availableGroups.map((g: any) => (
+                    <option key={g.id || g.name} value={g.id || g.name}>
+                      {g.name} — ₹{Number(g.value || 100000).toLocaleString('en-IN')} ({g.duration || g.months || 20} Months · {g.scheme || 'Regular'})
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[11px] text-emerald-700 font-semibold block">
+                  ✓ Monthly payments will start from next month post Admin approval.
+                </span>
+              </div>
+            )}
+
             <Input 
               label="Address" 
               type="text" 

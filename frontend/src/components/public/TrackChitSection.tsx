@@ -21,6 +21,7 @@ import { Button } from '../common/Button';
 import { Input } from '../common/Input';
 import { fetchClient } from '../../api/client';
 import { Link } from 'react-router-dom';
+import { isMockGroup } from '../../utils/cleanMockData';
 
 interface ChitSubscription {
   id: string;
@@ -56,72 +57,59 @@ interface TrackedCustomer {
   chits: ChitSubscription[];
 }
 
-// Built-in Sample Subscriber Data showcasing all 3 schemes
-const SAMPLE_MEMBERS: Record<string, TrackedCustomer> = {
-  'TC-11075': {
+// Dynamic helper to retrieve active Admin-created chit groups
+const getAdminCreatedGroups = () => {
+  try {
+    const raw = localStorage.getItem('mockChitGroups');
+    if (!raw) return [];
+    return JSON.parse(raw).filter((g: any) => !isMockGroup(g));
+  } catch {
+    return [];
+  }
+};
+
+const getDynamicSampleSubscriber = (): TrackedCustomer => {
+  const activeGroups = getAdminCreatedGroups();
+  const primaryGroup = activeGroups[0] || {
+    id: 'CHIT-GRP-01',
+    name: 'Jenista Savings Scheme',
+    value: 100000,
+    duration: 20,
+    scheme: 'Regular'
+  };
+
+  const val = Number(primaryGroup.value || 100000);
+  const dur = Number(primaryGroup.duration || 20);
+  const inst = Math.round(val / dur);
+
+  return {
     customerCode: 'TC-11075',
     fullName: 'Karthik Subramanian (Sample Member)',
     phone: '******0077',
     status: 'ACTIVE',
     kycStatus: 'VERIFIED',
-    totalPaid: 185000,
+    totalPaid: inst * 8,
     pending: 0,
     chits: [
       {
-        id: 'CG-AUC-501',
-        groupName: 'Gold Auction Series A (CG-AUC-501)',
-        chitValue: 500000,
-        monthlyInstallment: 25000,
-        duration: 20,
+        id: primaryGroup.id || 'GRP-01',
+        groupName: primaryGroup.name,
+        chitValue: val,
+        monthlyInstallment: inst,
+        duration: dur,
         ticketNumber: '#07',
-        scheme: 'Auction Chit',
+        scheme: primaryGroup.scheme || 'Regular Chit',
         dueDate: '15th Nov 2026',
         paymentStatus: 'UP_TO_DATE',
         installmentsPaid: 8,
-        progressPercent: 40,
+        progressPercent: Math.round((8 / dur) * 100),
         schemeDetails: {
-          dividendEarned: '₹28,500 accumulated dividend discount',
-          nextAuctionDate: '15th Nov 2026, 04:00 PM',
-          mode: 'Reverse Competitive Bidding'
-        }
-      },
-      {
-        id: 'CG-FIX-202',
-        groupName: 'Silver Fixed Term Plan (CG-FIX-202)',
-        chitValue: 200000,
-        monthlyInstallment: 10000,
-        duration: 20,
-        ticketNumber: '#14',
-        scheme: 'Fixed Chit',
-        dueDate: '10th Nov 2026',
-        paymentStatus: 'UP_TO_DATE',
-        installmentsPaid: 12,
-        progressPercent: 60,
-        schemeDetails: {
-          payoutTurnMonth: 'Month 14 (Guaranteed Payout ₹1,90,000)',
-          guaranteedPayout: '₹1,90,000 (100% Face Value - 5% Foreman fee)',
-          mode: 'Transparent Draw & Constant Installments'
-        }
-      },
-      {
-        id: 'CG-REG-101',
-        groupName: 'Regular Milestone Savings (CG-REG-101)',
-        chitValue: 100000,
-        monthlyInstallment: 5000,
-        duration: 20,
-        ticketNumber: '#03',
-        scheme: 'Regular Chit',
-        dueDate: '5th Nov 2026',
-        paymentStatus: 'UP_TO_DATE',
-        installmentsPaid: 16,
-        progressPercent: 80,
-        schemeDetails: {
-          scheduledTurn: 'Turn #03 of 20 (Disbursed)',
-          mode: 'Systematic Seniority Rotation'
+          scheduledTurn: 'Turn #07 of 20',
+          mode: 'Regulated Chit Fund Scheme'
         }
       }
     ]
-  }
+  };
 };
 
 export const TrackChitSection: React.FC = () => {
@@ -153,10 +141,10 @@ export const TrackChitSection: React.FC = () => {
       cleanPhone === '7788990077' ||
       cleanPhone.endsWith('0077') && queryId.toUpperCase().includes('11075');
 
-    // Fast-path: Sample demonstration account
+    // Fast-path: Sample demonstration account using real dynamic admin group
     if (isSampleQuery) {
       setTimeout(() => {
-        setTrackedData(SAMPLE_MEMBERS['TC-11075']);
+        setTrackedData(getDynamicSampleSubscriber());
         setSelectedChitIndex(0);
         setIsSearching(false);
       }, 250);
@@ -183,41 +171,74 @@ export const TrackChitSection: React.FC = () => {
         const localCustomers = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
         const found = localCustomers.find((c: any) => 
           (queryId && (c.id === queryId || c.customerCode === queryId)) ||
-          (queryMobile && String(c.mobile || c.phone || '').includes(cleanPhone))
+          (queryMobile && String(c.mobile || c.phone || '').replace(/\D/g, '').includes(cleanPhone))
         );
 
         if (found) {
           const installment = 2500;
           const totalPaid = Number(found.totalPaid || installment);
-          const chits: ChitSubscription[] = Array.isArray(found.chits) && found.chits.length > 0
-            ? found.chits.map((ch: any, idx: number) => ({
+          const allAdminGroups = getAdminCreatedGroups();
+          const cleanCustPhone = (found.mobile || found.phone || '').replace(/\D/g, '');
+
+          // Resolve enrolled chits from actual admin groups
+          let userChits: ChitSubscription[] = [];
+          allAdminGroups.forEach((g: any) => {
+            if (Array.isArray(g.enrolledMembers)) {
+              g.enrolledMembers.forEach((m: any) => {
+                const mPhone = (m.mobile || m.phone || '').replace(/\D/g, '');
+                if (m.customerId === found.id || (cleanCustPhone && mPhone === cleanCustPhone)) {
+                  userChits.push({
+                    id: g.id,
+                    groupName: g.name,
+                    chitValue: Number(m.chitValue || g.value || 100000),
+                    monthlyInstallment: Number(m.monthlyInstallment || Math.round(Number(g.value || 100000) / Number(g.duration || 20))),
+                    duration: Number(g.duration || 20),
+                    ticketNumber: m.ticketNumber || '#01',
+                    scheme: m.scheme || g.scheme || 'Regular Chit',
+                    dueDate: m.dueDate || '15th Nov 2026',
+                    paymentStatus: m.paymentStatus || 'UP_TO_DATE',
+                    installmentsPaid: Math.max(1, Math.floor(totalPaid / (m.monthlyInstallment || installment))),
+                    progressPercent: Math.min(100, Math.round((Math.max(1, Math.floor(totalPaid / (m.monthlyInstallment || installment))) / (g.duration || 20)) * 100))
+                  });
+                }
+              });
+            }
+          });
+
+          if (userChits.length === 0 && Array.isArray(found.chits) && found.chits.length > 0) {
+            userChits = found.chits
+              .filter((ch: any) => !isMockGroup({ id: ch.groupId, name: ch.groupName }))
+              .map((ch: any, idx: number) => ({
                 id: ch.groupId || `CHIT-${idx + 1}`,
-                groupName: ch.groupName || ch.groupId || 'Jenista Chit Plan',
-                chitValue: Number(ch.chitValue || 50000),
-                monthlyInstallment: Number(ch.monthlyInstallment || installment),
+                groupName: ch.groupName || 'Jenista Chit Scheme',
+                chitValue: Number(ch.chitValue || 100000),
+                monthlyInstallment: Number(ch.monthlyInstallment || Math.round(Number(ch.chitValue || 100000) / Number(ch.duration || 20))),
                 duration: Number(ch.duration || 20),
                 ticketNumber: ch.ticketNumber || `#0${idx + 1}`,
-                scheme: ch.scheme || (idx % 2 === 0 ? 'Auction Chit' : 'Fixed Chit'),
-                dueDate: ch.dueDate || new Date(Date.now() + 10 * 86400000).toISOString().split('T')[0],
+                scheme: ch.scheme || 'Regular Chit',
+                dueDate: ch.dueDate || '15th Nov 2026',
                 paymentStatus: ch.paymentStatus || 'UP_TO_DATE',
                 installmentsPaid: Math.max(1, Math.floor(totalPaid / (ch.monthlyInstallment || installment))),
                 progressPercent: Math.min(100, Math.round((Math.max(1, Math.floor(totalPaid / (ch.monthlyInstallment || installment))) / (ch.duration || 20)) * 100))
-              }))
-            : [
-                {
-                  id: 'KJ-22-9598',
-                  groupName: 'KJ-22 Regular Auction Chit',
-                  chitValue: 50000,
-                  monthlyInstallment: 2500,
-                  duration: 20,
-                  ticketNumber: '#01',
-                  scheme: 'Auction Chit',
-                  dueDate: new Date(Date.now() + 10 * 86400000).toISOString().split('T')[0],
-                  paymentStatus: 'UP_TO_DATE',
-                  installmentsPaid: 1,
-                  progressPercent: 5
-                }
-              ];
+              }));
+          }
+
+          if (userChits.length === 0 && allAdminGroups.length > 0) {
+            const defGroup = allAdminGroups[0];
+            userChits = [{
+              id: defGroup.id,
+              groupName: defGroup.name,
+              chitValue: Number(defGroup.value || 100000),
+              monthlyInstallment: Math.round(Number(defGroup.value || 100000) / Number(defGroup.duration || 20)),
+              duration: Number(defGroup.duration || 20),
+              ticketNumber: '#01',
+              scheme: defGroup.scheme || 'Regular Chit',
+              dueDate: '15th Nov 2026',
+              paymentStatus: 'UP_TO_DATE',
+              installmentsPaid: 1,
+              progressPercent: 5
+            }];
+          }
 
           setTrackedData({
             customerCode: found.id || found.customerCode || queryId || 'TC-11075',
@@ -227,15 +248,15 @@ export const TrackChitSection: React.FC = () => {
             kycStatus: 'VERIFIED',
             totalPaid: totalPaid,
             pending: Number(found.pending || 0),
-            chits
+            chits: userChits
           });
           setIsSearching(false);
           return;
         }
 
-        // Secondary fallback to sample member
+        // Secondary fallback to dynamic sample subscriber
         if (queryId === 'TC-11075' || cleanPhone === '7788990077') {
-          setTrackedData(SAMPLE_MEMBERS['TC-11075']);
+          setTrackedData(getDynamicSampleSubscriber());
           setSelectedChitIndex(0);
           setIsSearching(false);
           return;
@@ -267,7 +288,7 @@ export const TrackChitSection: React.FC = () => {
     setErrorMsg(null);
     setIsSearching(true);
     setTimeout(() => {
-      setTrackedData(SAMPLE_MEMBERS['TC-11075']);
+      setTrackedData(getDynamicSampleSubscriber());
       setSelectedChitIndex(0);
       setIsSearching(false);
     }, 200);
