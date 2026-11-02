@@ -4,7 +4,8 @@ import { Button } from '../../../components/common/Button';
 import { Input } from '../../../components/common/Input';
 import { Search, Filter, Layers, MoreVertical, X, Pencil, Trash2 } from 'lucide-react';
 import { formatCurrency } from '../../../utils/format';
-import { isMockGroup } from '../../../utils/cleanMockData';
+import { isMockGroup, isDeletedGroup } from '../../../utils/cleanMockData';
+import { cascadeDeleteGroup } from '../../../utils/cascadeDelete';
 
 interface ChitGroup {
   id: string;
@@ -61,7 +62,7 @@ export const ChitGroupList = () => {
       }
 
       const groupMap = new Map<string, any>();
-      raw.filter((g: any) => !isMockGroup(g)).forEach((g: any) => {
+      raw.filter((g: any) => !isMockGroup(g) && !isDeletedGroup(g)).forEach((g: any) => {
         const key = String(g.id || g.name || '').trim();
         if (key) {
           groupMap.set(key.toLowerCase(), g);
@@ -82,7 +83,7 @@ export const ChitGroupList = () => {
       memberships.forEach((m: any) => {
         const grpKey = String(m.groupId || m.groupName || '').trim();
         const grpName = String(m.groupName || m.groupId || '').trim();
-        if (grpKey && !isMockGroup({ id: grpKey, name: grpName })) {
+        if (grpKey && !isMockGroup({ id: grpKey, name: grpName }) && !isDeletedGroup({ id: grpKey, name: grpName })) {
           if (!groupMap.has(grpKey.toLowerCase()) && !groupMap.has(grpName.toLowerCase())) {
             const newG = {
               id: grpKey,
@@ -116,7 +117,7 @@ export const ChitGroupList = () => {
           c.chits.forEach((ch: any) => {
             const grpKey = String(ch.groupId || ch.groupName || '').trim();
             const grpName = String(ch.groupName || ch.groupId || '').trim();
-            if (grpKey && !isMockGroup({ id: grpKey, name: grpName })) {
+            if (grpKey && !isMockGroup({ id: grpKey, name: grpName }) && !isDeletedGroup({ id: grpKey, name: grpName })) {
               if (!groupMap.has(grpKey.toLowerCase()) && !groupMap.has(grpName.toLowerCase())) {
                 const dur = Number(ch.duration || ch.months || 20);
                 const monthly = Number(ch.monthlyInstallment || 0);
@@ -208,11 +209,16 @@ export const ChitGroupList = () => {
     setEditingGroup(null);
   };
 
-  const handleDelete = (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this chit group? This action cannot be undone.')) return;
+  const handleDelete = async (id: string) => {
+    const targetG = groups.find(g => g.id === id);
+    if (!window.confirm(`Are you sure you want to permanently delete chit group "${targetG?.name || id}"? This will delete all memberships, schedules, payment requests, and records.`)) return;
+    await cascadeDeleteGroup({
+      groupId: id,
+      groupName: targetG?.name,
+      mongoId: (targetG as any)?.mongoId
+    });
     const updated = groups.filter(g => g.id !== id);
     setGroups(updated);
-    localStorage.setItem('mockChitGroups', JSON.stringify(updated));
     setOpenMenuId(null);
   };
 

@@ -1,6 +1,7 @@
 import { fetchClient } from '../api/client';
 import { resolveBankForPayment, recordBankCredit } from './bankAccountsData';
 import { addSystemNotification } from './notificationsData';
+import { isGroupDeleted, isCustomerOrLeadDeleted } from './cascadeDelete';
 
 export interface PaymentRequest {
   id: string;
@@ -129,7 +130,7 @@ export const getStoredPaymentRequests = (): PaymentRequest[] => {
     if (!Array.isArray(parsed)) {
       return [];
     }
-    // Filter out initial mock / old payment request IDs and deleted customers
+    // Filter out initial mock / old payment request IDs and deleted customers/groups
     const deletedIds = new Set<string>(JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]'));
     const realOnly = parsed.filter((r: any) =>
       !['PAY-78201', 'PAY-78202', 'PAY-78203', 'PAY-78190', 'PAY-666408', 'PAY-374835'].includes(r.id) &&
@@ -137,7 +138,10 @@ export const getStoredPaymentRequests = (): PaymentRequest[] => {
       r.customerId !== 'TC-73071' &&
       !deletedIds.has(r.id) &&
       !deletedIds.has(r.customerId) &&
-      (!r.mobile || !deletedIds.has(r.mobile.replace(/\D/g, '')))
+      (!r.mobile || !deletedIds.has(r.mobile.replace(/\D/g, ''))) &&
+      !isCustomerOrLeadDeleted(r.customerId, r.mobile, r.customerName) &&
+      !isCustomerOrLeadDeleted(r.id, r.mobile, r.customerName) &&
+      !isGroupDeleted(r.groupId, r.groupName)
     );
     if (realOnly.length !== parsed.length) {
       localStorage.setItem('paymentRequests', JSON.stringify(realOnly));
@@ -164,7 +168,10 @@ export const syncPaymentRequestsWithBackend = async (): Promise<PaymentRequest[]
           r.customerId !== 'TC-73071' &&
           !deletedIds.has(r.id) &&
           !deletedIds.has(r.customerId) &&
-          (!r.mobile || !deletedIds.has(r.mobile.replace(/\D/g, '')))
+          (!r.mobile || !deletedIds.has(r.mobile.replace(/\D/g, ''))) &&
+          !isCustomerOrLeadDeleted(r.customerId, r.mobile, r.customerName) &&
+          !isCustomerOrLeadDeleted(r.id, r.mobile, r.customerName) &&
+          !isGroupDeleted(r.groupId, r.groupName)
         )
         .map((r: any) => ({
           id: r.id,

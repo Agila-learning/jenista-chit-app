@@ -15,8 +15,9 @@ import {
   X
 } from 'lucide-react';
 import { fetchClient } from '../../../api/client';
-import { printCashReceipt } from '../../../utils/receiptPrinter';
 import { isMockCustomer } from '../../../utils/cleanMockData';
+import { isGroupDeleted, isCustomerOrLeadDeleted } from '../../../utils/cascadeDelete';
+import { printCashReceipt } from '../../../utils/receiptPrinter';
 import type { PaymentRequest } from '../../../utils/paymentRequestsData';
 import {
   syncPaymentRequestsWithBackend,
@@ -124,7 +125,9 @@ export const Payments = () => {
     const cleanWithdrawals = merged.filter((w: any) => 
       !deletedIds.has(w.id) &&
       !deletedIds.has(w.customerId) &&
-      (!w.mobile || !deletedIds.has(w.mobile.replace(/\D/g, '')))
+      (!w.mobile || !deletedIds.has(w.mobile.replace(/\D/g, ''))) &&
+      !isCustomerOrLeadDeleted(w.customerId, w.mobile, w.customerName) &&
+      !isGroupDeleted(w.groupId, w.groupName)
     );
     setWithdrawalRequests(cleanWithdrawals);
     localStorage.setItem('withdrawalRequests', JSON.stringify(cleanWithdrawals));
@@ -159,9 +162,10 @@ export const Payments = () => {
               chits: chits,
             };
           });
-          const cleanMapped = mapped.filter((item: any) => !isMockCustomer(item));
+          const cleanMapped = mapped.filter((item: any) => !isMockCustomer(item) && !isCustomerOrLeadDeleted(item.id, item.mobile, item.name));
           const existingLocal = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
           const localOnly = existingLocal.filter((loc: any) => 
+            !isCustomerOrLeadDeleted(loc.id, loc.mobile, loc.name) &&
             !cleanMapped.some((m: any) => m.id === loc.id || (loc.mongoId && m.mongoId === loc.mongoId) || (loc.customerCode && m.customerCode === loc.customerCode))
           );
           localStorage.setItem('mockCustomers', JSON.stringify([...cleanMapped, ...localOnly]));

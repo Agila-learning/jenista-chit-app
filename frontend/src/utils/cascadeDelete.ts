@@ -317,35 +317,369 @@ export const cascadeDeleteLead = async (params: {
   });
 };
 
+export interface CascadeDeleteGroupTarget {
+  groupId?: string;
+  groupName?: string;
+  mongoId?: string;
+  groupCode?: string;
+}
+
+/**
+ * Checks whether a chit group has been deleted
+ */
+export const isGroupDeleted = (id?: string, name?: string): boolean => {
+  if (!id && !name) return false;
+  try {
+    const raw = localStorage.getItem('deletedGroupIds') || localStorage.getItem('deletedChitGroups');
+    if (!raw) return false;
+    const list: string[] = JSON.parse(raw);
+    if (!Array.isArray(list) || list.length === 0) return false;
+    const set = new Set(list.map(s => String(s).toLowerCase().trim()));
+    if (id && set.has(String(id).toLowerCase().trim())) return true;
+    if (name && set.has(String(name).toLowerCase().trim())) return true;
+  } catch {}
+  return false;
+};
+
+/**
+ * Checks whether a customer or lead has been deleted
+ */
+export const isCustomerOrLeadDeleted = (id?: string, phone?: string, name?: string): boolean => {
+  if (!id && !phone && !name) return false;
+  try {
+    const raw = localStorage.getItem('deletedCustomerIds');
+    if (!raw) return false;
+    const list: string[] = JSON.parse(raw);
+    if (!Array.isArray(list) || list.length === 0) return false;
+    const set = new Set(list.map(s => String(s).toLowerCase().trim()));
+    const pSet = new Set(list.map(s => cleanDigits(s)).filter(Boolean));
+
+    if (id && set.has(String(id).toLowerCase().trim())) return true;
+    if (phone) {
+      const p = cleanDigits(phone);
+      if (p && (pSet.has(p) || set.has(p))) return true;
+    }
+    if (name && set.has(String(name).toLowerCase().trim())) return true;
+  } catch {}
+  return false;
+};
+
+/**
+ * Permanently deletes a chit group and ALL of its associated records everywhere:
+ * - Group catalogue (mockChitGroups)
+ * - Group memberships & enrollments (chitGroupMemberships)
+ * - Removes group enrollments from customer profiles (mockCustomers[].chits)
+ * - Payment requests for this group (paymentRequests)
+ * - Withdrawal claims for this group (withdrawalRequests)
+ * - Receipts referencing this group (staffReceipts)
+ * - General ledger transactions referencing this group (ledgerTransactions)
+ * - Bank routing assignments (companyBankAssignments)
+ * - Notifications for this group (systemNotifications)
+ * - Backend MongoDB collections via DELETE /chit-groups/:id
+ */
+export const cascadeDeleteGroup = async (target: CascadeDeleteGroupTarget | string): Promise<void> => {
+  const targetObj: CascadeDeleteGroupTarget = typeof target === 'string'
+    ? { groupId: target, groupName: target }
+    : target;
+
+  const idSet = new Set<string>();
+  const nameSet = new Set<string>();
+
+  const addId = (val?: string) => {
+    if (!val) return;
+    const s = String(val).trim();
+    if (!s) return;
+    idSet.add(s);
+    idSet.add(s.toLowerCase());
+    nameSet.add(s);
+    nameSet.add(s.toLowerCase());
+  };
+
+  addId(targetObj.groupId);
+  addId(targetObj.groupName);
+  addId(targetObj.mongoId);
+  addId(targetObj.groupCode);
+
+  // 1. Cross-reference with mockChitGroups in localStorage to find matching details
+  try {
+    const rawGroups = localStorage.getItem('mockChitGroups');
+    if (rawGroups) {
+      const parsed: any[] = JSON.parse(rawGroups);
+      parsed.forEach((g: any) => {
+        const gId = String(g.id || g.code || '').trim();
+        const gName = String(g.name || g.groupName || '').trim();
+        const gMongo = String(g.mongoId || g._id || '').trim();
+        const isMatch = (
+          (gId && (idSet.has(gId) || idSet.has(gId.toLowerCase()))) ||
+          (gName && (nameSet.has(gName) || nameSet.has(gName.toLowerCase()))) ||
+          (gMongo && (idSet.has(gMongo) || idSet.has(gMongo.toLowerCase())))
+        );
+        if (isMatch) {
+          addId(g.id);
+          addId(g.code);
+          addId(g.name);
+          addId(g.groupName);
+          addId(g.groupCode);
+          addId(g.mongoId);
+          addId(g._id);
+        }
+      });
+    }
+  } catch {}
+
+  const matchGroup = (idOrName?: string) => {
+    if (!idOrName) return false;
+    const s = String(idOrName).trim().toLowerCase();
+    return idSet.has(s) || nameSet.has(s);
+  };
+
+  // 2. Blacklist in deletedGroupIds & deletedChitGroups so sync loops NEVER resurrect it
+  try {
+    const deletedList: string[] = JSON.parse(localStorage.getItem('deletedGroupIds') || '[]');
+    idSet.forEach(item => {
+      const lower = item.toLowerCase();
+      if (!deletedList.includes(lower)) deletedList.push(lower);
+    });
+    localStorage.setItem('deletedGroupIds', JSON.stringify(deletedList));
+    localStorage.setItem('deletedChitGroups', JSON.stringify(deletedList));
+  } catch {}
+
+  // 3. Purge from mockChitGroups
+  try {
+    const rawGroups = localStorage.getItem('mockChitGroups');
+    if (rawGroups) {
+      const parsed: any[] = JSON.parse(rawGroups);
+      const cleanGroups = parsed.filter((g: any) => !matchGroup(g.id) && !matchGroup(g.name) && !matchGroup(g.code) && !matchGroup(g.mongoId));
+      localStorage.setItem('mockChitGroups', JSON.stringify(cleanGroups));
+    }
+  } catch {}
+
+  // 4. Purge from chitGroupMemberships
+  try {
+    const rawMem = localStorage.getItem('chitGroupMemberships');
+    if (rawMem) {
+      const parsed: any[] = JSON.parse(rawMem);
+      const cleanMem = parsed.filter((m: any) => !matchGroup(m.groupId) && !matchGroup(m.groupName));
+      localStorage.setItem('chitGroupMemberships', JSON.stringify(cleanMem));
+    }
+  } catch {}
+
+  // 5. Purge group from mockCustomers.chits
+  try {
+    const rawCusts = localStorage.getItem('mockCustomers');
+    if (rawCusts) {
+      const parsed: any[] = JSON.parse(rawCusts);
+      const updatedCusts = parsed.map((c: any) => {
+        if (Array.isArray(c.chits)) {
+          const remainingChits = c.chits.filter((ch: any) => !matchGroup(ch.groupId) && !matchGroup(ch.groupName));
+          return {
+            ...c,
+            chits: remainingChits,
+            activeChits: remainingChits.length
+          };
+        }
+        return c;
+      });
+      localStorage.setItem('mockCustomers', JSON.stringify(updatedCusts));
+    }
+  } catch {}
+
+  // 6. Purge from paymentRequests
+  try {
+    const rawPayments = localStorage.getItem('paymentRequests');
+    if (rawPayments) {
+      const parsed: any[] = JSON.parse(rawPayments);
+      const cleanPayments = parsed.filter((p: any) => !matchGroup(p.groupId) && !matchGroup(p.groupName));
+      localStorage.setItem('paymentRequests', JSON.stringify(cleanPayments));
+    }
+  } catch {}
+
+  // 7. Purge from withdrawalRequests
+  try {
+    const rawWithdrawals = localStorage.getItem('withdrawalRequests');
+    if (rawWithdrawals) {
+      const parsed: any[] = JSON.parse(rawWithdrawals);
+      const cleanWithdrawals = parsed.filter((w: any) => !matchGroup(w.groupId) && !matchGroup(w.groupName));
+      localStorage.setItem('withdrawalRequests', JSON.stringify(cleanWithdrawals));
+    }
+  } catch {}
+
+  // 8. Purge from staffReceipts
+  try {
+    const rawReceipts = localStorage.getItem('staffReceipts');
+    if (rawReceipts) {
+      const parsed: any[] = JSON.parse(rawReceipts);
+      const cleanReceipts = parsed.filter((r: any) => !matchGroup(r.chitGroup) && !matchGroup(r.groupName));
+      localStorage.setItem('staffReceipts', JSON.stringify(cleanReceipts));
+    }
+  } catch {}
+
+  // 9. Purge from ledgerTransactions
+  try {
+    const rawLedger = localStorage.getItem('ledgerTransactions');
+    if (rawLedger) {
+      const parsed: any[] = JSON.parse(rawLedger);
+      const cleanLedger = parsed.filter((l: any) => !matchGroup(l.groupId) && !matchGroup(l.groupName) && !matchGroup(l.group));
+      localStorage.setItem('ledgerTransactions', JSON.stringify(cleanLedger));
+    }
+  } catch {}
+
+  // 10. Purge from bankAssignments / companyBankAssignments
+  try {
+    ['bankAssignments', 'companyBankAssignments'].forEach(key => {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.groupAssignments) {
+          Object.keys(parsed.groupAssignments).forEach(k => {
+            if (matchGroup(k)) delete parsed.groupAssignments[k];
+          });
+          localStorage.setItem(key, JSON.stringify(parsed));
+        }
+      }
+    });
+  } catch {}
+
+  // 11. Purge from systemNotifications
+  try {
+    const rawNotifs = localStorage.getItem('systemNotifications');
+    if (rawNotifs) {
+      const parsed: any[] = JSON.parse(rawNotifs);
+      const cleanNotifs = parsed.filter((n: any) => {
+        if (matchGroup(n.metadata?.groupId) || matchGroup(n.metadata?.groupName)) return false;
+        return true;
+      });
+      localStorage.setItem('systemNotifications', JSON.stringify(cleanNotifs));
+    }
+  } catch {}
+
+  // 12. Dispatch reactive events
+  window.dispatchEvent(new Event('storage'));
+  window.dispatchEvent(new CustomEvent('paymentSync'));
+  window.dispatchEvent(new CustomEvent('notificationSync'));
+
+  // 13. Call backend MongoDB deletion API
+  try {
+    const primaryId = targetObj.mongoId || targetObj.groupId || targetObj.groupName;
+    if (primaryId) {
+      await fetchClient(`/chit-groups/${encodeURIComponent(primaryId)}`, {
+        method: 'DELETE'
+      });
+    }
+    if (targetObj.groupName && targetObj.groupName !== primaryId) {
+      await fetchClient(`/chit-groups/${encodeURIComponent(targetObj.groupName)}`, {
+        method: 'DELETE'
+      }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('Backend chit group deletion completed offline or failed:', err);
+  }
+};
+
 /**
  * Startup integrity sanitizer: purges any lingering payment, withdrawal, or ledger records
- * belonging to blacklisted deletedCustomerIds.
+ * belonging to blacklisted deletedCustomerIds and deletedGroupIds.
  */
 export const cleanupDeletedRecords = (): void => {
   try {
     const deletedRaw = localStorage.getItem('deletedCustomerIds');
-    if (!deletedRaw) return;
-    const deletedList: string[] = JSON.parse(deletedRaw);
-    if (!Array.isArray(deletedList) || deletedList.length === 0) return;
+    const deletedGroupRaw = localStorage.getItem('deletedGroupIds') || localStorage.getItem('deletedChitGroups');
 
-    const deletedSet = new Set(deletedList.map(item => String(item).toLowerCase().trim()));
-    const deletedPhoneSet = new Set(deletedList.map(item => cleanDigits(item)).filter(Boolean));
+    const deletedSet = new Set<string>();
+    const deletedPhoneSet = new Set<string>();
+    if (deletedRaw) {
+      const list: string[] = JSON.parse(deletedRaw);
+      if (Array.isArray(list)) {
+        list.forEach(i => {
+          deletedSet.add(String(i).toLowerCase().trim());
+          const d = cleanDigits(i);
+          if (d) deletedPhoneSet.add(d);
+        });
+      }
+    }
 
-    const isRecordDeleted = (id?: string, phone?: string, _name?: string): boolean => {
+    const deletedGroupSet = new Set<string>();
+    if (deletedGroupRaw) {
+      const gList: string[] = JSON.parse(deletedGroupRaw);
+      if (Array.isArray(gList)) {
+        gList.forEach(g => deletedGroupSet.add(String(g).toLowerCase().trim()));
+      }
+    }
+
+    const isRecordDeleted = (id?: string, phone?: string, name?: string): boolean => {
       if (id && deletedSet.has(String(id).toLowerCase().trim())) return true;
       if (phone) {
         const digits = cleanDigits(phone);
         if (digits && deletedPhoneSet.has(digits)) return true;
       }
+      if (name && deletedSet.has(String(name).toLowerCase().trim())) return true;
       return false;
     };
+
+    const isGrpDeleted = (id?: string, name?: string): boolean => {
+      if (id && deletedGroupSet.has(String(id).toLowerCase().trim())) return true;
+      if (name && deletedGroupSet.has(String(name).toLowerCase().trim())) return true;
+      return false;
+    };
+
+    // Clean mockChitGroups
+    if (deletedGroupSet.size > 0) {
+      const rawGroups = localStorage.getItem('mockChitGroups');
+      if (rawGroups) {
+        const parsed = JSON.parse(rawGroups);
+        if (Array.isArray(parsed)) {
+          const clean = parsed.filter(g => !isGrpDeleted(g.id, g.name) && !isGrpDeleted(g.code, g.groupName) && !isGrpDeleted(g.mongoId));
+          if (clean.length !== parsed.length) {
+            localStorage.setItem('mockChitGroups', JSON.stringify(clean));
+          }
+        }
+      }
+
+      // Clean chitGroupMemberships
+      const rawMem = localStorage.getItem('chitGroupMemberships');
+      if (rawMem) {
+        const parsed = JSON.parse(rawMem);
+        if (Array.isArray(parsed)) {
+          const clean = parsed.filter(m => !isGrpDeleted(m.groupId, m.groupName) && !isRecordDeleted(m.customerId, m.mobile, m.customerName));
+          if (clean.length !== parsed.length) {
+            localStorage.setItem('chitGroupMemberships', JSON.stringify(clean));
+          }
+        }
+      }
+
+      // Clean mockCustomers chits
+      const rawCusts = localStorage.getItem('mockCustomers');
+      if (rawCusts) {
+        const parsed = JSON.parse(rawCusts);
+        if (Array.isArray(parsed)) {
+          let modified = false;
+          const clean = parsed.map((c: any) => {
+            if (Array.isArray(c.chits)) {
+              const remaining = c.chits.filter((ch: any) => !isGrpDeleted(ch.groupId, ch.groupName));
+              if (remaining.length !== c.chits.length) {
+                modified = true;
+                return { ...c, chits: remaining, activeChits: remaining.length };
+              }
+            }
+            return c;
+          });
+          if (modified) {
+            localStorage.setItem('mockCustomers', JSON.stringify(clean));
+          }
+        }
+      }
+    }
 
     // Clean paymentRequests
     const rawPayments = localStorage.getItem('paymentRequests');
     if (rawPayments) {
       const parsed = JSON.parse(rawPayments);
       if (Array.isArray(parsed)) {
-        const clean = parsed.filter(p => !isRecordDeleted(p.id, p.mobile, p.customerName) && !isRecordDeleted(p.customerId));
+        const clean = parsed.filter(p => 
+          !isRecordDeleted(p.id, p.mobile, p.customerName) && 
+          !isRecordDeleted(p.customerId) &&
+          !isGrpDeleted(p.groupId, p.groupName)
+        );
         if (clean.length !== parsed.length) {
           localStorage.setItem('paymentRequests', JSON.stringify(clean));
         }
@@ -357,7 +691,11 @@ export const cleanupDeletedRecords = (): void => {
     if (rawWithdrawals) {
       const parsed = JSON.parse(rawWithdrawals);
       if (Array.isArray(parsed)) {
-        const clean = parsed.filter(w => !isRecordDeleted(w.id, w.mobile, w.customerName) && !isRecordDeleted(w.customerId));
+        const clean = parsed.filter(w => 
+          !isRecordDeleted(w.id, w.mobile, w.customerName) && 
+          !isRecordDeleted(w.customerId) &&
+          !isGrpDeleted(w.groupId, w.groupName)
+        );
         if (clean.length !== parsed.length) {
           localStorage.setItem('withdrawalRequests', JSON.stringify(clean));
         }
@@ -369,7 +707,11 @@ export const cleanupDeletedRecords = (): void => {
     if (rawReceipts) {
       const parsed = JSON.parse(rawReceipts);
       if (Array.isArray(parsed)) {
-        const clean = parsed.filter(r => !isRecordDeleted(r.receiptNo, r.mobileNumber, r.customerName) && !isRecordDeleted(r.customerId));
+        const clean = parsed.filter(r => 
+          !isRecordDeleted(r.receiptNo, r.mobileNumber, r.customerName) && 
+          !isRecordDeleted(r.customerId) &&
+          !isGrpDeleted(r.chitGroup, r.groupName)
+        );
         if (clean.length !== parsed.length) {
           localStorage.setItem('staffReceipts', JSON.stringify(clean));
         }
@@ -381,7 +723,13 @@ export const cleanupDeletedRecords = (): void => {
     if (rawLedger) {
       const parsed = JSON.parse(rawLedger);
       if (Array.isArray(parsed)) {
-        const clean = parsed.filter(l => !isRecordDeleted(l.id, l.mobileNumber, l.customerName) && !isRecordDeleted(l.customerId) && !isRecordDeleted(l.paymentRequestId));
+        const clean = parsed.filter(l => 
+          !isRecordDeleted(l.id, l.mobileNumber, l.customerName) && 
+          !isRecordDeleted(l.customerId) && 
+          !isRecordDeleted(l.paymentRequestId) &&
+          !isGrpDeleted(l.groupId, l.groupName) &&
+          !isGrpDeleted(l.group)
+        );
         if (clean.length !== parsed.length) {
           localStorage.setItem('ledgerTransactions', JSON.stringify(clean));
         }

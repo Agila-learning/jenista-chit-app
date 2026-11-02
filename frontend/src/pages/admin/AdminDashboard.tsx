@@ -48,9 +48,9 @@ import {
   isPendingPayment,
   type PaymentRequest
 } from '../../utils/paymentRequestsData';
-import { purgeMockData, isMockGroup, isMockCustomer } from '../../utils/cleanMockData';
+import { purgeMockData, isMockGroup, isMockCustomer, isDeletedGroup } from '../../utils/cleanMockData';
 import { addSystemNotification } from '../../utils/notificationsData';
-import { cascadeDeleteCustomer } from '../../utils/cascadeDelete';
+import { cascadeDeleteCustomer, cascadeDeleteGroup, isGroupDeleted, isCustomerOrLeadDeleted } from '../../utils/cascadeDelete';
 import {
   getStoredBankAccounts,
   resolveBankForPayment
@@ -357,8 +357,8 @@ export const AdminDashboard = () => {
 
       const groupMap = new Map<string, any>();
 
-      // Populate from existing raw groups (filtering out genuine mock templates)
-      rawGroups.filter((g: any) => !isMockGroup(g)).forEach((g: any) => {
+      // Populate from existing raw groups (filtering out genuine mock templates and deleted groups)
+      rawGroups.filter((g: any) => !isMockGroup(g) && !isDeletedGroup(g)).forEach((g: any) => {
         const key = String(g.id || g.name || '').trim();
         if (key) {
           groupMap.set(key.toLowerCase(), {
@@ -390,10 +390,10 @@ export const AdminDashboard = () => {
       }
 
       memberships.forEach((m: any) => {
-        if (!isMockCustomer({ id: m.customerId, name: m.customerName })) {
+        if (!isMockCustomer({ id: m.customerId, name: m.customerName }) && !isCustomerOrLeadDeleted(m.customerId || m.id, m.mobile || m.phone, m.customerName || m.name)) {
           const grpKey = String(m.groupId || m.groupName || '').trim();
           const grpName = String(m.groupName || m.groupId || '').trim();
-          if (grpKey && !isMockGroup({ id: grpKey, name: grpName })) {
+          if (grpKey && !isMockGroup({ id: grpKey, name: grpName }) && !isDeletedGroup({ id: grpKey, name: grpName })) {
             const lowKey = grpKey.toLowerCase();
             const lowName = grpName.toLowerCase();
             if (!groupMap.has(lowKey) && !groupMap.has(lowName)) {
@@ -429,14 +429,14 @@ export const AdminDashboard = () => {
         diskCustomers = [];
       }
 
-      const allCustomerSources = [...diskCustomers, ...(liveCustomers || [])].filter((c: any) => !isMockCustomer(c));
+      const allCustomerSources = [...diskCustomers, ...(liveCustomers || [])].filter((c: any) => !isMockCustomer(c) && !isCustomerOrLeadDeleted(c.id, c.mobile || c.phone, c.name || c.fullName));
 
       allCustomerSources.forEach((c: any) => {
         if (Array.isArray(c.chits) && c.chits.length > 0) {
           c.chits.forEach((ch: any) => {
             const grpKey = String(ch.groupId || ch.groupName || '').trim();
             const grpName = String(ch.groupName || ch.groupId || '').trim();
-            if (grpKey && !isMockGroup({ id: grpKey, name: grpName })) {
+            if (grpKey && !isMockGroup({ id: grpKey, name: grpName }) && !isDeletedGroup({ id: grpKey, name: grpName })) {
               const lowKey = grpKey.toLowerCase();
               const lowName = grpName.toLowerCase();
               if (!groupMap.has(lowKey) && !groupMap.has(lowName)) {
@@ -611,10 +611,16 @@ export const AdminDashboard = () => {
         if (res && res.data && Array.isArray(res.data)) {
           const localSaved = JSON.parse(localStorage.getItem('withdrawalRequests') || '[]');
           const map = new Map();
-          localSaved.forEach((w: any) => map.set(w.id || `${w.customerId}_${w.groupId}`, w));
+          localSaved.forEach((w: any) => {
+            if (!isCustomerOrLeadDeleted(w.customerId, w.mobile, w.customerName) && !isGroupDeleted(w.groupId, w.groupName)) {
+              map.set(w.id || `${w.customerId}_${w.groupId}`, w);
+            }
+          });
           res.data.forEach((w: any) => {
-            const k = w.id || w._id || `${w.customerId}_${w.groupId}`;
-            if (!map.has(k)) map.set(k, w);
+            if (!isCustomerOrLeadDeleted(w.customerId, w.mobile, w.customerName) && !isGroupDeleted(w.groupId, w.groupName)) {
+              const k = w.id || w._id || `${w.customerId}_${w.groupId}`;
+              if (!map.has(k)) map.set(k, w);
+            }
           });
           const merged = Array.from(map.values());
           localStorage.setItem('withdrawalRequests', JSON.stringify(merged));
@@ -627,9 +633,14 @@ export const AdminDashboard = () => {
     fetchClient('/chit-groups')
       .then((res: any) => {
         if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
-          const currentSaved = JSON.parse(localStorage.getItem('mockChitGroups') || '[]');
+          const currentSaved = (JSON.parse(localStorage.getItem('mockChitGroups') || '[]')).filter((cg: any) => !isDeletedGroup(cg) && !isMockGroup(cg));
           const merged = [...currentSaved];
           res.data.forEach((bg: any) => {
+            if (isDeletedGroup(bg) || isMockGroup(bg)) {
+              // Proactively clean deleted group from backend
+              fetchClient(`/chit-groups/${encodeURIComponent(bg._id || bg.groupCode || bg.groupName)}`, { method: 'DELETE' }).catch(() => {});
+              return;
+            }
             const exists = merged.some((cg: any) =>
               cg.id === bg._id ||
               cg.id === bg.groupCode ||
@@ -747,7 +758,14 @@ export const AdminDashboard = () => {
           // Auto-resurrect converted leads (skipping explicitly deleted leads)
           try {
             const storedLeads = JSON.parse(localStorage.getItem('websiteLeads') || '[]');
-            storedLeads.filter((l: any) => l.status !== 'REJECTED' && !deletedIds.has(l.convertedCustomerId) && (l.status === 'CONVERTED' || (l.fullName && l.fullName.toLowerCase().includes('agila')))).forEach((lead: any) => {
+            storedLeads.filter((l: any) => 
+              l.status !== 'REJECTED' && 
+              !deletedIds.has(l.id) &&
+              !deletedIds.has(l.convertedCustomerId) && 
+              !isCustomerOrLeadDeleted(l.id, l.phone, l.fullName) &&
+              !isCustomerOrLeadDeleted(l.convertedCustomerId, l.phone, l.fullName) &&
+              (l.status === 'CONVERTED' || (l.fullName && l.fullName.toLowerCase().includes('agila')))
+            ).forEach((lead: any) => {
               const leadPhone = (lead.phone || '').replace(/\D/g, '');
               const leadName = (lead.fullName || '').trim().toLowerCase();
               const alreadyExists = combined.some((c: any) => {
@@ -2768,26 +2786,17 @@ export const AdminDashboard = () => {
   const getFilteredSchemeCustomers = (filterScheme: 'GROUPS' | 'FIXED' | 'REGULAR' | 'AUCTION' | null) => {
     if (!filterScheme || filterScheme === 'GROUPS') return [];
 
-    const deletedList: string[] = JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]');
-    const deletedSet = new Set(deletedList.map(s => String(s).toLowerCase().trim()));
-    const isDeleted = (id?: string, phone?: string, mongoId?: string) => {
-      if (id && deletedSet.has(String(id).toLowerCase().trim())) return true;
-      if (mongoId && deletedSet.has(String(mongoId).toLowerCase().trim())) return true;
-      const cleanP = (phone || '').replace(/\D/g, '');
-      if (cleanP && (deletedSet.has(cleanP) || deletedSet.has((phone || '').toLowerCase().trim()))) return true;
-      return false;
-    };
-
     const schemePrefix = filterScheme === 'FIXED' ? 'FIX' : filterScheme === 'AUCTION' ? 'AUC' : 'REG';
     const customerMap = new Map<string, any>();
 
     // 1. Group enrolledMembers
     chitGroups.forEach((g: any) => {
+      if (isDeletedGroup(g) || isMockGroup(g)) return;
+
       if (Array.isArray(g.enrolledMembers)) {
         g.enrolledMembers.forEach((m: any) => {
-          if (!isMockCustomer(m)) {
+          if (!isMockCustomer(m) && !isCustomerOrLeadDeleted(m.customerId || m.id, m.mobile || m.phone, m.customerName || m.name)) {
             const custId = m.customerId || m.id || m.mobile;
-            if (isDeleted(custId, m.mobile || m.phone, m.mongoId)) return;
 
             const s = (m.scheme || '').toUpperCase();
             const matches = schemePrefix === 'REG'
@@ -2820,9 +2829,9 @@ export const AdminDashboard = () => {
     // 2. LocalStorage chitGroupMemberships
     const diskMemberships = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
     diskMemberships.forEach((m: any) => {
-      if (!isMockCustomer({ id: m.customerId, name: m.customerName })) {
+      if (isGroupDeleted(m.groupId, m.groupName) || isMockGroup({ id: m.groupId, name: m.groupName })) return;
+      if (!isMockCustomer({ id: m.customerId, name: m.customerName }) && !isCustomerOrLeadDeleted(m.customerId || m.id, m.mobile || m.phone, m.customerName || m.name)) {
         const custId = m.customerId || m.id;
-        if (isDeleted(custId, m.mobile || m.phone, m.mongoId)) return;
 
         const s = (m.scheme || '').toUpperCase();
         const matches = schemePrefix === 'REG'
@@ -2853,12 +2862,12 @@ export const AdminDashboard = () => {
     });
 
     // 3. LocalStorage mockCustomers / MongoDB customers
-    const diskCusts = JSON.parse(localStorage.getItem('mockCustomers') || '[]').filter((c: any) => !isMockCustomer(c));
+    const diskCusts = JSON.parse(localStorage.getItem('mockCustomers') || '[]').filter((c: any) => !isMockCustomer(c) && !isCustomerOrLeadDeleted(c.id, c.mobile || c.phone, c.name || c.fullName));
     diskCusts.forEach((c: any) => {
-      if (isDeleted(c.id, c.mobile || c.phone, c.mongoId)) return;
-
       if (Array.isArray(c.chits) && c.chits.length > 0) {
         c.chits.forEach((ch: any) => {
+          if (isGroupDeleted(ch.groupId, ch.groupName) || isMockGroup({ id: ch.groupId, name: ch.groupName })) return;
+
           const s = (ch.scheme || c.scheme || '').toUpperCase();
           const matches = schemePrefix === 'REG'
             ? (!s.includes('FIX') && !s.includes('AUC'))
@@ -2919,7 +2928,7 @@ export const AdminDashboard = () => {
       const storedLeads = JSON.parse(localStorage.getItem('websiteLeads') || '[]');
       storedLeads.filter((l: any) => l.status === 'CONVERTED' || (l.fullName && l.fullName.toLowerCase().includes('agila'))).forEach((lead: any) => {
         const leadId = lead.convertedCustomerId || `LEAD-${lead.id}`;
-        if (isDeleted(leadId, lead.phone)) return;
+        if (isCustomerOrLeadDeleted(lead.id, lead.phone, lead.fullName) || isCustomerOrLeadDeleted(lead.convertedCustomerId, lead.phone, lead.fullName) || isCustomerOrLeadDeleted(leadId, lead.phone, lead.fullName)) return;
 
         const rawP = lead.interestedPlan || '';
         let dScheme: 'Auction' | 'Fixed' | 'Regular' = 'Auction';
@@ -2992,24 +3001,16 @@ export const AdminDashboard = () => {
 
   // Comprehensive Enrolled Members List across all Groups with Resolved Bank Allocation
   const allBankAllocatedMembers = (() => {
-    const deletedList: string[] = JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]');
-    const deletedSet = new Set(deletedList.map(s => String(s).toLowerCase().trim()));
-    const isDeleted = (id?: string, phone?: string, mongoId?: string) => {
-      if (id && deletedSet.has(String(id).toLowerCase().trim())) return true;
-      if (mongoId && deletedSet.has(String(mongoId).toLowerCase().trim())) return true;
-      const cleanP = (phone || '').replace(/\D/g, '');
-      if (cleanP && (deletedSet.has(cleanP) || deletedSet.has((phone || '').toLowerCase().trim()))) return true;
-      return false;
-    };
-
     const map = new Map<string, any>();
 
     chitGroups.forEach((g: any) => {
+      if (isDeletedGroup(g) || isMockGroup(g)) return;
+
       if (Array.isArray(g.enrolledMembers)) {
         g.enrolledMembers.forEach((m: any) => {
           if (!isMockCustomer(m)) {
             const custId = m.customerId || m.id || m.mobile;
-            if (isDeleted(custId, m.mobile || m.phone, m.mongoId)) return;
+            if (isCustomerOrLeadDeleted(custId, m.mobile || m.phone, m.customerName || m.name)) return;
             const uniqueKey = `${custId}_${g.id || g.name}`;
             const resolved = resolveBankForPayment(custId, g.id, g.name);
             map.set(uniqueKey, {
@@ -3036,9 +3037,10 @@ export const AdminDashboard = () => {
       const storedMems = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
       if (Array.isArray(storedMems)) {
         storedMems.forEach((m: any) => {
+          if (isGroupDeleted(m.groupId, m.groupName) || isMockGroup({ id: m.groupId, name: m.groupName })) return;
           if (!isMockCustomer(m)) {
             const custId = m.customerId || m.id || m.mobile;
-            if (isDeleted(custId, m.mobile || m.phone, m.mongoId)) return;
+            if (isCustomerOrLeadDeleted(custId, m.mobile || m.phone, m.customerName || m.name)) return;
             const gId = m.groupId || m.groupName;
             const uniqueKey = `${custId}_${gId}`;
             if (!map.has(uniqueKey)) {
@@ -3070,8 +3072,9 @@ export const AdminDashboard = () => {
         storedCusts.forEach((c: any) => {
           if (!isMockCustomer(c) && Array.isArray(c.chits)) {
             const custId = c.id || c.customerCode || c.mongoId || c.mobile;
-            if (isDeleted(custId, c.mobile || c.phone, c.mongoId)) return;
+            if (isCustomerOrLeadDeleted(custId, c.mobile || c.phone, c.name || c.fullName)) return;
             c.chits.forEach((ch: any) => {
+              if (isGroupDeleted(ch.groupId, ch.groupName) || isMockGroup({ id: ch.groupId, name: ch.groupName })) return;
               const gId = ch.groupId || ch.groupName;
               const uniqueKey = `${custId}_${gId}`;
               if (!map.has(uniqueKey)) {
@@ -3413,24 +3416,15 @@ export const AdminDashboard = () => {
                               <span>Add Customer</span>
                             </button>
                             <button
-                              onClick={() => {
-                                if (window.confirm(`Are you sure you want to delete group "${g.name}"?`)) {
+                              onClick={async () => {
+                                if (window.confirm(`Are you sure you want to permanently delete group "${g.name}"? This will delete all memberships, schedules, payment requests, and records.`)) {
+                                  await cascadeDeleteGroup({
+                                    groupId: g.id,
+                                    groupName: g.name,
+                                    mongoId: g.mongoId
+                                  });
                                   const updated = chitGroups.filter((group: any) => group.id !== g.id && group.name !== g.name);
                                   setChitGroups(updated);
-                                  localStorage.setItem('mockChitGroups', JSON.stringify(updated));
-                                  // Also clean from customer chits
-                                  const diskCusts = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
-                                  const cleanedCusts = diskCusts.map((c: any) => ({
-                                    ...c,
-                                    chits: Array.isArray(c.chits) ? c.chits.filter((ch: any) => ch.groupId !== g.id && ch.groupName !== g.name && ch.groupId !== g.name) : []
-                                  }));
-                                  localStorage.setItem('mockCustomers', JSON.stringify(cleanedCusts));
-                                  setCustomers(cleanedCusts);
-                                  // Also clean from memberships
-                                  const diskMem = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
-                                  const cleanedMem = diskMem.filter((m: any) => m.groupId !== g.id && m.groupName !== g.name && m.groupId !== g.name);
-                                  localStorage.setItem('chitGroupMemberships', JSON.stringify(cleanedMem));
-                                  window.dispatchEvent(new Event('storage'));
                                 }
                               }}
                               className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"

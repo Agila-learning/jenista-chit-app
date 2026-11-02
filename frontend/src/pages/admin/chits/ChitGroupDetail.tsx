@@ -4,7 +4,7 @@ import { Button } from '../../../components/common/Button';
 import { formatCurrency } from '../../../utils/format';
 import { Layers, Gavel, Calendar, Users, Target, AlertCircle, Landmark } from 'lucide-react';
 import { resolveBankForPayment } from '../../../utils/bankAccountsData';
-import { isMockGroup, isMockCustomer } from '../../../utils/cleanMockData';
+import { isMockGroup, isDeletedGroup, isMockCustomer } from '../../../utils/cleanMockData';
 
 export const ChitGroupDetail = () => {
   const { id } = useParams();
@@ -16,7 +16,7 @@ export const ChitGroupDetail = () => {
     if (saved) {
       try {
         const groups = JSON.parse(saved);
-        const found = groups.find((g: any) => (g.id || g.code) === id && !isMockGroup(g));
+        const found = groups.find((g: any) => (g.id || g.code) === id && !isMockGroup(g) && !isDeletedGroup(g));
         setGroup(found || null);
       } catch {
         setGroup(null);

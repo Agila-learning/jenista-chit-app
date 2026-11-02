@@ -24,7 +24,8 @@ import { formatCurrency, formatDate } from '../../utils/format';
 import { printCashReceipt } from '../../utils/receiptPrinter';
 import { useAuth } from '../../store/AuthContext';
 import { fetchClient } from '../../api/client';
-import { isMockCustomer, isMockGroup } from '../../utils/cleanMockData';
+import { isMockCustomer, isMockGroup, isDeletedGroup } from '../../utils/cleanMockData';
+import { isCustomerOrLeadDeleted, isGroupDeleted } from '../../utils/cascadeDelete';
 import { onPaymentSync } from '../../utils/paymentRequestsData';
 import { syncOverdueAndDisbursementAlerts } from '../../utils/notificationsData';
 
@@ -94,7 +95,7 @@ export const StaffDashboard = () => {
     if (g) {
       try {
         const parsed = JSON.parse(g);
-        const cleanGroups = Array.isArray(parsed) ? parsed.filter((group: any) => !isMockGroup(group)) : [];
+        const cleanGroups = Array.isArray(parsed) ? parsed.filter((group: any) => !isMockGroup(group) && !isDeletedGroup(group)) : [];
         setChitGroups(cleanGroups);
       } catch {
         setChitGroups([]);
@@ -140,7 +141,9 @@ export const StaffDashboard = () => {
           w.status === 'PENDING_ADMIN_DISBURSAL' &&
           !deletedIds.has(w.id) &&
           !deletedIds.has(w.customerId) &&
-          (!w.mobile || !deletedIds.has(w.mobile.replace(/\D/g, '')))
+          (!w.mobile || !deletedIds.has(w.mobile.replace(/\D/g, ''))) &&
+          !isCustomerOrLeadDeleted(w.customerId, w.mobile, w.customerName) &&
+          !isGroupDeleted(w.groupId, w.groupName)
         ) : []);
       } else {
         setPendingWithdrawals([]);
@@ -163,7 +166,7 @@ export const StaffDashboard = () => {
             chits: item.chits || [],
             referredBy: item.referredBy
           }));
-          setCustomers(mapped.filter((c: any) => !isMockCustomer(c)));
+          setCustomers(mapped.filter((c: any) => !isMockCustomer(c) && !isCustomerOrLeadDeleted(c.id, c.mobile, c.name)));
         }
       })
       .catch(() => {});

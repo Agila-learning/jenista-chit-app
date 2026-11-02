@@ -412,6 +412,7 @@ export const CustomerProfile = () => {
       const groups = JSON.parse(localStorage.getItem('mockChitGroups') || '[]');
       let groupMem: any = null;
       groups.forEach((g: any) => {
+        if (isMockGroup(g)) return;
         if (Array.isArray(g.enrolledMembers)) {
           const foundM = g.enrolledMembers.find((m: any) => m.customerId === id || (id.replace(/\D/g, '') && (m.mobile || m.phone || '').replace(/\D/g, '') === id.replace(/\D/g, '')));
           if (foundM) groupMem = { ...foundM, groupId: g.code || g.id, groupName: g.name };

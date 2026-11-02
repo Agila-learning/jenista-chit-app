@@ -16,9 +16,9 @@ import {
 import { formatCurrency } from '../../../utils/format';
 import { Link } from 'react-router-dom';
 import { fetchClient } from '../../../api/client';
-import { isMockCustomer, isMockGroup } from '../../../utils/cleanMockData';
+import { isMockCustomer, isMockGroup, isDeletedGroup } from '../../../utils/cleanMockData';
 import { addSystemNotification } from '../../../utils/notificationsData';
-import { cascadeDeleteCustomer } from '../../../utils/cascadeDelete';
+import { cascadeDeleteCustomer, isCustomerOrLeadDeleted } from '../../../utils/cascadeDelete';
 
 export const CustomerList = () => {
   const [searchName, setSearchName] = useState('');
@@ -54,7 +54,7 @@ export const CustomerList = () => {
   const availableGroups = useMemo(() => {
     try {
       const g = localStorage.getItem('mockChitGroups');
-      return g ? JSON.parse(g).filter((item: any) => !isMockGroup(item)) : [];
+      return g ? JSON.parse(g).filter((item: any) => !isMockGroup(item) && !isDeletedGroup(item)) : [];
     } catch {
       return [];
     }
@@ -105,10 +105,10 @@ export const CustomerList = () => {
         });
 
         const deletedIds = new Set<string>(JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]'));
-        const cleanMapped = mapped.filter((c: any) => !isMockCustomer(c) && !deletedIds.has(c.id) && (!c.mongoId || !deletedIds.has(c.mongoId)));
+        const cleanMapped = mapped.filter((c: any) => !isMockCustomer(c) && !isCustomerOrLeadDeleted(c.id, c.mobile, c.name) && !deletedIds.has(c.id) && (!c.mongoId || !deletedIds.has(c.mongoId)));
         
         const localOnly = localSaved.filter((lc: any) => {
-          if (isMockCustomer(lc)) return false;
+          if (isMockCustomer(lc) || isCustomerOrLeadDeleted(lc.id, lc.mobile, lc.name)) return false;
           if (deletedIds.has(lc.id) || (lc.mongoId && deletedIds.has(lc.mongoId)) || (lc.mobile && deletedIds.has(lc.mobile))) return false;
           // If customer has a mongoId but is missing from backend MongoDB list, it was deleted!
           if (lc.mongoId && !mongoList.some((item: any) => item._id === lc.mongoId)) return false;
@@ -122,7 +122,13 @@ export const CustomerList = () => {
         const combined = [...cleanMapped, ...localOnly];
 
         // Self-heal with websiteLeads (e.g. Lead Agila converted, skipping deleted leads)
-        storedLeads.filter((l: any) => l.status !== 'REJECTED' && !deletedIds.has(l.convertedCustomerId)).forEach((lead: any) => {
+        storedLeads.filter((l: any) => 
+          l.status !== 'REJECTED' && 
+          !deletedIds.has(l.id) && 
+          !deletedIds.has(l.convertedCustomerId) &&
+          !isCustomerOrLeadDeleted(l.id, l.phone, l.fullName) &&
+          !isCustomerOrLeadDeleted(l.convertedCustomerId, l.phone, l.fullName)
+        ).forEach((lead: any) => {
           const leadPhone = (lead.phone || '').replace(/\D/g, '');
           const leadName = (lead.fullName || '').trim().toLowerCase();
 

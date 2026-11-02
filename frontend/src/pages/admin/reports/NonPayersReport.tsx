@@ -13,7 +13,8 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { formatCurrency } from '../../../utils/format';
-import { isMockGroup, isMockCustomer } from '../../../utils/cleanMockData';
+import { isMockGroup, isMockCustomer, isDeletedGroup } from '../../../utils/cleanMockData';
+import { isCustomerOrLeadDeleted } from '../../../utils/cascadeDelete';
 
 export const NonPayersReport: React.FC = () => {
   const [nonPayers, setNonPayers] = useState<any[]>([]);
@@ -25,8 +26,8 @@ export const NonPayersReport: React.FC = () => {
 
   useEffect(() => {
     // 1. Load data
-    const allGroups = (JSON.parse(localStorage.getItem('mockChitGroups') || '[]')).filter((g: any) => !isMockGroup(g));
-    const customers = (JSON.parse(localStorage.getItem('mockCustomers') || '[]')).filter((c: any) => !isMockCustomer(c));
+    const allGroups = (JSON.parse(localStorage.getItem('mockChitGroups') || '[]')).filter((g: any) => !isMockGroup(g) && !isDeletedGroup(g));
+    const customers = (JSON.parse(localStorage.getItem('mockCustomers') || '[]')).filter((c: any) => !isMockCustomer(c) && !isCustomerOrLeadDeleted(c.id, c.mobile, c.name));
     const ledger = JSON.parse(localStorage.getItem('ledgerTransactions') || '[]');
 
     setGroups(allGroups);

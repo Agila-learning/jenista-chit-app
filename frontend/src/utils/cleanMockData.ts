@@ -2,7 +2,12 @@
  * Utility to identify and purge mock chit groups, mock customers, and associated dummy data.
  */
 
-import { cleanupDeletedRecords } from './cascadeDelete';
+import { cleanupDeletedRecords, isGroupDeleted, isCustomerOrLeadDeleted } from './cascadeDelete';
+
+export const isDeletedGroup = (g: any): boolean => {
+  if (!g) return false;
+  return isGroupDeleted(g.id || g.code || g.groupId || g.mongoId, g.name || g.groupName);
+};
 
 export const MOCK_GROUP_IDS = new Set([
   'CG-REG-101', 'CG-REG-102', 'CG-REG-103', 'CG-REG-104',
@@ -42,6 +47,7 @@ export const MOCK_CUSTOMER_NAMES = new Set([
 
 export const isMockGroup = (g: any): boolean => {
   if (!g) return false;
+  if (isDeletedGroup(g)) return true;
   const id = String(g.id || g.code || g.groupId || '').trim();
   const name = String(g.name || g.groupName || '').trim();
 
@@ -55,7 +61,9 @@ export const isMockCustomer = (c: any): boolean => {
   if (!c) return false;
   const id = String(c.id || c.customerId || c.customerCode || c.mongoId || '').trim();
   const name = String(c.name || c.customerName || c.fullName || '').trim();
+  const phone = String(c.mobile || c.phone || '').trim();
 
+  if (isCustomerOrLeadDeleted(id, phone, name)) return true;
   if (MOCK_CUSTOMER_IDS.has(id)) return true;
   if (MOCK_CUSTOMER_NAMES.has(name)) return true;
   if (/^CUST-10(0[1-9]|1[0-9]|20)$/.test(id)) return true;
