@@ -58,10 +58,16 @@ export const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props
       {/* Navigation List Items */}
       <ScrollView style={styles.menuContainer} showsVerticalScrollIndicator={false}>
         <DrawerItem
-          title="Home"
+          title="Home Dashboard"
           icon="home-outline"
-          isActive={currentRoute === 'AdminDashboard' || currentRoute === 'StaffDashboard' || currentRoute === 'CustomerHome'}
-          onPress={() => navigateTo(isCustomer ? 'CustomerHome' : isStaff ? 'StaffDashboard' : 'AdminDashboard')}
+          isActive={
+            currentRoute === 'AdminDashboard' ||
+            currentRoute === 'StaffDashboard' ||
+            currentRoute === 'CustomerHome' ||
+            currentRoute === 'AdminTabs' ||
+            currentRoute === 'StaffTabs'
+          }
+          onPress={() => navigateTo(isCustomer ? 'CustomerTabsRoot' : isStaff ? 'StaffTabs' : 'AdminTabs')}
         />
 
         <DrawerItem

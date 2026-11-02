@@ -3,6 +3,7 @@ import { View, ActivityIndicator, StyleSheet, TouchableOpacity } from 'react-nat
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createDrawerNavigator } from '@react-navigation/drawer';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 import { useAuth } from '../store/AuthContext';
@@ -29,12 +30,111 @@ import { NotificationsScreen } from '../screens/admin/NotificationsScreen';
 import { LeadsScreen } from '../screens/admin/LeadsScreen';
 import { ChitCalculatorScreen } from '../screens/admin/ChitCalculatorScreen';
 import { StaffDashboardScreen } from '../screens/staff/StaffDashboardScreen';
+import { StaffProfileScreen } from '../screens/staff/StaffProfileScreen';
 import { CustomerDashboardScreen } from '../screens/customer/CustomerDashboardScreen';
+import { CustomerProfileScreen } from '../screens/customer/CustomerProfileScreen';
+import { CustomerPaymentsScreen } from '../screens/customer/CustomerPaymentsScreen';
 
 const Stack = createNativeStackNavigator();
 const Drawer = createDrawerNavigator();
+const Tab = createBottomTabNavigator();
 
-// Admin Sidebar Drawer containing all management modules from Web Application
+// ==========================================
+// 1. ADMIN BOTTOM NAVIGATION TABS
+// ==========================================
+const AdminBottomTabs = ({ navigation }: any) => {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: true,
+        headerStyle: { backgroundColor: Colors.navy.primary },
+        headerTintColor: Colors.white,
+        headerTitleStyle: { fontWeight: '800', fontSize: 17 },
+        tabBarStyle: {
+          backgroundColor: Colors.navy.primary,
+          borderTopColor: 'rgba(255, 255, 255, 0.08)',
+          borderTopWidth: 1,
+          height: 60,
+          paddingBottom: 8,
+          paddingTop: 6,
+        },
+        tabBarActiveTintColor: Colors.gold.primary,
+        tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.55)',
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '700',
+        },
+        headerLeft: () => (
+          <TouchableOpacity
+            style={{ paddingLeft: 16, paddingRight: 8 }}
+            onPress={() => navigation.openDrawer()}
+          >
+            <Ionicons name="menu" size={26} color={Colors.white} />
+          </TouchableOpacity>
+        ),
+        headerRight: () => (
+          <TouchableOpacity
+            style={{ paddingRight: 16, paddingLeft: 8 }}
+            onPress={() => navigation.openDrawer()}
+          >
+            <Ionicons name="grid-outline" size={22} color={Colors.gold.primary} />
+          </TouchableOpacity>
+        ),
+      }}
+    >
+      <Tab.Screen
+        name="AdminDashboardTab"
+        component={AdminDashboardScreen}
+        options={{
+          title: 'Jenista Chit Funds',
+          tabBarLabel: 'Dashboard',
+          tabBarIcon: ({ color, size }) => <Ionicons name="grid" size={size || 20} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="AdminGroupsTab"
+        component={ChitGroupListScreen}
+        options={{
+          title: 'Chit Groups & Plans',
+          tabBarLabel: 'Chit Groups',
+          tabBarIcon: ({ color, size }) => <Ionicons name="layers" size={size || 20} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="AdminCustomersTab"
+        component={CustomerListScreen}
+        options={{
+          title: 'Customer Directory',
+          tabBarLabel: 'Customers',
+          tabBarIcon: ({ color, size }) => <Ionicons name="people" size={size || 20} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="AdminReceiptsTab"
+        component={ReceiptEntryScreen}
+        options={{
+          title: 'Receipt Desk & Collections',
+          tabBarLabel: 'Receipts',
+          headerShown: false,
+          tabBarIcon: ({ color, size }) => <Ionicons name="receipt" size={size || 20} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="AdminPaymentsTab"
+        component={PaymentVerificationsScreen}
+        options={{
+          title: 'Payment & Prize Requests',
+          tabBarLabel: 'Payments',
+          tabBarIcon: ({ color, size }) => <Ionicons name="shield-checkmark" size={size || 20} color={color} />,
+        }}
+      />
+    </Tab.Navigator>
+  );
+};
+
+// ==========================================
+// 2. ADMIN SIDEBAR DRAWER (All Modules)
+// ==========================================
 const AdminDrawer = () => {
   return (
     <Drawer.Navigator
@@ -47,10 +147,10 @@ const AdminDrawer = () => {
         drawerType: 'front',
         headerLeft: () => (
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            {route.name !== 'AdminDashboard' ? (
+            {route.name !== 'AdminTabs' ? (
               <TouchableOpacity
                 style={{ paddingLeft: 16, paddingRight: 8, paddingVertical: 4 }}
-                onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('AdminDashboard'))}
+                onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('AdminTabs'))}
               >
                 <Ionicons name="arrow-back" size={24} color={Colors.white} />
               </TouchableOpacity>
@@ -74,6 +174,11 @@ const AdminDrawer = () => {
         ),
       })}
     >
+      <Drawer.Screen
+        name="AdminTabs"
+        component={AdminBottomTabs}
+        options={{ headerShown: false, title: 'Jenista Chit Funds' }}
+      />
       <Drawer.Screen
         name="AdminDashboard"
         component={AdminDashboardScreen}
@@ -143,7 +248,94 @@ const AdminDrawer = () => {
   );
 };
 
-// Staff Sidebar Drawer
+// ==========================================
+// 3. STAFF BOTTOM NAVIGATION TABS
+// ==========================================
+const StaffBottomTabs = ({ navigation }: any) => {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: true,
+        headerStyle: { backgroundColor: Colors.navy.primary },
+        headerTintColor: Colors.white,
+        headerTitleStyle: { fontWeight: '800', fontSize: 17 },
+        tabBarStyle: {
+          backgroundColor: Colors.navy.primary,
+          borderTopColor: 'rgba(255, 255, 255, 0.08)',
+          borderTopWidth: 1,
+          height: 60,
+          paddingBottom: 8,
+          paddingTop: 6,
+        },
+        tabBarActiveTintColor: Colors.gold.primary,
+        tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.55)',
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '700',
+        },
+        headerLeft: () => (
+          <TouchableOpacity
+            style={{ paddingLeft: 16, paddingRight: 8 }}
+            onPress={() => navigation.openDrawer()}
+          >
+            <Ionicons name="menu" size={26} color={Colors.white} />
+          </TouchableOpacity>
+        ),
+      }}
+    >
+      <Tab.Screen
+        name="StaffDashboardTab"
+        component={StaffDashboardScreen}
+        options={{
+          title: 'Field Collections',
+          tabBarLabel: 'Dashboard',
+          tabBarIcon: ({ color, size }) => <Ionicons name="speedometer" size={size || 20} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="StaffCollectionsTab"
+        component={ReceiptEntryScreen}
+        options={{
+          title: 'Digital Collections',
+          tabBarLabel: 'Collections',
+          headerShown: false,
+          tabBarIcon: ({ color, size }) => <Ionicons name="receipt" size={size || 20} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="StaffCustomersTab"
+        component={CustomerListScreen}
+        options={{
+          title: 'Members Directory',
+          tabBarLabel: 'Customers',
+          tabBarIcon: ({ color, size }) => <Ionicons name="people" size={size || 20} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="StaffDefaultersTab"
+        component={ReportsScreen}
+        options={{
+          title: 'Overdue Defaulters Queue',
+          tabBarLabel: 'Defaulters',
+          tabBarIcon: ({ color, size }) => <Ionicons name="alert-circle" size={size || 20} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="StaffProfileTab"
+        component={StaffProfileScreen}
+        options={{
+          title: 'Agent Profile',
+          tabBarLabel: 'Profile',
+          tabBarIcon: ({ color, size }) => <Ionicons name="person-circle" size={size || 20} color={color} />,
+        }}
+      />
+    </Tab.Navigator>
+  );
+};
+
+// ==========================================
+// 4. STAFF SIDEBAR DRAWER
+// ==========================================
 const StaffDrawer = () => {
   return (
     <Drawer.Navigator
@@ -156,10 +348,10 @@ const StaffDrawer = () => {
         drawerType: 'front',
         headerLeft: () => (
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            {route.name !== 'StaffDashboard' ? (
+            {route.name !== 'StaffTabs' ? (
               <TouchableOpacity
                 style={{ paddingLeft: 16, paddingRight: 8, paddingVertical: 4 }}
-                onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('StaffDashboard'))}
+                onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('StaffTabs'))}
               >
                 <Ionicons name="arrow-back" size={24} color={Colors.white} />
               </TouchableOpacity>
@@ -173,16 +365,13 @@ const StaffDrawer = () => {
             )}
           </View>
         ),
-        headerRight: () => (
-          <TouchableOpacity
-            style={{ paddingRight: 16, paddingLeft: 8 }}
-            onPress={() => navigation.openDrawer()}
-          >
-            <Ionicons name="grid-outline" size={22} color={Colors.gold.primary} />
-          </TouchableOpacity>
-        ),
       })}
     >
+      <Drawer.Screen
+        name="StaffTabs"
+        component={StaffBottomTabs}
+        options={{ headerShown: false, title: 'Field Operations' }}
+      />
       <Drawer.Screen
         name="StaffDashboard"
         component={StaffDashboardScreen}
@@ -212,7 +401,85 @@ const StaffDrawer = () => {
   );
 };
 
-// Customer Stack
+// ==========================================
+// 5. SUBSCRIBER / CUSTOMER BOTTOM TABS
+// ==========================================
+const CustomerBottomTabs = () => {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: true,
+        headerStyle: { backgroundColor: Colors.navy.primary },
+        headerTintColor: Colors.white,
+        headerTitleStyle: { fontWeight: '800', fontSize: 17 },
+        tabBarStyle: {
+          backgroundColor: Colors.navy.primary,
+          borderTopColor: 'rgba(255, 255, 255, 0.08)',
+          borderTopWidth: 1,
+          height: 60,
+          paddingBottom: 8,
+          paddingTop: 6,
+        },
+        tabBarActiveTintColor: Colors.gold.primary,
+        tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.55)',
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '700',
+        },
+      }}
+    >
+      <Tab.Screen
+        name="CustomerHomeTab"
+        component={CustomerDashboardScreen}
+        options={{
+          title: 'My Account',
+          tabBarLabel: 'Home',
+          tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size || 20} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="CustomerMyChitsTab"
+        component={CustomerDashboardScreen}
+        options={{
+          title: 'My Enrolled Chits',
+          tabBarLabel: 'My Chits',
+          tabBarIcon: ({ color, size }) => <Ionicons name="wallet" size={size || 20} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="CustomerPassbookTab"
+        component={CustomerScheduleScreen}
+        options={{
+          title: 'Digital Passbook',
+          tabBarLabel: 'Passbook',
+          tabBarIcon: ({ color, size }) => <Ionicons name="book" size={size || 20} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="CustomerPaymentsTab"
+        component={CustomerPaymentsScreen}
+        options={{
+          title: 'Installment Pay Desk',
+          tabBarLabel: 'Payments',
+          tabBarIcon: ({ color, size }) => <Ionicons name="cash" size={size || 20} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="CustomerProfileTab"
+        component={CustomerProfileScreen}
+        options={{
+          title: 'Subscriber Profile',
+          tabBarLabel: 'Profile',
+          tabBarIcon: ({ color, size }) => <Ionicons name="person" size={size || 20} color={color} />,
+        }}
+      />
+    </Tab.Navigator>
+  );
+};
+
+// ==========================================
+// 6. CUSTOMER ROOT STACK
+// ==========================================
 const CustomerStack = () => {
   return (
     <Stack.Navigator
@@ -221,7 +488,7 @@ const CustomerStack = () => {
         headerTintColor: Colors.white,
         headerTitleStyle: { fontWeight: '800' },
         headerLeft: () =>
-          route.name !== 'CustomerHome' ? (
+          route.name !== 'CustomerTabsRoot' ? (
             <TouchableOpacity
               style={{ paddingLeft: 16, paddingRight: 8, paddingVertical: 4 }}
               onPress={() => navigation.goBack()}
@@ -232,9 +499,9 @@ const CustomerStack = () => {
       })}
     >
       <Stack.Screen
-        name="CustomerHome"
-        component={CustomerDashboardScreen}
-        options={{ title: 'My Account' }}
+        name="CustomerTabsRoot"
+        component={CustomerBottomTabs}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="CustomerSchedule"
