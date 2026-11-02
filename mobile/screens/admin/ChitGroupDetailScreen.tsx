@@ -25,10 +25,19 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
   navigation,
 }) => {
   const group: ChitGroup = route.params?.group;
+  const [currentGroup, setCurrentGroup] = useState<ChitGroup>(group);
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'MEMBERS'>('OVERVIEW');
   const [enrolledMembers, setEnrolledMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Edit Group Modal State
+  const [isEditGroupModalOpen, setIsEditGroupModalOpen] = useState(false);
+  const [editGroupName, setEditGroupName] = useState(group?.name || '');
+  const [editGroupValue, setEditGroupValue] = useState(String(group?.value || 100000));
+  const [editGroupDuration, setEditGroupDuration] = useState(String(group?.duration || 20));
+  const [editGroupStatus, setEditGroupStatus] = useState(group?.status || 'ACTIVE');
+  const [isSavingGroup, setIsSavingGroup] = useState(false);
 
   // Add Member Modal State (Matches Web App exact workflow)
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
@@ -209,13 +218,95 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
       await loadGroupMembers();
       Alert.alert(
         'Member Enrolled',
-        `Successfully enrolled "${foundCustomer.name}" into group "${group.name}"!`
+        `Successfully enrolled "${foundCustomer.name}" into group "${currentGroup.name}"!`
       );
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Failed to enroll customer');
     } finally {
       setEnrolling(false);
     }
+  };
+
+  const handleDeleteThisGroup = () => {
+    Alert.alert(
+      'Delete Chit Group',
+      `Permanently delete "${currentGroup.name}"? All associated member enrollments and records will be deleted everywhere.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Permanently',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await DataSyncManager.deleteChitGroup({ id: currentGroup.id, name: currentGroup.name });
+              Alert.alert('Deleted', `Chit group "${currentGroup.name}" was permanently removed.`);
+              navigation.goBack();
+            } catch (err: any) {
+              Alert.alert('Error', err?.message || 'Failed to delete chit group');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleSaveEditGroup = async () => {
+    if (!editGroupName.trim()) {
+      Alert.alert('Error', 'Please enter a group name');
+      return;
+    }
+    setIsSavingGroup(true);
+    try {
+      const patched = await DataSyncManager.updateChitGroup(currentGroup.id, {
+        name: editGroupName.trim(),
+        value: Number(editGroupValue) || currentGroup.value,
+        duration: Number(editGroupDuration) || currentGroup.duration,
+        status: editGroupStatus,
+      });
+      if (patched) {
+        setCurrentGroup(patched);
+      }
+      setIsEditGroupModalOpen(false);
+      Alert.alert('Updated', 'Group details updated successfully.');
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to update group');
+    } finally {
+      setIsSavingGroup(false);
+    }
+  };
+
+  const handleRemoveMember = (member: any) => {
+    Alert.alert(
+      'Remove Member',
+      `Remove "${member.customerName}" from ${currentGroup.name}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const customers = await DataSyncManager.getCustomers();
+              const cust = customers.find(c => c.id === member.customerId || c.mongoId === member.customerId);
+              if (cust && Array.isArray(cust.chits)) {
+                const remaining = cust.chits.filter((ch: any) => {
+                  const chGId = String(ch.groupId || '').toLowerCase().trim();
+                  const chGName = String(ch.groupName || '').toLowerCase().trim();
+                  const targetId = (currentGroup?.id || '').toLowerCase().trim();
+                  const targetName = (currentGroup?.name || '').toLowerCase().trim();
+                  return chGId !== targetId && chGName !== targetName;
+                });
+                await DataSyncManager.updateCustomer(cust.id, { chits: remaining });
+              }
+              await loadGroupMembers();
+              Alert.alert('Removed', `Member removed from ${currentGroup.name}`);
+            } catch (err: any) {
+              Alert.alert('Error', err?.message || 'Failed to remove member');
+            }
+          },
+        },
+      ]
+    );
   };
 
   useEffect(() => {
@@ -259,9 +350,23 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
           </View>
           <View style={{ flex: 1, marginLeft: 12 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <Text style={styles.groupHeroTitle} numberOfLines={1}>{group.name}</Text>
-              <View style={styles.statusPillActive}>
-                <Text style={styles.statusPillActiveText}>{group.status || 'Active'}</Text>
+              <Text style={styles.groupHeroTitle} numberOfLines={1}>{currentGroup.name}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <TouchableOpacity
+                  style={{ padding: 6, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 6 }}
+                  onPress={() => setIsEditGroupModalOpen(true)}
+                >
+                  <Ionicons name="create-outline" size={16} color={Colors.white} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ padding: 6, backgroundColor: 'rgba(239, 68, 68, 0.35)', borderRadius: 6 }}
+                  onPress={handleDeleteThisGroup}
+                >
+                  <Ionicons name="trash-outline" size={16} color="#FCA5A5" />
+                </TouchableOpacity>
+                <View style={styles.statusPillActive}>
+                  <Text style={styles.statusPillActiveText}>{currentGroup.status || 'Active'}</Text>
+                </View>
               </View>
             </View>
 
@@ -562,6 +667,14 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
                       >
                         <Ionicons name="person-outline" size={13} color={Colors.textSecondary} />
                         <Text style={styles.profileBtnText}>Profile</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={{ padding: 6, borderRadius: 6, backgroundColor: '#FEE2E2', marginLeft: 6 }}
+                        onPress={() => handleRemoveMember(item)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons name="trash-outline" size={14} color={Colors.danger} />
                       </TouchableOpacity>
                     </View>
                   </View>

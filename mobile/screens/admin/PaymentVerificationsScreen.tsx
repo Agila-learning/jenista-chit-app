@@ -125,6 +125,52 @@ export const PaymentVerificationsScreen: React.FC<{ navigation?: any }> = ({ nav
     ]);
   };
 
+  const handleDeletePayment = (item: PaymentRequest) => {
+    Alert.alert(
+      'Delete Payment Request',
+      `Permanently delete payment request ${item.referenceNumber || item.id} (₹${Number(item.amount || 0).toLocaleString('en-IN')}) for ${item.customerName}?\n\nThis will remove this payment record from the verification queue and ledger.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Permanently',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await DataSyncManager.deletePaymentRequest(item.id, item.referenceNumber);
+              await loadData();
+              Alert.alert('Deleted', 'Payment request record has been permanently removed.');
+            } catch (e: any) {
+              Alert.alert('Error', e?.message || 'Failed to delete payment request');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteWithdrawal = (item: any) => {
+    Alert.alert(
+      'Delete Prize Claim',
+      `Permanently delete prize withdrawal claim for ${item.customerName} (₹${Number(item.eligibleAmount || 0).toLocaleString('en-IN')})?\n\nThis will remove this claim from the disbursal queue.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Permanently',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await DataSyncManager.deleteWithdrawalRequest(item.id);
+              await loadData();
+              Alert.alert('Deleted', 'Prize claim record has been permanently removed.');
+            } catch (e: any) {
+              Alert.alert('Error', e?.message || 'Failed to delete prize claim');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // Withdrawal Actions
   const handleOpenDisburse = (item: any) => {
     setDisburseModalItem(item);
@@ -200,20 +246,29 @@ export const PaymentVerificationsScreen: React.FC<{ navigation?: any }> = ({ nav
               ID: {item.customerId} • {item.customerMobile || 'No Phone'}
             </Text>
           </View>
-          <View
-            style={[
-              styles.statusBadge,
-              isApproved ? styles.badgeApproved : item.status === 'REJECTED' ? styles.badgeRejected : styles.badgePending,
-            ]}
-          >
-            <Text
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View
               style={[
-                styles.statusText,
-                isApproved ? styles.textApproved : item.status === 'REJECTED' ? styles.textRejected : styles.textPending,
+                styles.statusBadge,
+                isApproved ? styles.badgeApproved : item.status === 'REJECTED' ? styles.badgeRejected : styles.badgePending,
               ]}
             >
-              {item.status}
-            </Text>
+              <Text
+                style={[
+                  styles.statusText,
+                  isApproved ? styles.textApproved : item.status === 'REJECTED' ? styles.textRejected : styles.textPending,
+                ]}
+              >
+                {item.status}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => handleDeletePayment(item)}
+              style={styles.deleteIconBtn}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="trash-outline" size={17} color="#EF4444" />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -279,20 +334,29 @@ export const PaymentVerificationsScreen: React.FC<{ navigation?: any }> = ({ nav
               ID: {item.customerId} • {item.mobile || 'No Phone'}
             </Text>
           </View>
-          <View
-            style={[
-              styles.statusBadge,
-              isDisbursed ? styles.badgeApproved : item.status === 'REJECTED' ? styles.badgeRejected : styles.badgePending,
-            ]}
-          >
-            <Text
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View
               style={[
-                styles.statusText,
-                isDisbursed ? styles.textApproved : item.status === 'REJECTED' ? styles.textRejected : styles.textPending,
+                styles.statusBadge,
+                isDisbursed ? styles.badgeApproved : item.status === 'REJECTED' ? styles.badgeRejected : styles.badgePending,
               ]}
             >
-              {isDisbursed ? 'DISBURSED' : item.status === 'REJECTED' ? 'REJECTED' : 'PENDING DISBURSAL'}
-            </Text>
+              <Text
+                style={[
+                  styles.statusText,
+                  isDisbursed ? styles.textApproved : item.status === 'REJECTED' ? styles.textRejected : styles.textPending,
+                ]}
+              >
+                {isDisbursed ? 'DISBURSED' : item.status === 'REJECTED' ? 'REJECTED' : 'PENDING DISBURSAL'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => handleDeleteWithdrawal(item)}
+              style={styles.deleteIconBtn}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="trash-outline" size={17} color="#EF4444" />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -590,6 +654,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
+  },
+  deleteIconBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   badgePending: {
     backgroundColor: 'rgba(217, 119, 6, 0.15)',

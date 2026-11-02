@@ -7,11 +7,15 @@ import {
   TouchableOpacity,
   Alert,
   StatusBar,
+  Modal,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 import { Button } from '../../components/common/Button';
 import { apiClient } from '../../services/api';
+import { DataSyncManager } from '../../services/dataSync';
 import { formatCurrency } from '../../utils/format';
 import { Customer } from '../../types';
 
@@ -19,9 +23,27 @@ export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = (
   route,
   navigation,
 }) => {
-  const customer: Customer = route.params?.customer || {};
-  const [currentStatus, setCurrentStatus] = useState<string>(customer.status || 'ACTIVE');
+  const initialCustomer: Customer = route.params?.customer || {};
+  const [customer, setCustomer] = useState<Customer>(initialCustomer);
+  const [currentStatus, setCurrentStatus] = useState<string>(initialCustomer.status || 'ACTIVE');
   const [loadingStatus, setLoadingStatus] = useState(false);
+
+  // Edit Modal State
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editName, setEditName] = useState(customer.name || customer.fullName || '');
+  const [editPhone, setEditPhone] = useState(customer.phone || customer.mobile || '');
+  const [editEmail, setEditEmail] = useState(customer.email || '');
+  const [editAddress, setEditAddress] = useState(customer.address || '');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // Assign Chit Modal State
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [availableGroups, setAvailableGroups] = useState<any[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const [assignScheme, setAssignScheme] = useState<'Auction' | 'Fixed' | 'Regular'>('Auction');
+  const [assignChitValue, setAssignChitValue] = useState('100000');
+  const [assignDuration, setAssignDuration] = useState('20');
+  const [isAssigning, setIsAssigning] = useState(false);
 
   const displayName = customer.name || customer.fullName || 'Member';
   const initial = displayName.charAt(0).toUpperCase();
@@ -56,6 +78,118 @@ export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = (
     );
   };
 
+  const handleDeleteCustomer = () => {
+    Alert.alert(
+      'Delete Customer',
+      `Permanently delete "${displayName}" (${customer.id})? All records, chits, and payment requests for this customer will be deleted everywhere.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Permanently',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await DataSyncManager.deleteCustomer({
+                id: customer.id,
+                mongoId: customer.mongoId,
+                phone: customer.phone || customer.mobile,
+                name: displayName,
+              });
+              Alert.alert('Deleted', `Customer "${displayName}" was permanently deleted.`);
+              navigation.goBack();
+            } catch (err: any) {
+              Alert.alert('Error', err?.message || 'Failed to delete customer');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleOpenEdit = () => {
+    setEditName(customer.name || customer.fullName || '');
+    setEditPhone(customer.phone || customer.mobile || '');
+    setEditEmail(customer.email || '');
+    setEditAddress(customer.address || '');
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editName.trim()) {
+      Alert.alert('Validation Error', 'Please enter a customer name.');
+      return;
+    }
+    setIsSavingEdit(true);
+    try {
+      const patched = await DataSyncManager.updateCustomer(customer.id, {
+        name: editName.trim(),
+        fullName: editName.trim(),
+        phone: editPhone.trim(),
+        mobile: editPhone.trim(),
+        email: editEmail.trim(),
+        address: editAddress.trim(),
+      } as any);
+      if (patched) {
+        setCustomer(patched);
+      }
+      setIsEditModalOpen(false);
+      Alert.alert('Success', 'Customer profile updated successfully.');
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to update profile');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleOpenAssign = async () => {
+    try {
+      const groups = await DataSyncManager.getChitGroups();
+      setAvailableGroups(groups);
+      if (groups.length > 0) {
+        setSelectedGroupId(groups[0].id);
+      }
+      setIsAssignModalOpen(true);
+    } catch {
+      Alert.alert('Error', 'Could not load chit groups');
+    }
+  };
+
+  const handleAssignChit = async () => {
+    if (!selectedGroupId) {
+      Alert.alert('Error', 'Please select a chit group.');
+      return;
+    }
+    const grp = availableGroups.find((g: any) => g.id === selectedGroupId);
+    setIsAssigning(true);
+    try {
+      const val = Number(assignChitValue) || 100000;
+      const dur = Number(assignDuration) || 20;
+      const monthly = Math.round(val / dur);
+
+      await DataSyncManager.enrollMemberToGroup({
+        customerId: customer.id,
+        groupId: selectedGroupId,
+        groupName: grp?.name || selectedGroupId,
+        scheme: assignScheme,
+        chitValue: val,
+        duration: dur,
+        monthlyInstallment: monthly,
+      });
+
+      const all = await DataSyncManager.getCustomers();
+      const updated = all.find((c) => c.id === customer.id || c.mongoId === customer.mongoId);
+      if (updated) {
+        setCustomer(updated);
+      }
+      setIsAssignModalOpen(false);
+      Alert.alert('Enrolled', `Customer successfully enrolled in ${grp?.name || selectedGroupId}!`);
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to enroll customer');
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <StatusBar barStyle="light-content" />
@@ -70,9 +204,18 @@ export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = (
             <Text style={styles.headerCustomerName}>{displayName}</Text>
             <Text style={styles.headerCustomerId}>Member ID: {customer.id || 'JC00123'}</Text>
           </View>
-          <TouchableOpacity style={styles.editIconBtn} activeOpacity={0.7}>
-            <Ionicons name="pencil" size={16} color={Colors.white} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <TouchableOpacity style={styles.editIconBtn} activeOpacity={0.7} onPress={handleOpenEdit}>
+              <Ionicons name="pencil" size={16} color={Colors.white} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.editIconBtn, { backgroundColor: 'rgba(239, 68, 68, 0.35)' }]}
+              activeOpacity={0.7}
+              onPress={handleDeleteCustomer}
+            >
+              <Ionicons name="trash-outline" size={16} color="#FCA5A5" />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -203,6 +346,12 @@ export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = (
           style={styles.primaryActionBtn}
         />
 
+        <Button
+          title="+ Enroll in Another Chit Group"
+          variant="secondary"
+          onPress={handleOpenAssign}
+        />
+
         {currentStatus === 'ACTIVE' ? (
           <Button
             title="Deactivate Customer Account"
@@ -218,7 +367,119 @@ export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = (
             onPress={() => toggleStatus('ACTIVE')}
           />
         )}
+
+        <Button
+          title="Delete Customer Permanently"
+          variant="danger"
+          onPress={handleDeleteCustomer}
+        />
       </View>
+
+      {/* Edit Customer Profile Modal */}
+      <Modal visible={isEditModalOpen} transparent animationType="fade" onRequestClose={() => setIsEditModalOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Customer Profile</Text>
+              <TouchableOpacity onPress={() => setIsEditModalOpen(false)}>
+                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 400 }}>
+              <Text style={styles.inputLabel}>FULL NAME *</Text>
+              <TextInput style={styles.textInput} value={editName} onChangeText={setEditName} />
+
+              <Text style={[styles.inputLabel, { marginTop: 12 }]}>MOBILE NUMBER *</Text>
+              <TextInput style={styles.textInput} value={editPhone} onChangeText={setEditPhone} keyboardType="phone-pad" />
+
+              <Text style={[styles.inputLabel, { marginTop: 12 }]}>EMAIL ADDRESS</Text>
+              <TextInput style={styles.textInput} value={editEmail} onChangeText={setEditEmail} keyboardType="email-address" />
+
+              <Text style={[styles.inputLabel, { marginTop: 12 }]}>RESIDENTIAL ADDRESS</Text>
+              <TextInput style={[styles.textInput, { height: 60 }]} multiline value={editAddress} onChangeText={setEditAddress} />
+            </ScrollView>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+              <TouchableOpacity style={styles.cancelModalBtn} onPress={() => setIsEditModalOpen(false)}>
+                <Text style={styles.cancelModalBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveModalBtn, isSavingEdit && { opacity: 0.6 }]}
+                disabled={isSavingEdit}
+                onPress={handleSaveEdit}
+              >
+                <Text style={styles.saveModalBtnText}>{isSavingEdit ? 'Saving...' : 'Save Profile'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Assign Chit Group Modal */}
+      <Modal visible={isAssignModalOpen} transparent animationType="fade" onRequestClose={() => setIsAssignModalOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Assign to Chit Group</Text>
+              <TouchableOpacity onPress={() => setIsAssignModalOpen(false)}>
+                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 420 }}>
+              <Text style={styles.inputLabel}>SELECT CHIT GROUP *</Text>
+              {availableGroups.map((g: any) => (
+                <TouchableOpacity
+                  key={g.id}
+                  style={[styles.groupSelectRow, selectedGroupId === g.id && styles.groupSelectRowActive]}
+                  onPress={() => setSelectedGroupId(g.id)}
+                >
+                  <Ionicons
+                    name={selectedGroupId === g.id ? 'radio-button-on' : 'radio-button-off'}
+                    size={18}
+                    color={selectedGroupId === g.id ? Colors.navy.primary : Colors.textMuted}
+                  />
+                  <Text style={[styles.groupSelectText, selectedGroupId === g.id && { fontWeight: '800' }]}>
+                    {g.name} ({g.type})
+                  </Text>
+                </TouchableOpacity>
+              ))}
+
+              <Text style={[styles.inputLabel, { marginTop: 14 }]}>PLAN SCHEME</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {(['Auction', 'Fixed', 'Regular'] as const).map((s) => (
+                  <TouchableOpacity
+                    key={s}
+                    style={[styles.schemePillBtn, assignScheme === s && styles.schemePillBtnActive]}
+                    onPress={() => setAssignScheme(s)}
+                  >
+                    <Text style={[styles.schemePillBtnText, assignScheme === s && styles.schemePillBtnTextActive]}>
+                      {s}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.inputLabel, { marginTop: 14 }]}>CHIT VALUE (₹)</Text>
+              <TextInput style={styles.textInput} keyboardType="numeric" value={assignChitValue} onChangeText={setAssignChitValue} />
+
+              <Text style={[styles.inputLabel, { marginTop: 14 }]}>DURATION (MONTHS)</Text>
+              <TextInput style={styles.textInput} keyboardType="numeric" value={assignDuration} onChangeText={setAssignDuration} />
+            </ScrollView>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+              <TouchableOpacity style={styles.cancelModalBtn} onPress={() => setIsAssignModalOpen(false)}>
+                <Text style={styles.cancelModalBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveModalBtn, isAssigning && { opacity: 0.6 }]}
+                disabled={isAssigning}
+                onPress={handleAssignChit}
+              >
+                <Text style={styles.saveModalBtnText}>{isAssigning ? 'Enrolling...' : 'Enroll Member'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <View style={{ height: 40 }} />
     </ScrollView>
@@ -393,7 +654,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.borderLight,
   },
 
-  // 5. Actions
   actionsWrap: {
     marginHorizontal: 20,
     marginTop: 20,
@@ -401,5 +661,113 @@ const styles = StyleSheet.create({
   },
   primaryActionBtn: {
     backgroundColor: Colors.gold.primary,
+  },
+
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 20,
+    padding: 20,
+    width: '100%',
+    maxWidth: 500,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.textSecondary,
+    marginBottom: 6,
+    letterSpacing: 0.5,
+  },
+  textInput: {
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: Colors.text,
+  },
+  cancelModalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  cancelModalBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  saveModalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: Colors.navy.primary,
+    alignItems: 'center',
+  },
+  saveModalBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.white,
+  },
+  groupSelectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 8,
+  },
+  groupSelectRowActive: {
+    borderColor: Colors.navy.primary,
+    backgroundColor: '#F8FAFC',
+  },
+  groupSelectText: {
+    fontSize: 13,
+    color: Colors.text,
+  },
+  schemePillBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  schemePillBtnActive: {
+    backgroundColor: Colors.navy.primary,
+    borderColor: Colors.navy.primary,
+  },
+  schemePillBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  schemePillBtnTextActive: {
+    color: Colors.white,
   },
 });

@@ -240,6 +240,48 @@ export const MobileNotificationsManager = {
     }
   },
 
+  async addLead(lead: {
+    fullName: string;
+    phone: string;
+    email?: string;
+    interestedPlan?: string;
+    message?: string;
+  }): Promise<WebsiteLead> {
+    const current = await this.getLeads();
+    const parts = (lead.fullName || '').trim().split(' ');
+    const firstName = parts[0] || 'Lead';
+    const lastName = parts.slice(1).join(' ') || '';
+
+    const newLead: WebsiteLead = {
+      id: `LEAD-${Date.now().toString().slice(-4)}`,
+      fullName: lead.fullName.trim(),
+      firstName,
+      lastName,
+      phone: lead.phone.trim(),
+      email: lead.email?.trim() || '',
+      interestedPlan: lead.interestedPlan?.trim() || 'Auction Chit Plan',
+      message: lead.message?.trim() || 'Manual enquiry registered via Mobile App',
+      submittedAt: new Date().toISOString(),
+      status: 'NEW',
+    };
+
+    const updated = [newLead, ...current];
+    await secureStorage.setItem('mobile_website_leads', JSON.stringify(updated));
+
+    // Live Notification
+    await this.addNotification({
+      type: 'NEW_LEAD',
+      title: 'New Lead Recorded',
+      message: `${newLead.fullName} (${newLead.phone}) interested in ${newLead.interestedPlan}.`,
+      targetRole: 'ADMIN',
+      metadata: {
+        leadId: newLead.id,
+      },
+    });
+
+    return newLead;
+  },
+
   async updateLeadStatus(id: string, status: 'CONVERTED' | 'REJECTED', convertedCustomerId?: string): Promise<WebsiteLead[]> {
     const current = await this.getLeads();
     const updated = current.map(l => l.id === id ? { ...l, status, convertedCustomerId } : l);

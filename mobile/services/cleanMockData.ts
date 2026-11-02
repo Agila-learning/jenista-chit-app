@@ -40,6 +40,40 @@ export const MOCK_CUSTOMER_NAMES = new Set([
   'Rahul Sharma', 'Karthik Subramanian', 'Priya Meenakshi', 'Customer Demo'
 ]);
 
+const getLocalDeletedGroupSet = (): Set<string> => {
+  const set = new Set<string>();
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const g1 = window.localStorage.getItem('deleted_group_ids');
+      const g2 = window.localStorage.getItem('deletedGroupIds');
+      [g1, g2].forEach(raw => {
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list)) list.forEach(i => set.add(String(i).toLowerCase().trim()));
+        }
+      });
+    } catch {}
+  }
+  return set;
+};
+
+const getLocalDeletedCustSet = (): Set<string> => {
+  const set = new Set<string>();
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const c1 = window.localStorage.getItem('deleted_customer_ids');
+      const c2 = window.localStorage.getItem('deletedCustomerIds');
+      [c1, c2].forEach(raw => {
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list)) list.forEach(i => set.add(String(i).toLowerCase().trim()));
+        }
+      });
+    } catch {}
+  }
+  return set;
+};
+
 export const isMockGroup = (g: any): boolean => {
   if (!g) return false;
   const id = String(g.id || g.code || g.groupId || '').trim();
@@ -48,6 +82,11 @@ export const isMockGroup = (g: any): boolean => {
   if (MOCK_GROUP_IDS.has(id)) return true;
   if (MOCK_GROUP_NAMES.has(name)) return true;
   if (/^CHIT-(100K-A|200K-B)$/i.test(id)) return true;
+
+  const deletedGroups = getLocalDeletedGroupSet();
+  if (id && deletedGroups.has(id.toLowerCase())) return true;
+  if (name && deletedGroups.has(name.toLowerCase())) return true;
+
   return false;
 };
 
@@ -55,10 +94,17 @@ export const isMockCustomer = (c: any): boolean => {
   if (!c) return false;
   const id = String(c.id || c.customerId || c.customerCode || c.mongoId || '').trim();
   const name = String(c.name || c.customerName || c.fullName || '').trim();
+  const phone = String(c.phone || c.mobile || '').replace(/\D/g, '');
 
   if (MOCK_CUSTOMER_IDS.has(id)) return true;
   if (MOCK_CUSTOMER_NAMES.has(name)) return true;
   if (/^CUST-10(0[1-9]|1[0-9]|20)$/.test(id)) return true;
   if (/^TC-1004[5-8]$/.test(id)) return true;
+
+  const deletedCusts = getLocalDeletedCustSet();
+  if (id && deletedCusts.has(id.toLowerCase())) return true;
+  if (name && deletedCusts.has(name.toLowerCase())) return true;
+  if (phone && deletedCusts.has(phone)) return true;
+
   return false;
 };

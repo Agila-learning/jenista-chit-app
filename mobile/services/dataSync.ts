@@ -1,6 +1,15 @@
 import { secureStorage } from './storage';
 import { Customer, ChitGroup, PaymentRequest, LedgerTransaction } from '../types';
 import { isMockCustomer, isMockGroup } from './cleanMockData';
+import {
+  cascadeDeleteCustomerMobile,
+  cascadeDeleteGroupMobile,
+  cascadeDeletePaymentRequestMobile,
+  cascadeDeleteWithdrawalRequestMobile,
+  cascadeDeleteLeadMobile,
+  isGroupDeleted,
+  isCustomerOrLeadDeleted,
+} from './cascadeDeleteMobile';
 
 /**
  * DataSyncManager:
@@ -212,6 +221,45 @@ export const DataSyncManager = {
   },
 
   /**
+   * Update existing customer details across backend and local storage
+   */
+  async updateCustomer(customerId: string, patchData: Partial<Customer>): Promise<Customer | null> {
+    const customers = await this.getCustomers();
+    const target = customers.find((c) => c.id === customerId || c.mongoId === customerId);
+    if (!target) return null;
+
+    const updatedCustomer: Customer = {
+      ...target,
+      ...patchData,
+    };
+
+    // 1. Update in backend
+    try {
+      const baseUrl = await getActiveBaseUrl();
+      const lookupId = target.mongoId || target.id;
+      await fetch(`${baseUrl}/customers/${encodeURIComponent(lookupId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patchData),
+      });
+    } catch (e) {
+      console.warn('Backend update customer error:', e);
+    }
+
+    // 2. Update local storage
+    const updatedList = customers.map((c) => (c.id === customerId || c.mongoId === customerId ? updatedCustomer : c));
+    await secureStorage.setItem('synced_customers', JSON.stringify(updatedList));
+    return updatedCustomer;
+  },
+
+  /**
+   * Permanently delete customer with full cascade across all chits, receipts, and ledger
+   */
+  async deleteCustomer(target: { id: string; mongoId?: string; phone?: string; name?: string }): Promise<void> {
+    await cascadeDeleteCustomerMobile(target);
+  },
+
+  /**
    * Sync and discover Chit Groups from all sources
    */
   async getChitGroups(): Promise<ChitGroup[]> {
@@ -362,6 +410,44 @@ export const DataSyncManager = {
     const updatedCustom = [newGroup, ...existingCustom.filter((g) => g.id !== newGroup.id)];
     await secureStorage.setItem('custom_chit_groups', JSON.stringify(updatedCustom));
     return newGroup;
+  },
+
+  /**
+   * Update existing Chit Group details
+   */
+  async updateChitGroup(groupId: string, patchData: Partial<ChitGroup>): Promise<ChitGroup | null> {
+    const groups = await this.getChitGroups();
+    const target = groups.find((g) => g.id === groupId);
+    if (!target) return null;
+
+    const updatedGroup: ChitGroup = {
+      ...target,
+      ...patchData,
+    };
+
+    try {
+      const baseUrl = await getActiveBaseUrl();
+      await fetch(`${baseUrl}/chit-groups/${encodeURIComponent(groupId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patchData),
+      });
+    } catch (e) {
+      console.warn('Backend update chit group error:', e);
+    }
+
+    const customStored = await secureStorage.getItem('custom_chit_groups');
+    let existingCustom: ChitGroup[] = customStored ? JSON.parse(customStored) : [];
+    existingCustom = existingCustom.map((g) => (g.id === groupId ? updatedGroup : g));
+    await secureStorage.setItem('custom_chit_groups', JSON.stringify(existingCustom));
+    return updatedGroup;
+  },
+
+  /**
+   * Permanently delete Chit Group with full cascading cleanup
+   */
+  async deleteChitGroup(target: { id: string; name?: string }): Promise<void> {
+    await cascadeDeleteGroupMobile(target);
   },
 
   /**
@@ -790,5 +876,88 @@ export const DataSyncManager = {
     const existing = await this.getWithdrawalRequests();
     const updated = existing.map((w) => (w.id === id ? { ...w, ...updateData } : w));
     await secureStorage.setItem('withdrawal_requests', JSON.stringify(updated));
+  },
+
+  /**
+   * Delete Payment Request with permanent cascade and blacklisting
+   */
+  async deletePaymentRequest(
+    target: { id: string; customerId?: string; customerMobile?: string } | string,
+    referenceNo?: string
+  ): Promise<void> {
+    if (typeof target === 'string') {
+      await cascadeDeletePaymentRequestMobile({ id: target });
+    } else {
+      await cascadeDeletePaymentRequestMobile(target);
+    }
+  },
+
+  /**
+   * Delete Prize Withdrawal Claim
+   */
+  async deleteWithdrawalRequest(id: string): Promise<void> {
+    await cascadeDeleteWithdrawalRequestMobile(id);
+  },
+
+  /**
+   * Delete Lead Inquiry
+   */
+  async deleteLead(
+    target: { id: string; phone?: string; name?: string; convertedCustomerId?: string } | string,
+    phone?: string,
+    name?: string
+  ): Promise<void> {
+    if (typeof target === 'string') {
+      await cascadeDeleteLeadMobile({ id: target, phone, name });
+    } else {
+      await cascadeDeleteLeadMobile(target);
+    }
+  },
+
+  /**
+   * Add Manual Entry to General Ledger (Credit or Debit)
+   */
+  async addManualLedgerEntry(entryData: {
+    type: 'CREDIT' | 'DEBIT';
+    category: string;
+    amount: number;
+    description: string;
+    paymentMode?: string;
+    reference?: string;
+    customerName?: string;
+    customerId?: string;
+    groupName?: string;
+  }): Promise<LedgerTransaction> {
+    const entryDate = new Date().toISOString();
+    const id = `TXN-${Date.now().toString().slice(-6)}`;
+
+    const newTxn: LedgerTransaction = {
+      id,
+      date: entryDate,
+      type: entryData.type,
+      category: (entryData.category || 'INSTALLMENT') as any,
+      amount: Number(entryData.amount),
+      reference: entryData.reference || id,
+      description: entryData.description,
+      collectedBy: 'Jenista Admin',
+      paymentMode: entryData.paymentMode || 'Cash',
+      customerName: entryData.customerName,
+      customerId: entryData.customerId,
+      groupName: entryData.groupName,
+    };
+
+    const ledger = await this.getLedgerTransactions();
+    const updatedLedger = [newTxn, ...ledger];
+    await secureStorage.setItem('synced_ledger', JSON.stringify(updatedLedger));
+    return newTxn;
+  },
+
+  /**
+   * Void / Delete Receipt from Ledger
+   */
+  async voidReceipt(receiptNo: string): Promise<void> {
+    const ledger = await this.getLedgerTransactions();
+    const updated = ledger.filter((l) => l.id !== receiptNo);
+    await secureStorage.setItem('synced_ledger', JSON.stringify(updated));
   },
 };

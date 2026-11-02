@@ -50,6 +50,7 @@ export interface Customer {
   fullName?: string;
   phone?: string;
   mobile?: string;
+  email?: string;
   aadhar?: string;
   pan?: string;
   address?: string;

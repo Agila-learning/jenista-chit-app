@@ -10,6 +10,9 @@ import {
   Alert,
   RefreshControl,
   Linking,
+  Modal,
+  ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
@@ -27,6 +30,15 @@ export const LeadsScreen: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'NEW' | 'CONVERTED' | 'REJECTED'>('ALL');
   const [refreshing, setRefreshing] = useState(false);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+
+  // Add Lead Modal State
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [formName, setFormName] = useState('');
+  const [formPhone, setFormPhone] = useState('');
+  const [formEmail, setFormEmail] = useState('');
+  const [formPlan, setFormPlan] = useState('Auction Chit Plan');
+  const [formMessage, setFormMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const loadLeads = async () => {
     try {
@@ -132,6 +144,65 @@ export const LeadsScreen: React.FC = () => {
     }
   };
 
+  const handleDeleteLead = (lead: WebsiteLead) => {
+    Alert.alert(
+      'Delete Enquiry Lead',
+      `Permanently delete enquiry from "${lead.fullName}" (${lead.phone})?\n\nThis will remove the lead and cascade clean any associated references across the system.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Permanently',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await DataSyncManager.deleteLead(lead.id, lead.phone, lead.fullName);
+              await loadLeads();
+              Alert.alert('Lead Deleted', 'Enquiry lead has been permanently removed.');
+            } catch (e: any) {
+              Alert.alert('Error', e?.message || 'Failed to delete lead');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCreateLead = async () => {
+    if (!formName.trim() || !formPhone.trim()) {
+      Alert.alert('Required Fields', 'Please enter Prospect Full Name and Mobile Number.');
+      return;
+    }
+    const cleanPhone = formPhone.replace(/\D/g, '');
+    if (cleanPhone.length < 10) {
+      Alert.alert('Invalid Mobile', 'Please provide a valid 10-digit mobile number.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await MobileNotificationsManager.addLead({
+        fullName: formName.trim(),
+        phone: cleanPhone,
+        email: formEmail.trim(),
+        interestedPlan: formPlan.trim() || 'Auction Chit Plan',
+        message: formMessage.trim() || 'Manual enquiry registered via Mobile CRM desk.',
+      });
+
+      setIsAddModalOpen(false);
+      setFormName('');
+      setFormPhone('');
+      setFormEmail('');
+      setFormPlan('Auction Chit Plan');
+      setFormMessage('');
+      await loadLeads();
+      Alert.alert('Enquiry Created', 'New prospect enquiry has been added to CRM.');
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to create lead');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const filteredLeads = leads.filter((l) => {
     const q = search.toLowerCase();
     const matchesSearch =
@@ -151,6 +222,22 @@ export const LeadsScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
+
+      {/* Top Action Bar with Add Enquiry Button */}
+      <View style={styles.topActionBar}>
+        <View>
+          <Text style={styles.topActionTitle}>Enquiries & CRM Leads</Text>
+          <Text style={styles.topActionSub}>Manage prospective chit subscribers</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.addLeadBtn}
+          onPress={() => setIsAddModalOpen(true)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="add" size={18} color={Colors.white} />
+          <Text style={styles.addLeadBtnText}>New Lead</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* KPI Stats Bar */}
       <View style={styles.statsBar}>
@@ -211,7 +298,7 @@ export const LeadsScreen: React.FC = () => {
           <View style={styles.emptyBox}>
             <Ionicons name="people-outline" size={48} color="#94a3b8" />
             <Text style={styles.emptyTitle}>No Website Leads</Text>
-            <Text style={styles.emptySubtitle}>Inquiries submitted on the website contact form will appear here.</Text>
+            <Text style={styles.emptySubtitle}>Inquiries submitted on the website or recorded manually will appear here.</Text>
           </View>
         }
         renderItem={({ item }) => {
@@ -223,32 +310,41 @@ export const LeadsScreen: React.FC = () => {
           return (
             <View style={styles.leadCard}>
               <View style={styles.leadHeaderRow}>
-                <View>
+                <View style={{ flex: 1 }}>
                   <Text style={styles.leadName}>{item.fullName}</Text>
                   <Text style={styles.leadTime}>{formatDate(item.submittedAt)}</Text>
                 </View>
-                <View
-                  style={[
-                    styles.statusBadge,
-                    isNew
-                      ? { backgroundColor: '#fef3c7', borderColor: '#fde68a' }
-                      : isConverted
-                      ? { backgroundColor: '#dcfce7', borderColor: '#bbf7d0' }
-                      : { backgroundColor: '#f1f5f9', borderColor: '#e2e8f0' },
-                  ]}
-                >
-                  <Text
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View
                     style={[
-                      styles.statusBadgeText,
+                      styles.statusBadge,
                       isNew
-                        ? { color: '#b45309' }
+                        ? { backgroundColor: '#fef3c7', borderColor: '#fde68a' }
                         : isConverted
-                        ? { color: '#15803d' }
-                        : { color: '#64748b' },
+                        ? { backgroundColor: '#dcfce7', borderColor: '#bbf7d0' }
+                        : { backgroundColor: '#f1f5f9', borderColor: '#e2e8f0' },
                     ]}
                   >
-                    {item.status}
-                  </Text>
+                    <Text
+                      style={[
+                        styles.statusBadgeText,
+                        isNew
+                          ? { color: '#b45309' }
+                          : isConverted
+                          ? { color: '#15803d' }
+                          : { color: '#64748b' },
+                      ]}
+                    >
+                      {item.status}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => handleDeleteLead(item)}
+                    style={styles.trashBtn}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -257,7 +353,8 @@ export const LeadsScreen: React.FC = () => {
                 <View style={styles.detailItem}>
                   <Ionicons name="layers-outline" size={14} color="#6366f1" />
                   <Text style={styles.detailText}>
-                    <strong>Plan:</strong> {item.interestedPlan || 'General Chit Scheme'}
+                    <Text style={{ fontWeight: '700' }}>Plan: </Text>
+                    {item.interestedPlan || 'General Chit Scheme'}
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -313,6 +410,103 @@ export const LeadsScreen: React.FC = () => {
           );
         }}
       />
+
+      {/* CREATE NEW LEAD MODAL */}
+      <Modal visible={isAddModalOpen} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Register New Lead</Text>
+                <Text style={styles.modalSubtitle}>Record inquiry to prospective subscriber list</Text>
+              </View>
+              <TouchableOpacity onPress={() => setIsAddModalOpen(false)} style={styles.modalCloseBtn}>
+                <Ionicons name="close" size={20} color="#0f172a" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.modalFormContent}>
+              <View>
+                <Text style={styles.inputLabel}>Full Name *</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={formName}
+                  onChangeText={setFormName}
+                  placeholder="e.g. Ramesh Kannan"
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+
+              <View>
+                <Text style={styles.inputLabel}>Mobile Phone *</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={formPhone}
+                  onChangeText={setFormPhone}
+                  keyboardType="phone-pad"
+                  placeholder="10-digit number"
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+
+              <View>
+                <Text style={styles.inputLabel}>Email Address (Optional)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={formEmail}
+                  onChangeText={setFormEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  placeholder="e.g. ramesh@example.com"
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+
+              <View>
+                <Text style={styles.inputLabel}>Interested Scheme Plan</Text>
+                <View style={styles.planChipsRow}>
+                  {['Auction Chit Plan', 'Fixed Chit Plan', 'Regular Chit Plan'].map((p) => (
+                    <TouchableOpacity
+                      key={p}
+                      style={[styles.planChip, formPlan === p && styles.planChipActive]}
+                      onPress={() => setFormPlan(p)}
+                    >
+                      <Text style={[styles.planChipText, formPlan === p && styles.planChipTextActive]}>
+                        {p}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View>
+                <Text style={styles.inputLabel}>Inquiry Message / Notes</Text>
+                <TextInput
+                  style={[styles.textInput, { height: 70, textAlignVertical: 'top', paddingTop: 10 }]}
+                  value={formMessage}
+                  onChangeText={setFormMessage}
+                  multiline
+                  placeholder="Notes about scheme duration, chit value requirement, etc."
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.submitLeadBtn, isSubmitting && { opacity: 0.7 }]}
+                onPress={handleCreateLead}
+                disabled={isSubmitting}
+                activeOpacity={0.8}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator size="small" color={Colors.white} />
+                ) : (
+                  <Text style={styles.submitLeadBtnText}>Save Lead to CRM</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -521,5 +715,138 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#15803d',
+  },
+  trashBtn: {
+    padding: 5,
+    borderRadius: 8,
+    backgroundColor: '#fee2e2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  topActionBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: Colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  topActionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  topActionSub: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  addLeadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.navy.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  addLeadBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.white,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalBox: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    maxHeight: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  modalCloseBtn: {
+    padding: 6,
+    borderRadius: 20,
+    backgroundColor: '#f1f5f9',
+  },
+  modalFormContent: {
+    gap: 12,
+    paddingBottom: 24,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
+    marginBottom: 6,
+  },
+  textInput: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    paddingHorizontal: 12,
+    height: 44,
+    fontSize: 14,
+    color: '#0f172a',
+    fontWeight: '600',
+  },
+  planChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  planChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  planChipActive: {
+    backgroundColor: Colors.navy.primary,
+    borderColor: Colors.navy.primary,
+  },
+  planChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  planChipTextActive: {
+    color: Colors.white,
+  },
+  submitLeadBtn: {
+    backgroundColor: Colors.gold.primary,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+  },
+  submitLeadBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0B1A30',
   },
 });

@@ -28,6 +28,9 @@ export const ChitGroupListScreen: React.FC<{ navigation: any }> = ({ navigation 
   const [isAddGroupModalOpen, setIsAddGroupModalOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupScheme, setNewGroupScheme] = useState<'Auction' | 'Fixed' | 'Regular'>('Auction');
+  const [newGroupValue, setNewGroupValue] = useState('100000');
+  const [newGroupDuration, setNewGroupDuration] = useState('20');
+  const [newGroupMembers, setNewGroupMembers] = useState('20');
   const [creatingGroup, setCreatingGroup] = useState(false);
 
   const fetchGroups = async () => {
@@ -49,15 +52,21 @@ export const ChitGroupListScreen: React.FC<{ navigation: any }> = ({ navigation 
     }
     setCreatingGroup(true);
     try {
+      const val = Number(newGroupValue) || 100000;
+      const dur = Number(newGroupDuration) || 20;
+      const mem = Number(newGroupMembers) || 20;
       await DataSyncManager.createChitGroup({
         name: newGroupName.trim(),
         type: newGroupScheme,
-        value: 100000,
-        duration: 20,
-        members: 20,
+        value: val,
+        duration: dur,
+        members: mem,
       });
       setIsAddGroupModalOpen(false);
       setNewGroupName('');
+      setNewGroupValue('100000');
+      setNewGroupDuration('20');
+      setNewGroupMembers('20');
       await fetchGroups();
       Alert.alert('Group Created', `Group "${newGroupName.trim()}" has been created successfully!`);
     } catch (e: any) {
@@ -65,6 +74,29 @@ export const ChitGroupListScreen: React.FC<{ navigation: any }> = ({ navigation 
     } finally {
       setCreatingGroup(false);
     }
+  };
+
+  const handleDeleteGroup = (group: ChitGroup) => {
+    Alert.alert(
+      'Delete Chit Group',
+      `Are you sure you want to permanently delete "${group.name}"? All associated member enrollments, payment requests, and ledger entries will also be permanently removed.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Permanently',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await DataSyncManager.deleteChitGroup({ id: group.id, name: group.name });
+              setGroups((prev) => prev.filter((g) => g.id !== group.id));
+              Alert.alert('Deleted', `Chit group "${group.name}" was permanently removed.`);
+            } catch (err: any) {
+              Alert.alert('Error', err?.message || 'Failed to delete chit group');
+            }
+          },
+        },
+      ]
+    );
   };
 
   useEffect(() => {
@@ -141,7 +173,16 @@ export const ChitGroupListScreen: React.FC<{ navigation: any }> = ({ navigation 
             </View>
           </View>
 
-          <Ionicons name="chevron-forward" size={18} color={Colors.gold.primary} style={{ marginLeft: 6 }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity
+              style={{ padding: 6, marginRight: 2 }}
+              onPress={() => handleDeleteGroup(item)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="trash-outline" size={18} color={Colors.danger} />
+            </TouchableOpacity>
+            <Ionicons name="chevron-forward" size={18} color={Colors.gold.primary} style={{ marginLeft: 4 }} />
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -288,6 +329,50 @@ export const ChitGroupListScreen: React.FC<{ navigation: any }> = ({ navigation 
                     </TouchableOpacity>
                   );
                 })}
+              </View>
+
+              <Text style={[styles.inputLabel, { marginTop: 16 }]}>CHIT VALUE (₹)</Text>
+              <View style={[styles.schemeChipRow, { marginBottom: 8 }]}>
+                {['50000', '100000', '200000', '500000', '1000000'].map((val) => (
+                  <TouchableOpacity
+                    key={val}
+                    style={[styles.schemeChip, newGroupValue === val && styles.schemeChipActive]}
+                    onPress={() => setNewGroupValue(val)}
+                  >
+                    <Text style={[styles.schemeChipText, newGroupValue === val && styles.schemeChipTextActive]}>
+                      ₹{(Number(val) / 1000).toFixed(0)}k
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Or custom chit value in ₹"
+                placeholderTextColor={Colors.textMuted}
+                keyboardType="numeric"
+                value={newGroupValue}
+                onChangeText={setNewGroupValue}
+              />
+
+              <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>DURATION (MOS)</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    keyboardType="numeric"
+                    value={newGroupDuration}
+                    onChangeText={setNewGroupDuration}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>MEMBERS</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    keyboardType="numeric"
+                    value={newGroupMembers}
+                    onChangeText={setNewGroupMembers}
+                  />
+                </View>
               </View>
 
               <View style={styles.infoNoteBox}>

@@ -9,6 +9,9 @@ import {
   RefreshControl,
   TextInput,
   ScrollView,
+  Alert,
+  Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
@@ -24,6 +27,18 @@ export const LedgerScreen: React.FC = () => {
 
   const [transactions, setTransactions] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+
+  // New Ledger Entry Modal State
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [entryType, setEntryType] = useState<'CREDIT' | 'DEBIT'>('CREDIT');
+  const [entryAmount, setEntryAmount] = useState('');
+  const [entryCustomer, setEntryCustomer] = useState('');
+  const [entryGroup, setEntryGroup] = useState('');
+  const [entryCategory, setEntryCategory] = useState('INSTALLMENT');
+  const [entryMode, setEntryMode] = useState<'Cash' | 'UPI' | 'Bank Transfer' | 'Cheque'>('UPI');
+  const [entryRef, setEntryRef] = useState('');
+  const [entryNotes, setEntryNotes] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const loadLedger = async () => {
     try {
@@ -116,6 +131,70 @@ export const LedgerScreen: React.FC = () => {
   const onRefresh = () => {
     setRefreshing(true);
     loadLedger();
+  };
+
+  const handleVoidTransaction = (item: any) => {
+    Alert.alert(
+      'Void / Delete Transaction',
+      `Permanently void and remove ${item.type} entry for ${item.customerName} of ${formatCurrency(item.amount)}?\n\nThis will remove the transaction from the general ledger records.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Void & Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await DataSyncManager.voidReceipt(item.id);
+              await loadLedger();
+              Alert.alert('Voided', 'Transaction entry has been removed from ledger.');
+            } catch (e: any) {
+              Alert.alert('Error', e?.message || 'Failed to void transaction');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCreateEntry = async () => {
+    const parsedAmount = parseFloat(entryAmount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid numeric transaction amount.');
+      return;
+    }
+    if (!entryCustomer.trim()) {
+      Alert.alert('Required Field', 'Please enter a subscriber or counterparty name.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await DataSyncManager.addManualLedgerEntry({
+        type: entryType,
+        amount: parsedAmount,
+        category: entryCategory,
+        description: entryNotes.trim() || `${entryType === 'CREDIT' ? 'Receipt' : 'Payment'} Entry - ${entryCustomer.trim()}`,
+        customerName: entryCustomer.trim(),
+        groupName: entryGroup.trim() || 'General Ledger Account',
+        paymentMode: entryMode,
+        reference: entryRef.trim() || `LED-${Date.now().toString().slice(-6)}`,
+      });
+
+      setIsAddModalOpen(false);
+      setEntryAmount('');
+      setEntryCustomer('');
+      setEntryGroup('');
+      setEntryCategory('INSTALLMENT');
+      setEntryMode('UPI');
+      setEntryRef('');
+      setEntryNotes('');
+      await loadLedger();
+      Alert.alert('Entry Recorded', 'New entry recorded into general ledger.');
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to add ledger entry');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const filtered = useMemo(() => {
@@ -231,32 +310,45 @@ export const LedgerScreen: React.FC = () => {
             </View>
           </View>
 
-          {/* Amount & Status Pill */}
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={styles.amountText}>{formatCurrency(item.amount)}</Text>
-            <Text style={styles.dateText}>{item.date}</Text>
-            <View
-              style={[
-                styles.statusPill,
-                isCompleted
-                  ? styles.pillCompleted
-                  : isPending
-                  ? styles.pillPending
-                  : styles.pillFailed,
-              ]}
-            >
-              <Text
+          {/* Amount, Date, Status Pill & Delete/Void Button */}
+          <View style={{ alignItems: 'flex-end', justifyContent: 'space-between' }}>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={[styles.amountText, item.type === 'DEBIT' && { color: '#EF4444' }]}>
+                {item.type === 'DEBIT' ? '-' : '+'} {formatCurrency(item.amount)}
+              </Text>
+              <Text style={styles.dateText}>{item.date}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+              <View
                 style={[
-                  styles.statusPillText,
+                  styles.statusPill,
                   isCompleted
-                    ? styles.textCompleted
+                    ? styles.pillCompleted
                     : isPending
-                    ? styles.textPending
-                    : styles.textFailed,
+                    ? styles.pillPending
+                    : styles.pillFailed,
                 ]}
               >
-                {item.status.charAt(0) + item.status.slice(1).toLowerCase()}
-              </Text>
+                <Text
+                  style={[
+                    styles.statusPillText,
+                    isCompleted
+                      ? styles.textCompleted
+                      : isPending
+                      ? styles.textPending
+                      : styles.textFailed,
+                  ]}
+                >
+                  {item.status.charAt(0) + item.status.slice(1).toLowerCase()}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => handleVoidTransaction(item)}
+                style={styles.voidBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="trash-outline" size={13} color="#EF4444" />
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -267,6 +359,22 @@ export const LedgerScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
+
+      {/* Top Header Bar with New Entry Action */}
+      <View style={styles.topHeaderBar}>
+        <View>
+          <Text style={styles.topHeaderTitle}>General Ledger</Text>
+          <Text style={styles.topHeaderSub}>Inflow: {formatCurrency(totalCollected)}</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.btnAddEntry}
+          onPress={() => setIsAddModalOpen(true)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="add-circle" size={17} color="#0B1A30" />
+          <Text style={styles.btnAddEntryText}>New Entry</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Top Search Bar */}
       <View style={styles.searchBarWrapper}>
@@ -402,6 +510,132 @@ export const LedgerScreen: React.FC = () => {
           </View>
         }
       />
+
+      {/* ADD MANUAL ENTRY MODAL */}
+      <Modal visible={isAddModalOpen} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Record Ledger Entry</Text>
+                <Text style={styles.modalSubtitle}>Add manual Credit or Debit to general ledger</Text>
+              </View>
+              <TouchableOpacity onPress={() => setIsAddModalOpen(false)} style={styles.modalCloseBtn}>
+                <Ionicons name="close" size={20} color="#0f172a" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.modalFormContent}>
+              {/* Type Switcher */}
+              <View style={styles.typeSwitcher}>
+                <TouchableOpacity
+                  style={[styles.typeBtn, entryType === 'CREDIT' && styles.typeBtnCreditActive]}
+                  onPress={() => setEntryType('CREDIT')}
+                >
+                  <Ionicons name="arrow-down-circle" size={16} color={entryType === 'CREDIT' ? '#10B981' : '#64748b'} />
+                  <Text style={[styles.typeBtnText, entryType === 'CREDIT' && { color: '#10B981', fontWeight: '800' }]}>
+                    Credit (Inflow)
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.typeBtn, entryType === 'DEBIT' && styles.typeBtnDebitActive]}
+                  onPress={() => setEntryType('DEBIT')}
+                >
+                  <Ionicons name="arrow-up-circle" size={16} color={entryType === 'DEBIT' ? '#EF4444' : '#64748b'} />
+                  <Text style={[styles.typeBtnText, entryType === 'DEBIT' && { color: '#EF4444', fontWeight: '800' }]}>
+                    Debit (Outflow)
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View>
+                <Text style={styles.inputLabel}>Transaction Amount (₹) *</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={entryAmount}
+                  onChangeText={setEntryAmount}
+                  keyboardType="numeric"
+                  placeholder="e.g. 5000"
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+
+              <View>
+                <Text style={styles.inputLabel}>Customer / Counterparty *</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={entryCustomer}
+                  onChangeText={setEntryCustomer}
+                  placeholder="e.g. Sekar Kumar"
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+
+              <View>
+                <Text style={styles.inputLabel}>Chit Group / Category</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={entryGroup}
+                  onChangeText={setEntryGroup}
+                  placeholder="e.g. Diya-1L-20M or General Reserve"
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+
+              <View>
+                <Text style={styles.inputLabel}>Payment Mode</Text>
+                <View style={styles.modeChipsRow}>
+                  {(['UPI', 'Cash', 'Bank Transfer', 'Cheque'] as const).map((m) => (
+                    <TouchableOpacity
+                      key={m}
+                      style={[styles.modeChip, entryMode === m && styles.modeChipActive]}
+                      onPress={() => setEntryMode(m)}
+                    >
+                      <Text style={[styles.modeChipText, entryMode === m && styles.modeChipTextActive]}>{m}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View>
+                <Text style={styles.inputLabel}>Reference / UTR / Voucher No</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={entryRef}
+                  onChangeText={setEntryRef}
+                  placeholder="e.g. UTR-9832104"
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+
+              <View>
+                <Text style={styles.inputLabel}>Narration / Notes</Text>
+                <TextInput
+                  style={[styles.modalInput, { height: 60, textAlignVertical: 'top', paddingTop: 8 }]}
+                  value={entryNotes}
+                  onChangeText={setEntryNotes}
+                  multiline
+                  placeholder="Optional entry description..."
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.submitEntryBtn, isSubmitting && { opacity: 0.7 }]}
+                onPress={handleCreateEntry}
+                disabled={isSubmitting}
+                activeOpacity={0.8}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator size="small" color="#0B1A30" />
+                ) : (
+                  <Text style={styles.submitEntryText}>Save Entry to Ledger</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -658,5 +892,170 @@ const styles = StyleSheet.create({
   },
   textFailed: {
     color: Colors.danger,
+  },
+  voidBtn: {
+    padding: 3,
+    borderRadius: 4,
+    backgroundColor: '#fee2e2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  topHeaderBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: Colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  topHeaderTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  topHeaderSub: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.gold.primary,
+    marginTop: 2,
+  },
+  btnAddEntry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.gold.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  btnAddEntryText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0B1A30',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalBox: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    maxHeight: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  modalCloseBtn: {
+    padding: 6,
+    borderRadius: 20,
+    backgroundColor: '#f1f5f9',
+  },
+  modalFormContent: {
+    gap: 12,
+    paddingBottom: 24,
+  },
+  typeSwitcher: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 4,
+  },
+  typeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  typeBtnCreditActive: {
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    borderColor: '#10B981',
+  },
+  typeBtnDebitActive: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderColor: '#EF4444',
+  },
+  typeBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
+    marginBottom: 6,
+  },
+  modalInput: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    paddingHorizontal: 12,
+    height: 44,
+    fontSize: 14,
+    color: '#0f172a',
+    fontWeight: '600',
+  },
+  modeChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  modeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  modeChipActive: {
+    backgroundColor: Colors.navy.primary,
+    borderColor: Colors.navy.primary,
+  },
+  modeChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  modeChipTextActive: {
+    color: Colors.white,
+  },
+  submitEntryBtn: {
+    backgroundColor: Colors.gold.primary,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+  },
+  submitEntryText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0B1A30',
   },
 });

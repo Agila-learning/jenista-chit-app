@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   StatusBar,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
@@ -86,6 +87,34 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
     return matchesSearch && matchesStatus && matchesScheme;
   });
 
+  const handleDeleteCustomer = (cust: Customer) => {
+    Alert.alert(
+      'Delete Customer',
+      `Permanently delete member "${cust.name}" (${cust.id})? All active chits, payment requests, receipts, and ledger records for this member will also be removed.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Permanently',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await DataSyncManager.deleteCustomer({
+                id: cust.id,
+                mongoId: cust.mongoId,
+                phone: cust.phone || cust.mobile,
+                name: cust.name,
+              });
+              setCustomers((prev) => prev.filter((c) => c.id !== cust.id));
+              Alert.alert('Deleted', `Customer "${cust.name}" was permanently removed.`);
+            } catch (err: any) {
+              Alert.alert('Error', err?.message || 'Failed to delete customer');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const renderItem = ({ item }: { item: Customer }) => {
     const hasDues = Number(item.pending || 0) > 0;
     const initial = (item.name || 'M').charAt(0).toUpperCase();
@@ -138,7 +167,16 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
             </View>
           </View>
 
-          <Ionicons name="chevron-forward" size={18} color={Colors.border} style={{ marginLeft: 6 }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity
+              style={{ padding: 6, marginRight: 2 }}
+              onPress={() => handleDeleteCustomer(item)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="trash-outline" size={17} color={Colors.danger} />
+            </TouchableOpacity>
+            <Ionicons name="chevron-forward" size={18} color={Colors.border} style={{ marginLeft: 4 }} />
+          </View>
         </View>
       </TouchableOpacity>
     );
