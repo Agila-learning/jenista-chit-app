@@ -677,7 +677,7 @@ export const cleanupDeletedRecords = (): void => {
       if (Array.isArray(parsed)) {
         const clean = parsed.filter(p => 
           !isRecordDeleted(p.id, p.mobile, p.customerName) && 
-          !isRecordDeleted(p.customerId) &&
+          !isRecordDeleted(p.customerId, p.mobile, p.customerName) &&
           !isGrpDeleted(p.groupId, p.groupName)
         );
         if (clean.length !== parsed.length) {
@@ -693,7 +693,7 @@ export const cleanupDeletedRecords = (): void => {
       if (Array.isArray(parsed)) {
         const clean = parsed.filter(w => 
           !isRecordDeleted(w.id, w.mobile, w.customerName) && 
-          !isRecordDeleted(w.customerId) &&
+          !isRecordDeleted(w.customerId, w.mobile, w.customerName) &&
           !isGrpDeleted(w.groupId, w.groupName)
         );
         if (clean.length !== parsed.length) {
@@ -737,5 +737,121 @@ export const cleanupDeletedRecords = (): void => {
     }
   } catch (err) {
     console.error('Error during cleanupDeletedRecords:', err);
+  }
+};
+
+export interface CascadeDeletePaymentTarget {
+  id: string;
+  customerId?: string;
+  customerName?: string;
+  mobile?: string;
+  referenceNo?: string;
+  groupId?: string;
+}
+
+/**
+ * Permanently deletes a payment verification request and all related receipt & ledger records
+ */
+export const cascadeDeletePaymentRequest = async (target: CascadeDeletePaymentTarget): Promise<void> => {
+  const reqId = target.id;
+  const custId = target.customerId;
+  const mobileDigits = cleanDigits(target.mobile);
+
+  // 1. Blacklist the payment request ID and customer/phone so sync never pulls it back
+  try {
+    const deletedList: string[] = JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]');
+    if (reqId && !deletedList.includes(reqId)) deletedList.push(reqId);
+    if (custId && !deletedList.includes(custId)) deletedList.push(custId);
+    if (mobileDigits && !deletedList.includes(mobileDigits)) deletedList.push(mobileDigits);
+    localStorage.setItem('deletedCustomerIds', JSON.stringify(deletedList));
+  } catch {}
+
+  // 2. Remove from paymentRequests in localStorage
+  try {
+    const rawPayments = localStorage.getItem('paymentRequests');
+    if (rawPayments) {
+      const parsed: any[] = JSON.parse(rawPayments);
+      const remaining = parsed.filter((p: any) => p.id !== reqId && p._id !== reqId);
+      localStorage.setItem('paymentRequests', JSON.stringify(remaining));
+    }
+  } catch {}
+
+  // 3. Remove from staffReceipts in localStorage
+  try {
+    const rawReceipts = localStorage.getItem('staffReceipts');
+    if (rawReceipts) {
+      const parsed: any[] = JSON.parse(rawReceipts);
+      const remaining = parsed.filter((r: any) => r.receiptNo !== reqId && (!target.referenceNo || r.referenceNo !== target.referenceNo));
+      localStorage.setItem('staffReceipts', JSON.stringify(remaining));
+    }
+  } catch {}
+
+  // 4. Remove from ledgerTransactions in localStorage
+  try {
+    const rawLedger = localStorage.getItem('ledgerTransactions');
+    if (rawLedger) {
+      const parsed: any[] = JSON.parse(rawLedger);
+      const remaining = parsed.filter((l: any) => l.paymentRequestId !== reqId && l.id !== reqId && (!target.referenceNo || l.referenceNo !== target.referenceNo));
+      localStorage.setItem('ledgerTransactions', JSON.stringify(remaining));
+    }
+  } catch {}
+
+  // 5. Remove matching notifications
+  try {
+    const rawNotifs = localStorage.getItem('systemNotifications');
+    if (rawNotifs) {
+      const parsed: any[] = JSON.parse(rawNotifs);
+      const remaining = parsed.filter((n: any) => n.metadata?.leadId !== reqId && (!target.referenceNo || n.metadata?.referenceNo !== target.referenceNo));
+      localStorage.setItem('systemNotifications', JSON.stringify(remaining));
+    }
+  } catch {}
+
+  // 6. Dispatch reactive storage & paymentSync events
+  window.dispatchEvent(new Event('storage'));
+  window.dispatchEvent(new CustomEvent('paymentSync'));
+  window.dispatchEvent(new CustomEvent('notificationSync'));
+
+  // 7. Permanently delete from backend MongoDB
+  try {
+    await fetchClient(`/payments/requests/${encodeURIComponent(reqId)}`, {
+      method: 'DELETE'
+    });
+  } catch (err) {
+    console.warn('Backend payment request deletion offline or completed:', err);
+  }
+};
+
+/**
+ * Permanently deletes a withdrawal disbursal claim and purges its records
+ */
+export const cascadeDeleteWithdrawalRequest = async (target: { id: string; customerId?: string }): Promise<void> => {
+  const reqId = target.id;
+  try {
+    const deletedList: string[] = JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]');
+    if (reqId && !deletedList.includes(reqId)) {
+      deletedList.push(reqId);
+      localStorage.setItem('deletedCustomerIds', JSON.stringify(deletedList));
+    }
+  } catch {}
+
+  try {
+    const rawW = localStorage.getItem('withdrawalRequests');
+    if (rawW) {
+      const parsed: any[] = JSON.parse(rawW);
+      const remaining = parsed.filter((w: any) => w.id !== reqId && w._id !== reqId);
+      localStorage.setItem('withdrawalRequests', JSON.stringify(remaining));
+    }
+  } catch {}
+
+  window.dispatchEvent(new Event('storage'));
+  window.dispatchEvent(new CustomEvent('paymentSync'));
+  window.dispatchEvent(new CustomEvent('notificationSync'));
+
+  try {
+    await fetchClient(`/payments/withdrawals/${encodeURIComponent(reqId)}`, {
+      method: 'DELETE'
+    });
+  } catch (err) {
+    console.warn('Backend withdrawal deletion offline or completed:', err);
   }
 };

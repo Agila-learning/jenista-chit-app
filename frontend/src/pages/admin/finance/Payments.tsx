@@ -12,11 +12,12 @@ import {
   Eye,
   ExternalLink,
   Landmark,
-  X
+  X,
+  Trash2
 } from 'lucide-react';
 import { fetchClient } from '../../../api/client';
 import { isMockCustomer } from '../../../utils/cleanMockData';
-import { isGroupDeleted, isCustomerOrLeadDeleted } from '../../../utils/cascadeDelete';
+import { isGroupDeleted, isCustomerOrLeadDeleted, cascadeDeletePaymentRequest, cascadeDeleteWithdrawalRequest } from '../../../utils/cascadeDelete';
 import { printCashReceipt } from '../../../utils/receiptPrinter';
 import type { PaymentRequest } from '../../../utils/paymentRequestsData';
 import {
@@ -418,6 +419,52 @@ export const Payments = () => {
     loadData();
   };
 
+  const handleDeletePaymentRequest = async (req: PaymentRequest) => {
+    if (!window.confirm(`Are you sure you want to permanently delete payment request ${req.id} for ${req.customerName || req.customerId}? This will remove it from verifications, receipts, and the general ledger.`)) {
+      return;
+    }
+    setActionInProgress(req.id);
+    try {
+      await cascadeDeletePaymentRequest({
+        id: req.id,
+        customerId: req.customerId,
+        customerName: req.customerName,
+        mobile: req.mobile,
+        referenceNo: req.referenceNo,
+        groupId: req.groupId
+      });
+      setPaymentRequests(prev => prev.filter(p => p.id !== req.id));
+      setActionSuccessMsg(`Payment request ${req.id} for ${req.customerName || req.customerId} deleted permanently.`);
+      setTimeout(() => setActionSuccessMsg(null), 4000);
+    } catch (err) {
+      console.error('Error deleting payment request:', err);
+      alert('Failed to delete payment request. Please try again.');
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleDeleteWithdrawalRequest = async (req: WithdrawalRequest) => {
+    if (!window.confirm(`Are you sure you want to permanently delete withdrawal claim ${req.id} for ${req.customerName || req.customerId}?`)) {
+      return;
+    }
+    setActionInProgress(req.id);
+    try {
+      await cascadeDeleteWithdrawalRequest({
+        id: req.id,
+        customerId: req.customerId
+      });
+      setWithdrawalRequests(prev => prev.filter(w => w.id !== req.id));
+      setActionSuccessMsg(`Withdrawal claim ${req.id} deleted permanently.`);
+      setTimeout(() => setActionSuccessMsg(null), 4000);
+    } catch (err) {
+      console.error('Error deleting withdrawal request:', err);
+      alert('Failed to delete withdrawal claim.');
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       
@@ -662,53 +709,63 @@ export const Payments = () => {
                           </td>
 
                           <td className="py-4 px-4 text-right whitespace-nowrap">
-                            {isPending ? (
-                              <div className="flex items-center justify-end gap-2">
+                            <div className="flex items-center justify-end gap-2">
+                              {isPending && (
+                                <>
+                                  <button
+                                    onClick={() => handleReject(req)}
+                                    disabled={actionInProgress === req.id}
+                                    className="px-3 py-1.5 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors"
+                                  >
+                                    Reject
+                                  </button>
+                                  <button
+                                    onClick={() => handleApprove(req)}
+                                    disabled={actionInProgress === req.id}
+                                    className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition-colors flex items-center gap-1"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                    Verify & Approve
+                                  </button>
+                                </>
+                              )}
+                              {isApproved && (
                                 <button
-                                  onClick={() => handleReject(req)}
-                                  disabled={actionInProgress === req.id}
-                                  className="px-3 py-1.5 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors"
+                                  onClick={() => printCashReceipt({
+                                    receiptNo: req.id,
+                                    date: req.submittedAt,
+                                    customerName: req.customerName,
+                                    customerId: req.customerId,
+                                    customerMobile: req.mobile,
+                                    groupName: req.groupName || req.groupId,
+                                    ticketNumber: req.ticketNumber,
+                                    paymentMode: req.paymentMode,
+                                    amount: req.amount,
+                                    description: `Verified Payment (${req.paymentMode} Ref: ${req.referenceNo})`,
+                                    referenceNo: req.referenceNo,
+                                    collectedBy: 'Jenista Admin Accounts'
+                                  })}
+                                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border shadow-2xs transition-all hover:scale-105 ${
+                                    (req.paymentMode || '').toLowerCase().includes('cash')
+                                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600'
+                                      : 'bg-neutral-50 hover:bg-neutral-100 text-neutral-700 border-neutral-300'
+                                  }`}
+                                  title="Print Official Payment Receipt Voucher"
                                 >
-                                  Reject
+                                  <Printer className="w-3.5 h-3.5" />
+                                  <span>Print Receipt</span>
                                 </button>
-                                <button
-                                  onClick={() => handleApprove(req)}
-                                  disabled={actionInProgress === req.id}
-                                  className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition-colors flex items-center gap-1"
-                                >
-                                  <Check className="w-3.5 h-3.5" />
-                                  Verify & Approve
-                                </button>
-                              </div>
-                            ) : isApproved ? (
+                              )}
                               <button
-                                onClick={() => printCashReceipt({
-                                  receiptNo: req.id,
-                                  date: req.submittedAt,
-                                  customerName: req.customerName,
-                                  customerId: req.customerId,
-                                  customerMobile: req.mobile,
-                                  groupName: req.groupName || req.groupId,
-                                  ticketNumber: req.ticketNumber,
-                                  paymentMode: req.paymentMode,
-                                  amount: req.amount,
-                                  description: `Verified Payment (${req.paymentMode} Ref: ${req.referenceNo})`,
-                                  referenceNo: req.referenceNo,
-                                  collectedBy: 'Jenista Admin Accounts'
-                                })}
-                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border shadow-2xs transition-all hover:scale-105 ${
-                                  (req.paymentMode || '').toLowerCase().includes('cash')
-                                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600'
-                                    : 'bg-neutral-50 hover:bg-neutral-100 text-neutral-700 border-neutral-300'
-                                }`}
-                                title="Print Official Payment Receipt Voucher"
+                                onClick={() => handleDeletePaymentRequest(req)}
+                                disabled={actionInProgress === req.id}
+                                className="p-1.5 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 hover:text-rose-700 border border-rose-200 rounded-lg transition-all"
+                                title="Permanently Delete Payment Record"
                               >
-                                <Printer className="w-3.5 h-3.5" />
-                                <span>Print Receipt</span>
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span className="sr-only">Delete Record</span>
                               </button>
-                            ) : (
-                              <span className="text-xs text-neutral-400 italic">No actions</span>
-                            )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -884,47 +941,57 @@ export const Payments = () => {
                             </td>
 
                             <td className="py-4 px-4 text-right whitespace-nowrap">
-                              {isPending ? (
-                                <div className="flex items-center justify-end gap-2">
-                                  <button
-                                    onClick={() => handleRejectWithdrawal(req)}
-                                    disabled={actionInProgress === req.id}
-                                    className="px-3 py-1.5 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors"
-                                  >
-                                    Reject
-                                  </button>
-                                  <button
-                                    onClick={() => openDisburseModal(req)}
-                                    disabled={actionInProgress === req.id}
-                                    className="px-3.5 py-1.5 text-xs font-bold text-white bg-primary-900 hover:bg-primary-950 rounded-lg shadow-sm transition-colors flex items-center gap-1.5"
-                                  >
-                                    <Award className="w-3.5 h-3.5 text-amber-300" />
-                                    Process Disbursal
-                                  </button>
-                                </div>
-                              ) : isDisbursed ? (
-                                <div className="text-right">
-                                  <span className="text-[11px] font-mono font-bold text-neutral-800 block">
-                                    UTR: {req.disbursedRef || req.transactionReference || 'DISBURSED'}
-                                  </span>
-                                  {req.disbursedAt && (
-                                    <span className="text-[10px] text-neutral-400 block mt-0.5">
-                                      {new Date(req.disbursedAt).toLocaleDateString('en-IN', {
-                                        day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-                                      })}
+                              <div className="flex items-center justify-end gap-2">
+                                {isPending && (
+                                  <>
+                                    <button
+                                      onClick={() => handleRejectWithdrawal(req)}
+                                      disabled={actionInProgress === req.id}
+                                      className="px-3 py-1.5 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors"
+                                    >
+                                      Reject
+                                    </button>
+                                    <button
+                                      onClick={() => openDisburseModal(req)}
+                                      disabled={actionInProgress === req.id}
+                                      className="px-3.5 py-1.5 text-xs font-bold text-white bg-primary-900 hover:bg-primary-950 rounded-lg shadow-sm transition-colors flex items-center gap-1.5"
+                                    >
+                                      <Award className="w-3.5 h-3.5 text-amber-300" />
+                                      Process Disbursal
+                                    </button>
+                                  </>
+                                )}
+                                {isDisbursed && (
+                                  <div className="text-right">
+                                    <span className="text-[11px] font-mono font-bold text-neutral-800 block">
+                                      UTR: {req.disbursedRef || req.transactionReference || 'DISBURSED'}
                                     </span>
-                                  )}
-                                  {req.customerAcknowledgedAt && (
-                                    <span className="text-[9px] text-emerald-700 font-medium block">
-                                      Ack: {new Date(req.customerAcknowledgedAt).toLocaleDateString('en-IN', {
-                                        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
-                                      })}
-                                    </span>
-                                  )}
-                                </div>
-                              ) : (
-                                <span className="text-xs text-neutral-400 italic">—</span>
-                              )}
+                                    {req.disbursedAt && (
+                                      <span className="text-[10px] text-neutral-400 block mt-0.5">
+                                        {new Date(req.disbursedAt).toLocaleDateString('en-IN', {
+                                          day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                                        })}
+                                      </span>
+                                    )}
+                                    {req.customerAcknowledgedAt && (
+                                      <span className="text-[9px] text-emerald-700 font-medium block">
+                                        Ack: {new Date(req.customerAcknowledgedAt).toLocaleDateString('en-IN', {
+                                          day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+                                        })}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                                <button
+                                  onClick={() => handleDeleteWithdrawalRequest(req)}
+                                  disabled={actionInProgress === req.id}
+                                  className="p-1.5 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 hover:text-rose-700 border border-rose-200 rounded-lg transition-all"
+                                  title="Permanently Delete Withdrawal Record"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span className="sr-only">Delete Withdrawal</span>
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );

@@ -9,11 +9,13 @@ const router = Router();
 router.post('/requests', PaymentController.createPaymentRequest);
 router.get('/requests', PaymentController.getPaymentRequests);
 router.patch('/requests/:id', PaymentController.updatePaymentRequestStatus);
+router.delete('/requests/:id', PaymentController.deletePaymentRequest);
 
 // Prize Money Withdrawal / Disbursal Claims
 router.post('/withdrawals', PaymentController.createWithdrawalRequest);
 router.get('/withdrawals', PaymentController.getWithdrawalRequests);
 router.patch('/withdrawals/:id', PaymentController.updateWithdrawalRequestStatus);
+router.delete('/withdrawals/:id', PaymentController.deleteWithdrawalRequest);
 
 // Internal Ledger Payments
 router.use(authenticate);

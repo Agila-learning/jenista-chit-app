@@ -470,15 +470,27 @@ export const updateLeadStatus = (leadId: string, status: 'CONVERTED' | 'REJECTED
 
 export const deleteWebsiteLead = (leadId: string): WebsiteLead[] => {
   const current = getStoredLeads();
+  const targetLead = current.find(l => l.id === leadId);
   const updated = current.filter(l => l.id !== leadId);
   localStorage.setItem('websiteLeads', JSON.stringify(updated));
 
   try {
     const deletedList: string[] = JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]');
-    if (!deletedList.includes(leadId)) {
-      deletedList.push(leadId);
-      localStorage.setItem('deletedCustomerIds', JSON.stringify(deletedList));
+    if (!deletedList.includes(leadId)) deletedList.push(leadId);
+    if (targetLead) {
+      if (targetLead.phone) {
+        const d = targetLead.phone.replace(/\D/g, '');
+        if (d && !deletedList.includes(d)) deletedList.push(d);
+        if (!deletedList.includes(targetLead.phone)) deletedList.push(targetLead.phone);
+      }
+      if (targetLead.convertedCustomerId && !deletedList.includes(targetLead.convertedCustomerId)) {
+        deletedList.push(targetLead.convertedCustomerId);
+      }
+      if (targetLead.fullName && !deletedList.includes(targetLead.fullName)) {
+        deletedList.push(targetLead.fullName);
+      }
     }
+    localStorage.setItem('deletedCustomerIds', JSON.stringify(deletedList));
   } catch {}
 
   window.dispatchEvent(new Event('storage'));

@@ -119,4 +119,44 @@ export class PaymentController {
       next(error);
     }
   }
+
+  static async deletePaymentRequest(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { PaymentRequestModel } = await import('./payment-request.model');
+      const { id } = req.params;
+      const targetId = Array.isArray(id) ? id[0] : id;
+      const isObjectId = /^[0-9a-fA-F]{24}$/.test(targetId);
+
+      const query: any = {
+        $or: [
+          { id: targetId },
+          ...(isObjectId ? [{ _id: targetId }] : [])
+        ]
+      };
+      const deleted = await PaymentRequestModel.findOneAndDelete(query);
+      res.status(200).json({ success: true, message: 'Payment request deleted', data: deleted });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async deleteWithdrawalRequest(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { WithdrawalRequestModel } = await import('./withdrawal-request.model');
+      const { id } = req.params;
+      const targetId = Array.isArray(id) ? id[0] : id;
+      const isObjectId = /^[0-9a-fA-F]{24}$/.test(targetId);
+
+      const query: any = {
+        $or: [
+          { id: targetId },
+          ...(isObjectId ? [{ _id: targetId }] : [])
+        ]
+      };
+      const deleted = await WithdrawalRequestModel.findOneAndDelete(query);
+      res.status(200).json({ success: true, message: 'Withdrawal request deleted', data: deleted });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
