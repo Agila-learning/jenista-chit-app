@@ -412,10 +412,17 @@ export const getStoredLeads = (): WebsiteLead[] => {
           status: 'NEW'
         }
       ];
-      localStorage.setItem('websiteLeads', JSON.stringify(sampleLeads));
-      return sampleLeads;
+      const deletedIds = new Set<string>(JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]'));
+      const filtered = sampleLeads.filter(l => !deletedIds.has(l.id));
+      localStorage.setItem('websiteLeads', JSON.stringify(filtered));
+      return filtered;
     }
-    return JSON.parse(raw);
+    const parsed: WebsiteLead[] = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      const deletedIds = new Set<string>(JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]'));
+      return parsed.filter(l => !deletedIds.has(l.id) && (!l.convertedCustomerId || !deletedIds.has(l.convertedCustomerId)));
+    }
+    return [];
   } catch {
     return [];
   }
@@ -465,6 +472,15 @@ export const deleteWebsiteLead = (leadId: string): WebsiteLead[] => {
   const current = getStoredLeads();
   const updated = current.filter(l => l.id !== leadId);
   localStorage.setItem('websiteLeads', JSON.stringify(updated));
+
+  try {
+    const deletedList: string[] = JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]');
+    if (!deletedList.includes(leadId)) {
+      deletedList.push(leadId);
+      localStorage.setItem('deletedCustomerIds', JSON.stringify(deletedList));
+    }
+  } catch {}
+
   window.dispatchEvent(new Event('storage'));
   return updated;
 };

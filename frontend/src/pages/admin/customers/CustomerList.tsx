@@ -18,6 +18,7 @@ import { Link } from 'react-router-dom';
 import { fetchClient } from '../../../api/client';
 import { isMockCustomer, isMockGroup } from '../../../utils/cleanMockData';
 import { addSystemNotification } from '../../../utils/notificationsData';
+import { cascadeDeleteCustomer } from '../../../utils/cascadeDelete';
 
 export const CustomerList = () => {
   const [searchName, setSearchName] = useState('');
@@ -252,57 +253,18 @@ export const CustomerList = () => {
     return { total: allCustomers.length, auction, fixed, regular, unassigned, pending };
   }, [allCustomers]);
 
-  const handleDeleteCustomer = (id: string) => {
+  const handleDeleteCustomer = async (id: string) => {
     const cust = allCustomers.find((c: any) => c.id === id);
-    if (window.confirm(`Are you sure you want to delete customer ${cust?.name || id}?`)) {
+    if (window.confirm(`Are you sure you want to permanently delete customer ${cust?.name || id}? This will delete all of their records everywhere, including payments, receipts, claims, and enrollments.`)) {
       const updatedCustomers = allCustomers.filter((c: any) => c.id !== id);
       setAllCustomers(updatedCustomers);
       
-      const saved = localStorage.getItem('mockCustomers');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        const newStorage = parsed.filter((c: any) => c.id !== id && c.customerCode !== id && (!cust?.mongoId || c.mongoId !== cust.mongoId));
-        localStorage.setItem('mockCustomers', JSON.stringify(newStorage));
-      }
-
-      // Track in deletedCustomerIds
-      const deletedIds: string[] = JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]');
-      if (!deletedIds.includes(id)) deletedIds.push(id);
-      if (cust?.mongoId && !deletedIds.includes(cust.mongoId)) deletedIds.push(cust.mongoId);
-      if (cust?.phone && !deletedIds.includes(cust.phone)) deletedIds.push(cust.phone);
-      localStorage.setItem('deletedCustomerIds', JSON.stringify(deletedIds));
-
-      // Clean from mockChitGroups
-      const diskGroups = JSON.parse(localStorage.getItem('mockChitGroups') || '[]');
-      const updatedGroups = diskGroups.map((g: any) => ({
-        ...g,
-        enrolledMembers: Array.isArray(g.enrolledMembers) ? g.enrolledMembers.filter((m: any) => m.id !== id && m.customerId !== id) : [],
-        filled: Array.isArray(g.enrolledMembers) ? g.enrolledMembers.filter((m: any) => m.id !== id && m.customerId !== id).length : (g.filled || 0)
-      }));
-      localStorage.setItem('mockChitGroups', JSON.stringify(updatedGroups));
-
-      // Clean from chitGroupMemberships
-      const diskMemberships = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
-      const updatedMemberships = diskMemberships.filter((m: any) => m.customerId !== id && m.id !== id);
-      localStorage.setItem('chitGroupMemberships', JSON.stringify(updatedMemberships));
-
-      // Clean from websiteLeads
-      try {
-        const storedLeads = JSON.parse(localStorage.getItem('websiteLeads') || '[]');
-        const updatedLeads = storedLeads.map((l: any) => {
-          if (l.convertedCustomerId === id || l.id === id) {
-            return { ...l, status: 'REJECTED' };
-          }
-          return l;
-        });
-        localStorage.setItem('websiteLeads', JSON.stringify(updatedLeads));
-      } catch {}
-
-      // Delete from backend MongoDB
-      const targetId = cust?.mongoId || id;
-      fetchClient(`/customers/${targetId}`, { method: 'DELETE' }).catch(() => {});
-
-      window.dispatchEvent(new Event('storage'));
+      await cascadeDeleteCustomer({
+        customerId: id,
+        mongoId: cust?.mongoId,
+        phone: cust?.phone || cust?.mobile,
+        name: cust?.name || cust?.fullName
+      });
     }
   };
 

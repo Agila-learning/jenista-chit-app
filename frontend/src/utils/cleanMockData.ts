@@ -2,6 +2,8 @@
  * Utility to identify and purge mock chit groups, mock customers, and associated dummy data.
  */
 
+import { cleanupDeletedRecords } from './cascadeDelete';
+
 export const MOCK_GROUP_IDS = new Set([
   'CG-REG-101', 'CG-REG-102', 'CG-REG-103', 'CG-REG-104',
   'CG-FIX-201', 'CG-FIX-202',
@@ -203,7 +205,13 @@ export const purgeMockData = (): void => {
         localStorage.setItem('ledgerTransactions', JSON.stringify(cleanL));
       }
     }
+
+    // 9. Purge any lingering records belonging to deleted customer IDs / leads
+    try {
+      cleanupDeletedRecords();
+    } catch {}
   } catch (err) {
     console.error('Error purging mock data:', err);
   }
 };
+

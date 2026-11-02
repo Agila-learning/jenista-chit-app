@@ -1,21 +1,57 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
 import { fetchClient } from '../../api/client';
 import { addSystemNotification } from '../../utils/notificationsData';
 import { isMockGroup } from '../../utils/cleanMockData';
+import { Gift, Check } from 'lucide-react';
 
 export const CustomerRegistrationPage = () => {
+  const [searchParams] = useSearchParams();
+  const urlRef = (searchParams.get('ref') || searchParams.get('referral') || searchParams.get('refCode') || '').trim();
+
   const [name, setName] = useState('');
   const [mobile, setMobile] = useState('');
   const [address, setAddress] = useState('');
   const [password, setPassword] = useState('');
+  const [referralCode, setReferralCode] = useState(urlRef);
+  const [resolvedReferrer, setResolvedReferrer] = useState<{ id: string; name: string } | null>(null);
   const [availableGroups, setAvailableGroups] = useState<any[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+
+  // Dynamically resolve referring customer from local storage
+  useEffect(() => {
+    if (!referralCode.trim()) {
+      setResolvedReferrer(null);
+      return;
+    }
+    try {
+      const saved = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
+      const cleanRef = referralCode.trim().toLowerCase();
+      const cleanPhone = referralCode.replace(/\D/g, '');
+      const found = saved.find((c: any) => 
+        (c.id && c.id.toLowerCase() === cleanRef) ||
+        (c.customerCode && c.customerCode.toLowerCase() === cleanRef) ||
+        (c.mongoId && c.mongoId.toLowerCase() === cleanRef) ||
+        (cleanPhone && (c.phone === cleanPhone || c.mobile === cleanPhone)) ||
+        (c.name && c.name.toLowerCase() === cleanRef)
+      );
+      if (found) {
+        setResolvedReferrer({
+          id: found.customerCode || found.id,
+          name: found.fullName || found.name
+        });
+      } else {
+        setResolvedReferrer(null);
+      }
+    } catch {
+      setResolvedReferrer(null);
+    }
+  }, [referralCode]);
 
   useEffect(() => {
     // Load dynamic chit groups created by Admin from storage / backend
@@ -68,15 +104,23 @@ export const CustomerRegistrationPage = () => {
       let createdCustomerCode = `TC-${Math.floor(Math.random() * 90000) + 10000}`;
       let createdMongoId = null;
 
+      // Determine final referredBy string
+      const finalReferredBy = referralCode.trim()
+        ? (resolvedReferrer ? `${resolvedReferrer.id} (${resolvedReferrer.name})` : referralCode.trim())
+        : 'Direct Registration';
+
       try {
         const res = await fetchClient('/customers', {
           method: 'POST',
           body: JSON.stringify({
             name: name.trim(),
+            fullName: name.trim(),
             mobile: cleanMobile,
             phone: cleanMobile,
             address: address.trim(),
-            password
+            password,
+            referredBy: finalReferredBy,
+            registeredBy: 'Self Registered'
           })
         });
         if (res && res.data) {
@@ -111,7 +155,7 @@ export const CustomerRegistrationPage = () => {
         installmentsPaid: 0
       }] : [];
 
-      // Record in local cache in PENDING_APPROVAL status
+      // Record in local cache in PENDING_APPROVAL status with accurate referredBy
       const newEntry = {
         id: createdCustomerCode,
         customerCode: createdCustomerCode,
@@ -123,6 +167,7 @@ export const CustomerRegistrationPage = () => {
         address: address.trim(),
         password,
         status: 'PENDING_APPROVAL',
+        referredBy: finalReferredBy,
         registeredBy: 'Self Registered',
         requestedGroupId: targetGroup?.id,
         requestedGroupName: targetGroup?.name,
@@ -139,17 +184,22 @@ export const CustomerRegistrationPage = () => {
       window.dispatchEvent(new Event('storage'));
 
       // Dispatch live real-time notification to Admin
+      const notifMsg = finalReferredBy && finalReferredBy !== 'Direct Registration'
+        ? `${name.trim()} (${cleanMobile}) registered for group "${targetGroup?.name || 'Chit Plan'}" (Referred by: ${finalReferredBy}). Approval is required before credentials can be used.`
+        : `${name.trim()} (${cleanMobile}) registered for group "${targetGroup?.name || 'Chit Plan'}". Approval is required before credentials can be used.`;
+
       addSystemNotification({
         type: 'NEW_REGISTRATION',
         title: 'New Customer Registered - Approval Required',
-        message: `${name.trim()} (${cleanMobile}) registered for group "${targetGroup?.name || 'Chit Plan'}". Approval is required before credentials can be used.`,
+        message: notifMsg,
         targetRole: 'ADMIN',
         metadata: {
           customerId: createdCustomerCode,
           customerName: name.trim(),
           phone: cleanMobile,
           groupId: targetGroup?.id,
-          groupName: targetGroup?.name
+          groupName: targetGroup?.name,
+          referredBy: finalReferredBy
         }
       });
 
@@ -246,6 +296,43 @@ export const CustomerRegistrationPage = () => {
               onChange={(e) => setAddress(e.target.value)}
               placeholder="Your full address"
             />
+
+            {/* Referral Code (Optional) */}
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-neutral-700 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 font-bold text-neutral-800">
+                  <Gift className="w-4 h-4 text-amber-500" />
+                  Referral Code / Referred By (Optional)
+                </span>
+                {resolvedReferrer && (
+                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                    <Check className="w-3 h-3 text-emerald-600" /> Valid Referrer
+                  </span>
+                )}
+              </label>
+              <Input 
+                type="text" 
+                value={referralCode}
+                onChange={(e) => setReferralCode(e.target.value)}
+                placeholder="e.g. TC-11075 or referrer's mobile number"
+              />
+              {resolvedReferrer ? (
+                <div className="text-xs text-emerald-800 font-medium bg-emerald-50 p-2.5 rounded-lg border border-emerald-200 flex items-center gap-2">
+                  <Gift className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    Referred by <strong>{resolvedReferrer.name}</strong> ({resolvedReferrer.id}). Both you and your referrer receive bonus dividends!
+                  </span>
+                </div>
+              ) : referralCode.trim() ? (
+                <span className="text-[11px] text-neutral-500 block">
+                  Referral code &ldquo;{referralCode.trim()}&rdquo; will be verified and credited upon Admin approval.
+                </span>
+              ) : (
+                <span className="text-[11px] text-neutral-500 block">
+                  Have a referral link or friend code? Enter it here to claim referral bonus.
+                </span>
+              )}
+            </div>
 
             <Input 
               label="Password" 

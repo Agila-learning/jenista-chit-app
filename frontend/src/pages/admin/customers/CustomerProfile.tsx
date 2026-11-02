@@ -333,7 +333,20 @@ export const CustomerProfile = () => {
         const parsed = JSON.parse(saved);
         localFound = parsed.find((c: any) => c.id === id || c.mongoId === id || c.customerCode === id);
         if (localFound) {
-          const referrals = parsed.filter((c: any) => c.referredBy === localFound.id);
+          const myId = localFound.id || localFound.customerCode;
+          const myCode = localFound.customerCode;
+          const myPhone = (localFound.phone || localFound.mobile || '').replace(/\D/g, '');
+          const myName = (localFound.name || localFound.fullName || '').toLowerCase();
+          const referrals = parsed.filter((c: any) => {
+            if (!c.referredBy || c.referredBy === 'Direct Registration') return false;
+            const refStr = String(c.referredBy).toLowerCase();
+            return (
+              (myId && refStr.includes(myId.toLowerCase())) ||
+              (myCode && refStr.includes(myCode.toLowerCase())) ||
+              (myPhone && refStr.includes(myPhone)) ||
+              (myName && refStr.includes(myName))
+            );
+          });
           setReferralCount(referrals.length);
         }
       }

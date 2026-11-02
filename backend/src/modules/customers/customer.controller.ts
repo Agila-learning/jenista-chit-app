@@ -74,8 +74,10 @@ export class CustomerController {
         pan: cleanPan || undefined,
         email: cleanEmail || undefined,
         passwordHash,
-        status: 'PENDING_APPROVAL',
+        status: req.body.status || 'PENDING_APPROVAL',
         kycStatus: 'PENDING',
+        referredBy: req.body.referredBy ? req.body.referredBy.toString().trim() : undefined,
+        registeredBy: req.body.registeredBy ? req.body.registeredBy.toString().trim() : 'Self Registered',
         createdBy: req.user?.userId,
       });
       res.status(201).json({ success: true, data: customer });
@@ -193,6 +195,8 @@ export class CustomerController {
       if (req.body.chits) customer.chits = req.body.chits;
       if (req.body.pending !== undefined) customer.pending = req.body.pending;
       if (req.body.totalPaid !== undefined) customer.totalPaid = req.body.totalPaid;
+      if (req.body.referredBy !== undefined) customer.referredBy = req.body.referredBy;
+      if (req.body.registeredBy !== undefined) customer.registeredBy = req.body.registeredBy;
       if (req.body.password) {
         customer.passwordHash = await bcrypt.hash(req.body.password, 10);
       }
@@ -351,8 +355,10 @@ export class CustomerController {
   static async deleteCustomer(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const customerId = Array.isArray(id) ? id[0] : id;
-      const isObjectId = typeof customerId === 'string' && /^[0-9a-fA-F]{24}$/.test(customerId);
+      const customerId = (Array.isArray(id) ? id[0] : id || '').toString().trim();
+      const queryPhone = (req.query?.phone || req.query?.mobile || req.body?.phone || req.body?.mobile || '').toString().trim();
+      const queryName = (req.query?.name || req.body?.name || '').toString().trim();
+      const isObjectId = /^[0-9a-fA-F]{24}$/.test(customerId);
 
       const orConditions: any[] = [];
       if (isObjectId) {
@@ -362,16 +368,144 @@ export class CustomerController {
         orConditions.push({ customerCode: customerId });
         orConditions.push({ phone: customerId });
       }
+      if (queryPhone) {
+        const cleanP = queryPhone.replace(/\D/g, '');
+        orConditions.push({ phone: cleanP });
+        orConditions.push({ phone: queryPhone });
+      }
+      if (queryName) {
+        orConditions.push({ fullName: queryName });
+      }
 
-      const deleted = await Customer.findOneAndDelete(
+      // 1. Find all matching customers in database
+      const targetCustomers = await Customer.find(
         orConditions.length > 0 ? { $or: orConditions } : { customerCode: customerId }
       );
 
-      if (!deleted) {
-        throw new ApiError(404, 'Customer not found', 'NOT_FOUND');
+      // Collect all identifiers
+      const idSet = new Set<string>();
+      const mongoIds: any[] = [];
+      const phoneSet = new Set<string>();
+      const nameSet = new Set<string>();
+
+      if (customerId) idSet.add(customerId);
+      if (isObjectId) mongoIds.push(customerId);
+      if (queryPhone) {
+        phoneSet.add(queryPhone);
+        const cleanQP = queryPhone.replace(/\D/g, '');
+        if (cleanQP) phoneSet.add(cleanQP);
+      }
+      if (queryName) nameSet.add(queryName);
+
+      targetCustomers.forEach(c => {
+        if (c._id) {
+          mongoIds.push(c._id);
+          idSet.add(c._id.toString());
+        }
+        if (c.customerCode) idSet.add(c.customerCode);
+        if (c.phone) {
+          phoneSet.add(c.phone);
+          const cleanCP = c.phone.replace(/\D/g, '');
+          if (cleanCP) phoneSet.add(cleanCP);
+        }
+        if (c.fullName) nameSet.add(c.fullName);
+      });
+
+      const allIds = Array.from(idSet).filter(Boolean);
+      const allPhones = Array.from(phoneSet).filter(Boolean);
+      const allNames = Array.from(nameSet).filter(Boolean);
+
+      // 2. Delete Customer document(s)
+      if (orConditions.length > 0) {
+        await Customer.deleteMany({ $or: orConditions });
       }
 
-      res.status(200).json({ success: true, message: 'Customer deleted successfully', data: deleted });
+      // 3. Cascade Delete: Payment Requests (verification submissions)
+      try {
+        const { PaymentRequestModel } = await import('../payments/payment-request.model');
+        const pReqConditions: any[] = [];
+        if (allIds.length > 0) pReqConditions.push({ customerId: { $in: allIds } });
+        if (allPhones.length > 0) pReqConditions.push({ mobile: { $in: allPhones } });
+        if (allNames.length > 0) pReqConditions.push({ customerName: { $in: allNames } });
+        if (pReqConditions.length > 0) {
+          await PaymentRequestModel.deleteMany({ $or: pReqConditions });
+        }
+      } catch (err) {
+        console.warn('Error cascade deleting payment requests:', err);
+      }
+
+      // 4. Cascade Delete: Withdrawal Requests (claims / disbursals)
+      try {
+        const { WithdrawalRequestModel } = await import('../payments/withdrawal-request.model');
+        const wReqConditions: any[] = [];
+        if (allIds.length > 0) wReqConditions.push({ customerId: { $in: allIds } });
+        if (allPhones.length > 0) wReqConditions.push({ mobile: { $in: allPhones } });
+        if (allNames.length > 0) wReqConditions.push({ customerName: { $in: allNames } });
+        if (wReqConditions.length > 0) {
+          await WithdrawalRequestModel.deleteMany({ $or: wReqConditions });
+        }
+      } catch (err) {
+        console.warn('Error cascade deleting withdrawal requests:', err);
+      }
+
+      // 5. Cascade Delete: Receipts
+      try {
+        const { Receipt } = await import('../receipts/receipt.model');
+        const receiptConditions: any[] = [];
+        if (allIds.length > 0) receiptConditions.push({ customerId: { $in: allIds } });
+        if (allNames.length > 0) receiptConditions.push({ customerName: { $in: allNames } });
+        if (receiptConditions.length > 0) {
+          await Receipt.deleteMany({ $or: receiptConditions });
+        }
+      } catch (err) {
+        console.warn('Error cascade deleting receipts:', err);
+      }
+
+      // 6. Cascade Delete: Payments & Payouts
+      try {
+        const { Payment } = await import('../payments/payment.model');
+        const { Payout } = await import('../payouts/payout.model');
+        if (mongoIds.length > 0) {
+          await Payment.deleteMany({ customerId: { $in: mongoIds } });
+          await Payout.deleteMany({ customerId: { $in: mongoIds } });
+        }
+      } catch (err) {
+        console.warn('Error cascade deleting payments/payouts:', err);
+      }
+
+      // 7. Cascade Delete: Chit Members, Installments & Bids
+      try {
+        const { ChitMember } = await import('../chit-members/chit-member.model');
+        const { AuctionBid } = await import('../auction-bids/auction-bid.model');
+        if (mongoIds.length > 0) {
+          const members = await ChitMember.find({ customerId: { $in: mongoIds } });
+          const memberIds = members.map(m => m._id);
+          await ChitMember.deleteMany({ customerId: { $in: mongoIds } });
+          if (memberIds.length > 0) {
+            await AuctionBid.deleteMany({ memberId: { $in: memberIds } });
+          }
+        }
+      } catch (err) {
+        console.warn('Error cascade deleting chit memberships:', err);
+      }
+
+      // 8. Cascade Delete: Notifications
+      try {
+        const { Notification } = await import('../notifications/notification.model');
+        const notifConditions: any[] = [];
+        if (allIds.length > 0) notifConditions.push({ 'metadata.customerId': { $in: allIds } });
+        if (mongoIds.length > 0) notifConditions.push({ userId: { $in: mongoIds } });
+        if (notifConditions.length > 0) {
+          await Notification.deleteMany({ $or: notifConditions });
+        }
+      } catch (err) {
+        console.warn('Error cascade deleting notifications:', err);
+      }
+
+      res.status(200).json({ 
+        success: true, 
+        message: 'Customer and all associated records (payments, receipts, withdrawals, memberships) permanently deleted successfully' 
+      });
     } catch (error) {
       next(error);
     }

@@ -50,6 +50,7 @@ import {
 } from '../../utils/paymentRequestsData';
 import { purgeMockData, isMockGroup, isMockCustomer } from '../../utils/cleanMockData';
 import { addSystemNotification } from '../../utils/notificationsData';
+import { cascadeDeleteCustomer } from '../../utils/cascadeDelete';
 import {
   getStoredBankAccounts,
   resolveBankForPayment
@@ -3527,12 +3528,13 @@ export const AdminDashboard = () => {
               })
             : [];
 
+          const removeCompletely = remainingChits.length === 0;
           return {
             ...c,
             chits: remainingChits,
             activeChits: remainingChits.length,
             scheme: remainingChits[0]?.scheme || undefined,
-            _removeCompletely: remainingChits.length === 0
+            _removeCompletely: removeCompletely
           };
         }
         return c;
@@ -3542,59 +3544,13 @@ export const AdminDashboard = () => {
     localStorage.setItem('mockCustomers', JSON.stringify(updatedCusts));
     setCustomers(updatedCusts.filter((c: any) => !isMockCustomer(c)));
 
-    // 3. Remove member from mockChitGroups and update filled count
-    const diskGroups = JSON.parse(localStorage.getItem('mockChitGroups') || '[]');
-    const updatedGroups = diskGroups.map((g: any) => {
-      if (Array.isArray(g.enrolledMembers)) {
-        const remainingMembers = g.enrolledMembers.filter((m: any) => {
-          const mId = m.customerId || m.id;
-          const mPhone = (m.mobile || m.phone || '').replace(/\D/g, '');
-          const isMatch = mId === targetId || (targetPhone && mPhone === targetPhone);
-          return !isMatch;
-        });
-        return {
-          ...g,
-          enrolledMembers: remainingMembers,
-          filled: remainingMembers.length
-        };
-      }
-      return g;
+    // 3. Cascade Delete all customer records everywhere (payments, receipts, claims, ledgers, memberships, backend)
+    cascadeDeleteCustomer({
+      customerId: targetId,
+      mongoId: cust.mongoId,
+      phone: cust.mobile || cust.phone,
+      name: cust.name || cust.fullName
     });
-    localStorage.setItem('mockChitGroups', JSON.stringify(updatedGroups));
-    setChitGroups(updatedGroups);
-
-    // 4. Clean from chitGroupMemberships
-    const diskMemberships = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
-    const updatedMemberships = diskMemberships.filter((m: any) => {
-      const mId = m.customerId || m.id;
-      const mPhone = (m.mobile || m.phone || '').replace(/\D/g, '');
-      return mId !== targetId && !(targetPhone && mPhone === targetPhone);
-    });
-    localStorage.setItem('chitGroupMemberships', JSON.stringify(updatedMemberships));
-
-    // 5. Clean websiteLeads so it won't resurrect
-    try {
-      const storedLeads = JSON.parse(localStorage.getItem('websiteLeads') || '[]');
-      const updatedLeads = storedLeads.map((l: any) => {
-        const lPhone = (l.phone || '').replace(/\D/g, '');
-        if (l.convertedCustomerId === targetId || l.id === targetId || (targetPhone && lPhone === targetPhone)) {
-          return { ...l, status: 'REJECTED' };
-        }
-        return l;
-      });
-      localStorage.setItem('websiteLeads', JSON.stringify(updatedLeads));
-    } catch {}
-
-    // 6. Delete from MongoDB backend
-    const backendId = cust.mongoId || (targetId && targetId.length === 24 ? targetId : null);
-    if (backendId) {
-      fetchClient(`/customers/${backendId}`, { method: 'DELETE' }).catch(() => {});
-    } else {
-      fetchClient(`/customers/${targetId}`, { method: 'DELETE' }).catch(() => {});
-    }
-
-    // 7. Dispatch storage event to keep all open components reactive
-    window.dispatchEvent(new Event('storage'));
   };
 
   // ==========================================

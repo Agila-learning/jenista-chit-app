@@ -105,11 +105,18 @@ export const StaffDashboard = () => {
 
     // 3. Load Receipts
     const recs = localStorage.getItem('staffReceipts');
+    const deletedIds = new Set<string>(JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]'));
     if (recs) {
       try {
         const parsed = JSON.parse(recs);
         const cleanRecs = Array.isArray(parsed)
-          ? parsed.filter((r: any) => !isMockCustomer({ id: r.customerId, name: r.customerName }) && !isMockGroup({ id: r.chitGroup, name: r.chitGroup }))
+          ? parsed.filter((r: any) => 
+              !isMockCustomer({ id: r.customerId, name: r.customerName }) && 
+              !isMockGroup({ id: r.chitGroup, name: r.chitGroup }) &&
+              !deletedIds.has(r.receiptNo) &&
+              !deletedIds.has(r.customerId) &&
+              (!r.mobileNumber || !deletedIds.has(r.mobileNumber.replace(/\D/g, '')))
+            )
           : [];
         setStaffReceipts(cleanRecs);
       } catch {
@@ -129,7 +136,12 @@ export const StaffDashboard = () => {
       const rawW = localStorage.getItem('withdrawalRequests');
       if (rawW) {
         const parsedW = JSON.parse(rawW);
-        setPendingWithdrawals(Array.isArray(parsedW) ? parsedW.filter((w: any) => w.status === 'PENDING_ADMIN_DISBURSAL') : []);
+        setPendingWithdrawals(Array.isArray(parsedW) ? parsedW.filter((w: any) => 
+          w.status === 'PENDING_ADMIN_DISBURSAL' &&
+          !deletedIds.has(w.id) &&
+          !deletedIds.has(w.customerId) &&
+          (!w.mobile || !deletedIds.has(w.mobile.replace(/\D/g, '')))
+        ) : []);
       } else {
         setPendingWithdrawals([]);
       }

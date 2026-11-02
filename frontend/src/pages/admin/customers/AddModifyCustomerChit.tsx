@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle2, XCircle, Search, UserCheck } from 'lucide-react';
+import { CheckCircle2, XCircle, Search, UserCheck, Gift } from 'lucide-react';
 import { fetchClient } from '../../../api/client';
 import { isMockGroup } from '../../../utils/cleanMockData';
+import { cascadeDeleteCustomer } from '../../../utils/cascadeDelete';
 
 export const AddModifyCustomerChit = () => {
   const [pendingCustomers, setPendingCustomers] = useState<any[]>([]);
@@ -21,6 +22,13 @@ export const AddModifyCustomerChit = () => {
             lc.mongoId === c._id || 
             (lc.mobile && (lc.mobile === c.phone || lc.phone === c.phone))
           );
+          const rawRef = c.referredBy || local?.referredBy;
+          let resolvedRef = (rawRef && rawRef !== 'N/A') ? rawRef : null;
+          if (!resolvedRef) {
+            resolvedRef = (c.registeredBy && c.registeredBy !== 'Self Registered') 
+              ? c.registeredBy 
+              : 'Direct Registration';
+          }
           return {
             id: c.customerCode || c._id,
             mongoId: c._id,
@@ -29,7 +37,8 @@ export const AddModifyCustomerChit = () => {
             phone: c.phone || c.mobile,
             address: c.address,
             status: c.status,
-            referredBy: c.referredBy || local?.referredBy || null,
+            referredBy: resolvedRef,
+            registeredBy: c.registeredBy || local?.registeredBy || 'Self Registered',
             scheme: c.scheme || local?.scheme || 'Regular',
             interestedPlan: c.interestedPlan || local?.interestedPlan,
             chits: (c.chits && c.chits.length > 0) ? c.chits : (local?.chits || [])
@@ -51,7 +60,19 @@ export const AddModifyCustomerChit = () => {
 
     // Fallback to localStorage
     const customers = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
-    setPendingCustomers(customers.filter((c: any) => c.status === 'PENDING_APPROVAL'));
+    setPendingCustomers(customers.filter((c: any) => c.status === 'PENDING_APPROVAL').map((c: any) => {
+      const rawRef = c.referredBy;
+      let resolvedRef = (rawRef && rawRef !== 'N/A') ? rawRef : null;
+      if (!resolvedRef) {
+        resolvedRef = (c.registeredBy && c.registeredBy !== 'Self Registered') 
+          ? c.registeredBy 
+          : 'Direct Registration';
+      }
+      return {
+        ...c,
+        referredBy: resolvedRef
+      };
+    }));
   };
 
   useEffect(() => {
@@ -200,12 +221,14 @@ export const AddModifyCustomerChit = () => {
             }] : []
           );
 
+          const customerReferredBy = c.referredBy || targetCustomer?.referredBy || 'Direct Registration';
           return {
             ...c,
             status: 'ACTIVE',
             kycStatus: 'VERIFIED',
             scheme: chosenScheme,
             interestedPlan: targetGroup?.name || planName,
+            referredBy: customerReferredBy,
             monthJoined,
             paymentStartsMonth,
             chits: assignedChits
@@ -228,7 +251,8 @@ export const AddModifyCustomerChit = () => {
           status: 'ACTIVE', 
           kycStatus: 'VERIFIED',
           scheme: chosenScheme,
-          interestedPlan: planName
+          interestedPlan: planName,
+          referredBy: targetCustomer?.referredBy || 'Direct Registration'
         }),
       });
     } catch (e) {
@@ -240,27 +264,30 @@ export const AddModifyCustomerChit = () => {
   };
 
   const handleReject = async (id: string, mongoId?: string) => {
-    try {
-      const customers = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
-      const updated = customers.map((c: any) => 
-        (c.id === id || c.mongoId === mongoId || c.customerCode === id) 
-          ? { ...c, status: 'REJECTED' } 
-          : c
-      );
-      localStorage.setItem('mockCustomers', JSON.stringify(updated));
-      setPendingCustomers(prev => prev.filter(c => c.id !== id && c.mongoId !== mongoId));
-      window.dispatchEvent(new Event('storage'));
+    const customers = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
+    const targetCustomer = customers.find((c: any) => 
+      c.id === id || c.mongoId === mongoId || c.customerCode === id
+    );
+    const cName = targetCustomer?.name || targetCustomer?.fullName || id;
 
-      const targetId = mongoId || id;
-      await fetchClient(`/customers/${targetId}/status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: 'REJECTED' }),
-      });
-    } catch (e) {
-      console.warn('Failed to update status on server:', e);
+    if (!window.confirm(`Are you sure you want to reject registration for ${cName}? This will permanently delete the registration and clean all records everywhere.`)) {
+      return;
     }
 
-    setToastMsg(`Customer registration marked as Rejected.`);
+    try {
+      setPendingCustomers(prev => prev.filter(c => c.id !== id && c.mongoId !== mongoId));
+
+      await cascadeDeleteCustomer({
+        customerId: id,
+        mongoId: mongoId || targetCustomer?.mongoId,
+        phone: targetCustomer?.phone || targetCustomer?.mobile,
+        name: cName
+      });
+    } catch (e) {
+      console.warn('Failed to delete rejected registration:', e);
+    }
+
+    setToastMsg(`Customer registration for ${cName} rejected and permanently deleted.`);
     setTimeout(() => setToastMsg(null), 4000);
   };
 
@@ -345,18 +372,30 @@ export const AddModifyCustomerChit = () => {
                       {customer.id}
                     </td>
                     <td className="px-6 py-4 text-neutral-600 font-medium">
-                      {customer.referredBy ? <span className="text-primary-600">{customer.referredBy}</span> : 'N/A'}
+                      {customer.referredBy && customer.referredBy !== 'N/A' && !customer.referredBy.toLowerCase().includes('direct') ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs">
+                          <Gift className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span>{customer.referredBy}</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-neutral-100 text-neutral-700 border border-neutral-200">
+                          <UserCheck className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
+                          <span>Direct Registration</span>
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-right space-x-3">
                       <button 
                         onClick={() => handleReject(customer.id, customer.mongoId)}
-                        className="inline-flex items-center text-sm font-medium text-danger hover:text-danger-dark transition-colors px-3 py-1.5 rounded-md hover:bg-danger-light/50"
+                        className="inline-flex items-center text-sm font-medium text-danger hover:text-danger-dark transition-colors px-3 py-1.5 rounded-md hover:bg-danger-light/50 cursor-pointer"
+                        title="Reject & Delete Registration"
                       >
                         <XCircle className="w-4 h-4 mr-1.5" /> Reject
                       </button>
                       <button 
                         onClick={() => handleApprove(customer.id, customer.mongoId)}
-                        className="inline-flex items-center text-sm font-medium text-success hover:text-success-dark transition-colors px-3 py-1.5 rounded-md bg-success-light/50 hover:bg-success-light"
+                        className="inline-flex items-center text-sm font-medium text-success hover:text-success-dark transition-colors px-3 py-1.5 rounded-md bg-success-light/50 hover:bg-success-light cursor-pointer"
+                        title="Approve Customer Registration"
                       >
                         <CheckCircle2 className="w-4 h-4 mr-1.5" /> Approve
                       </button>

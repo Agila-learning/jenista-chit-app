@@ -114,14 +114,20 @@ export const Payments = () => {
       }
     }
 
+    const deletedIds = new Set<string>(JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]'));
     const merged = backendWithdrawals ? [...backendWithdrawals] : [];
     localWReqs.forEach((lw: any) => {
       if (!merged.some(m => m.id === lw.id || m._id === lw.id)) {
         merged.push(lw);
       }
     });
-    setWithdrawalRequests(merged);
-    localStorage.setItem('withdrawalRequests', JSON.stringify(merged));
+    const cleanWithdrawals = merged.filter((w: any) => 
+      !deletedIds.has(w.id) &&
+      !deletedIds.has(w.customerId) &&
+      (!w.mobile || !deletedIds.has(w.mobile.replace(/\D/g, '')))
+    );
+    setWithdrawalRequests(cleanWithdrawals);
+    localStorage.setItem('withdrawalRequests', JSON.stringify(cleanWithdrawals));
   };
 
   useEffect(() => {

@@ -129,11 +129,15 @@ export const getStoredPaymentRequests = (): PaymentRequest[] => {
     if (!Array.isArray(parsed)) {
       return [];
     }
-    // Filter out initial mock / old payment request IDs and old Dhanush data
+    // Filter out initial mock / old payment request IDs and deleted customers
+    const deletedIds = new Set<string>(JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]'));
     const realOnly = parsed.filter((r: any) =>
       !['PAY-78201', 'PAY-78202', 'PAY-78203', 'PAY-78190', 'PAY-666408', 'PAY-374835'].includes(r.id) &&
       r.customerName !== 'Dhanush' &&
-      r.customerId !== 'TC-73071'
+      r.customerId !== 'TC-73071' &&
+      !deletedIds.has(r.id) &&
+      !deletedIds.has(r.customerId) &&
+      (!r.mobile || !deletedIds.has(r.mobile.replace(/\D/g, '')))
     );
     if (realOnly.length !== parsed.length) {
       localStorage.setItem('paymentRequests', JSON.stringify(realOnly));
@@ -152,11 +156,15 @@ export const syncPaymentRequestsWithBackend = async (): Promise<PaymentRequest[]
   try {
     const res: any = await fetchClient('/payments/requests');
     if (res && res.data && Array.isArray(res.data)) {
+      const deletedIds = new Set<string>(JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]'));
       const backendList: PaymentRequest[] = res.data
         .filter((r: any) =>
           !['PAY-666408', 'PAY-374835'].includes(r.id) &&
           r.customerName !== 'Dhanush' &&
-          r.customerId !== 'TC-73071'
+          r.customerId !== 'TC-73071' &&
+          !deletedIds.has(r.id) &&
+          !deletedIds.has(r.customerId) &&
+          (!r.mobile || !deletedIds.has(r.mobile.replace(/\D/g, '')))
         )
         .map((r: any) => ({
           id: r.id,

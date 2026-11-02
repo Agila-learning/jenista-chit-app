@@ -151,7 +151,17 @@ export const Ledger: React.FC = () => {
     let txns: any[] = [];
     if (saved) {
       try {
-        txns = JSON.parse(saved);
+        const deletedIds = new Set<string>(JSON.parse(localStorage.getItem('deletedCustomerIds') || '[]'));
+        const rawParsed = JSON.parse(saved);
+        if (Array.isArray(rawParsed)) {
+          txns = rawParsed.filter((t: any) => 
+            !deletedIds.has(t.id) &&
+            !deletedIds.has(t.customerId) &&
+            !deletedIds.has(t.paymentRequestId) &&
+            !deletedIds.has(t.receiptNo) &&
+            (!t.mobileNumber || !deletedIds.has(t.mobileNumber.replace(/\D/g, '')))
+          );
+        }
       } catch {
         txns = [];
       }

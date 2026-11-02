@@ -19,6 +19,7 @@ import {
   addSystemNotification,
   type WebsiteLead 
 } from '../../../utils/notificationsData';
+import { cascadeDeleteLead } from '../../../utils/cascadeDelete';
 import { fetchClient } from '../../../api/client';
 import { formatDate } from '../../../utils/format';
 import { useNavigate } from 'react-router-dom';
@@ -201,13 +202,19 @@ export const LeadsManagement: React.FC = () => {
     setTimeout(() => setActionSuccessMsg(null), 4000);
   };
 
-  const handleDeleteLead = (lead: WebsiteLead) => {
-    if (!window.confirm(`Are you sure you want to permanently delete lead ${lead.fullName} (${lead.phone})? This action cannot be undone.`)) {
+  const handleDeleteLead = async (lead: WebsiteLead) => {
+    if (!window.confirm(`Are you sure you want to permanently delete lead ${lead.fullName} (${lead.phone})? This will delete all of their records everywhere, including any payments, accounts, receipts, and allocations.`)) {
       return;
     }
+    await cascadeDeleteLead({
+      leadId: lead.id,
+      phone: lead.phone,
+      fullName: lead.fullName,
+      convertedCustomerId: lead.convertedCustomerId
+    });
     const updated = deleteWebsiteLead(lead.id);
     setLeads(updated);
-    setActionSuccessMsg(`Lead "${lead.fullName}" deleted successfully.`);
+    setActionSuccessMsg(`Lead "${lead.fullName}" and all associated records deleted permanently.`);
     setTimeout(() => setActionSuccessMsg(null), 4000);
   };
 
