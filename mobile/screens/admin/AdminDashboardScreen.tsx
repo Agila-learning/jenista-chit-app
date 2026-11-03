@@ -431,7 +431,7 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
           <View style={[styles.actionIconCircle, { backgroundColor: '#FFF8EB' }]}>
             <Ionicons name="add" size={22} color={Colors.gold.dark} />
           </View>
-          <Text style={styles.actionTileText}>Add Group</Text>
+          <Text style={styles.actionTileText} numberOfLines={2}>Add Group</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -442,7 +442,7 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
           <View style={[styles.actionIconCircle, { backgroundColor: '#F0FDF4' }]}>
             <Ionicons name="person-add" size={20} color="#16A34A" />
           </View>
-          <Text style={styles.actionTileText}>Add to Group</Text>
+          <Text style={styles.actionTileText} numberOfLines={2}>Add to Group</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -453,7 +453,7 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
           <View style={[styles.actionIconCircle, { backgroundColor: Colors.blueSubtle }]}>
             <Ionicons name="person-add-outline" size={20} color={Colors.blueAccent} />
           </View>
-          <Text style={styles.actionTileText}>Add Member</Text>
+          <Text style={styles.actionTileText} numberOfLines={2}>Add Member</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -464,7 +464,7 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
           <View style={[styles.actionIconCircle, { backgroundColor: Colors.successLight }]}>
             <Ionicons name="card-outline" size={20} color={Colors.success} />
           </View>
-          <Text style={styles.actionTileText}>Record Payments</Text>
+          <Text style={styles.actionTileText} numberOfLines={2}>Record Payments</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -475,7 +475,7 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
           <View style={[styles.actionIconCircle, { backgroundColor: '#F1F5F9' }]}>
             <Ionicons name="ellipsis-horizontal" size={20} color={Colors.navy.primary} />
           </View>
-          <Text style={styles.actionTileText}>More</Text>
+          <Text style={styles.actionTileText} numberOfLines={2}>More</Text>
         </TouchableOpacity>
       </View>
 
@@ -1294,13 +1294,14 @@ const styles = StyleSheet.create({
   // 4. Quick Actions
   quickActionsCard: {
     backgroundColor: Colors.surface,
-    marginHorizontal: 20,
-    marginTop: 4,
+    marginHorizontal: 16,
+    marginTop: 6,
     borderRadius: 20,
-    paddingVertical: 18,
-    paddingHorizontal: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 6,
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     borderWidth: 1,
     borderColor: Colors.border,
     shadowColor: '#000',
@@ -1311,21 +1312,25 @@ const styles = StyleSheet.create({
   },
   actionTile: {
     alignItems: 'center',
-    width: '24%',
+    flex: 1,
+    maxWidth: '20%',
+    paddingHorizontal: 2,
   },
   actionIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   actionTileText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: Colors.text,
     textAlign: 'center',
+    lineHeight: 13,
+    minHeight: 26,
   },
 
   // 5. Section Headers & Lists

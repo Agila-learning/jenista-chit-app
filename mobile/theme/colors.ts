@@ -1,91 +1,95 @@
 /**
- * Mobile Design System Colors matching Jenista Chit Funds Premium FinTech UI
+ * Mobile Design System Colors:
+ * User-Friendly Modern FinTech Theme for Jenista Chits Mobile Application.
+ * Distinctive, high-contrast, vibrant, and clean (without altering web styling).
  */
 export const Colors = {
-  // Brand Primary & Navies
+  // Brand Primary & Navies (Modern Slate / Royal Navy)
   navy: {
-    primary: '#102544',
-    secondary: '#19365C',
-    dark: '#0B1A30',
-    light: '#234775',
-    subtle: '#EDF2F9',
+    primary: '#0F172A',
+    secondary: '#1E293B',
+    dark: '#020617',
+    light: '#334155',
+    subtle: '#F1F5F9',
   },
   primary: {
-    50: '#F5F8FC',
-    100: '#E4ECF7',
-    200: '#C8D9EE',
-    300: '#9DBEE0',
-    400: '#699BD0',
-    500: '#3478F6', // Blue Accent
-    600: '#235EC4',
-    700: '#19365C', // Secondary Navy
-    800: '#102544', // Primary Navy
-    900: '#0B1A30', // Deepest Navy
-    950: '#060E1A',
+    50: '#EFF6FF',
+    100: '#DBEAFE',
+    200: '#BFDBFE',
+    300: '#93C5FD',
+    400: '#60A5FA',
+    500: '#2563EB', // Vibrant FinTech Blue Accent
+    600: '#1D4ED8',
+    700: '#1E40AF',
+    800: '#1E293B',
+    900: '#0F172A',
+    950: '#020617',
   },
-  // Warm Premium Gold
+  // Radiant Warm Gold & Amber (Chit Funds & Savings)
   gold: {
-    primary: '#FFBF32',
-    light: '#FFECC2',
-    dark: '#D99814',
-    subtle: '#FFF8EB',
-    text: '#996300',
+    primary: '#F59E0B',
+    light: '#FEF3C7',
+    dark: '#D97706',
+    subtle: '#FFFBEB',
+    text: '#B45309',
   },
-  accent: '#FFBF32',
-  accentLight: '#FFF6E0',
-  accentDark: '#D99814',
+  accent: '#F59E0B',
+  accentLight: '#FFFBEB',
+  accentDark: '#D97706',
 
-  // Neutrals & Surfaces
-  background: '#F4F7FC',
+  // Surfaces & Backgrounds
+  background: '#F8FAFC',
   surface: '#FFFFFF',
   card: '#FFFFFF',
-  border: '#E3EAF3',
-  borderLight: '#EDF2F7',
+  border: '#E2E8F0',
+  borderLight: '#F1F5F9',
 
-  // Typography
-  text: '#142746',
-  textSecondary: '#74839B',
-  textMuted: '#9AA7BC',
+  // High-Contrast User-Friendly Typography
+  text: '#0F172A',
+  textSecondary: '#475569',
+  textMuted: '#94A3B8',
   textLight: '#CBD5E1',
 
-  // Accents & Financial Categories
-  blueAccent: '#3478F6',
-  blueSubtle: '#EEF4FF',
+  // Category Accents
+  blueAccent: '#2563EB',
+  blueSubtle: '#EFF6FF',
   purpleAccent: '#8B5CF6',
   purpleSubtle: '#F5F3FF',
+  tealAccent: '#0D9488',
+  tealSubtle: '#CCFBF1',
 
-  // Feedback States
-  success: '#15966A',
-  successLight: '#E8F7F1',
-  successText: '#0E6B4B',
+  // Feedback & Status Colors
+  success: '#10B981',
+  successLight: '#ECFDF5',
+  successText: '#047857',
 
-  warning: '#D98919',
-  warningLight: '#FEF4E6',
-  warningText: '#9A5B0B',
+  warning: '#F59E0B',
+  warningLight: '#FFFBEB',
+  warningText: '#B45309',
 
-  danger: '#DC4545',
-  dangerLight: '#FDECEC',
-  dangerText: '#A12828',
+  danger: '#EF4444',
+  dangerLight: '#FEF2F2',
+  dangerText: '#B91C1C',
 
-  info: '#3478F6',
-  infoLight: '#EEF4FF',
+  info: '#2563EB',
+  infoLight: '#EFF6FF',
 
   white: '#FFFFFF',
   black: '#000000',
 
-  // Backward compatibility aliases
+  // Aliases for component backwards compatibility
   secondary: {
-    50: '#F4F7FC',
-    100: '#EDF2F7',
-    200: '#E3EAF3',
+    50: '#F8FAFC',
+    100: '#F1F5F9',
+    200: '#E2E8F0',
     300: '#CBD5E1',
-    400: '#9AA7BC',
-    500: '#74839B',
+    400: '#94A3B8',
+    500: '#64748B',
     600: '#475569',
     700: '#334155',
-    800: '#19365C',
-    900: '#102544',
-    950: '#0B1A30',
+    800: '#1E293B',
+    900: '#0F172A',
+    950: '#020617',
   },
   neutral: {
     50: '#F8FAFC',
@@ -93,12 +97,11 @@ export const Colors = {
     200: '#E2E8F0',
     300: '#CBD5E1',
     400: '#94A3B8',
-    500: '#74839B',
+    500: '#64748B',
     600: '#475569',
     700: '#334155',
     800: '#1E293B',
-    900: '#142746',
-    950: '#0B1A30',
+    900: '#0F172A',
+    950: '#020617',
   },
 };
-

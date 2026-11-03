@@ -18,20 +18,14 @@ import {
  * Ledger entries, Payment Requests, and Bank Accounts).
  */
 
+import { Platform } from 'react-native';
+
 const envPort = process.env.PORT || process.env.EXPO_PUBLIC_BACKEND_PORT || '3000';
 const customEnvUrl = process.env.EXPO_PUBLIC_API_URL;
-const LIVE_RENDER_API = 'https://jenista-chits.onrender.com/api/v1';
-const CANDIDATE_LOCAL_APIS = [
-  ...(customEnvUrl ? [customEnvUrl] : []),
-  `http://localhost:${envPort}/api/v1`,
-  `http://127.0.0.1:${envPort}/api/v1`,
-  `http://192.168.1.35:${envPort}/api/v1`,
-  `http://10.0.2.2:${envPort}/api/v1`,
-  `http://192.168.1.39:${envPort}/api/v1`,
-];
+const LOCAL_DEV_IP = '192.168.1.35';
 
 export const getActiveBaseUrl = async (): Promise<string> => {
-  // Check custom override from user settings first
+  // 1. User manual override
   try {
     const custom = await secureStorage.getItem('custom_api_base_url');
     if (custom && custom.trim().startsWith('http')) {
@@ -39,11 +33,23 @@ export const getActiveBaseUrl = async (): Promise<string> => {
     }
   } catch {}
 
-  // Test if any local backend is reachable first, else fallback smoothly to live Render API
-  for (const candidate of CANDIDATE_LOCAL_APIS) {
+  // 2. If running on Web, use localhost:3000 directly matching web app
+  if (Platform.OS === 'web') {
+    return customEnvUrl || `http://localhost:${envPort}/api/v1`;
+  }
+
+  // 3. For native devices (Expo Go / Emulator), test local development backend
+  const candidates = [
+    `http://${LOCAL_DEV_IP}:${envPort}/api/v1`,
+    `http://10.0.2.2:${envPort}/api/v1`,
+    customEnvUrl,
+    `http://localhost:${envPort}/api/v1`,
+  ].filter(Boolean) as string[];
+
+  for (const candidate of candidates) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 600);
+      const timeout = setTimeout(() => controller.abort(), 1800);
       const res = await fetch(`${candidate.replace('/api/v1', '')}/health`, {
         signal: controller.signal,
       }).catch(() => null);
@@ -53,7 +59,9 @@ export const getActiveBaseUrl = async (): Promise<string> => {
       }
     } catch {}
   }
-  return LIVE_RENDER_API;
+
+  // Fallback to local dev IP so it never hangs on dead Render URL
+  return `http://${LOCAL_DEV_IP}:${envPort}/api/v1`;
 };
 
 // Initial Seed Data matching the Web App when backend collections are being initialized
@@ -121,7 +129,9 @@ export const DataSyncManager = {
       console.warn('Backend fetch customers failed, loading from local cache:', e);
     }
 
-    const localSavedStr = await secureStorage.getItem('synced_customers');
+    const localSavedStr =
+      (await secureStorage.getItem('synced_customers')) ||
+      (await secureStorage.getItem('mockCustomers'));
     const localSaved: any[] = localSavedStr ? JSON.parse(localSavedStr) : [];
 
     // Map MongoDB records
@@ -174,6 +184,7 @@ export const DataSyncManager = {
       }));
 
     await secureStorage.setItem('synced_customers', JSON.stringify(merged));
+    await secureStorage.setItem('mockCustomers', JSON.stringify(merged));
     return merged;
   },
 
@@ -217,6 +228,7 @@ export const DataSyncManager = {
     const existing = await this.getCustomers();
     const updated = [newCustomer, ...existing.filter((c) => c.id !== newCustomer.id)];
     await secureStorage.setItem('synced_customers', JSON.stringify(updated));
+    await secureStorage.setItem('mockCustomers', JSON.stringify(updated));
     return newCustomer;
   },
 
@@ -249,6 +261,7 @@ export const DataSyncManager = {
     // 2. Update local storage
     const updatedList = customers.map((c) => (c.id === customerId || c.mongoId === customerId ? updatedCustomer : c));
     await secureStorage.setItem('synced_customers', JSON.stringify(updatedList));
+    await secureStorage.setItem('mockCustomers', JSON.stringify(updatedList));
     return updatedCustomer;
   },
 
@@ -332,7 +345,9 @@ export const DataSyncManager = {
     }
 
     // 3. Add saved custom groups from local storage
-    const customStored = await secureStorage.getItem('custom_chit_groups');
+    const customStored =
+      (await secureStorage.getItem('custom_chit_groups')) ||
+      (await secureStorage.getItem('mockChitGroups'));
     if (customStored) {
       try {
         const customGroups: ChitGroup[] = JSON.parse(customStored);
@@ -400,7 +415,9 @@ export const DataSyncManager = {
 
     // 2. Cache in local storage
     let existingCustom: ChitGroup[] = [];
-    const customStored = await secureStorage.getItem('custom_chit_groups');
+    const customStored =
+      (await secureStorage.getItem('custom_chit_groups')) ||
+      (await secureStorage.getItem('mockChitGroups'));
     if (customStored) {
       try {
         existingCustom = JSON.parse(customStored);
@@ -409,6 +426,7 @@ export const DataSyncManager = {
 
     const updatedCustom = [newGroup, ...existingCustom.filter((g) => g.id !== newGroup.id)];
     await secureStorage.setItem('custom_chit_groups', JSON.stringify(updatedCustom));
+    await secureStorage.setItem('mockChitGroups', JSON.stringify(updatedCustom));
     return newGroup;
   },
 
@@ -436,10 +454,13 @@ export const DataSyncManager = {
       console.warn('Backend update chit group error:', e);
     }
 
-    const customStored = await secureStorage.getItem('custom_chit_groups');
+    const customStored =
+      (await secureStorage.getItem('custom_chit_groups')) ||
+      (await secureStorage.getItem('mockChitGroups'));
     let existingCustom: ChitGroup[] = customStored ? JSON.parse(customStored) : [];
     existingCustom = existingCustom.map((g) => (g.id === groupId ? updatedGroup : g));
     await secureStorage.setItem('custom_chit_groups', JSON.stringify(existingCustom));
+    await secureStorage.setItem('mockChitGroups', JSON.stringify(existingCustom));
     return updatedGroup;
   },
 
@@ -545,7 +566,9 @@ export const DataSyncManager = {
     }));
 
     // Local ledger
-    const raw = await secureStorage.getItem('synced_ledger');
+    const raw =
+      (await secureStorage.getItem('synced_ledger')) ||
+      (await secureStorage.getItem('mockLedgerTransactions'));
     let localLedger: LedgerTransaction[] = [];
     if (raw) {
       try {
@@ -619,6 +642,7 @@ export const DataSyncManager = {
 
     const updatedLedger = [entry, ...ledger.filter((l) => l.id !== entry.id)];
     await secureStorage.setItem('synced_ledger', JSON.stringify(updatedLedger));
+    await secureStorage.setItem('mockLedgerTransactions', JSON.stringify(updatedLedger));
 
     // 3. Update customer's paid & pending balances in persistent storage
     const customers = await this.getCustomers();
@@ -633,24 +657,29 @@ export const DataSyncManager = {
       return c;
     });
     await secureStorage.setItem('synced_customers', JSON.stringify(updatedCusts));
+    await secureStorage.setItem('mockCustomers', JSON.stringify(updatedCusts));
   },
 
   /**
    * Get and manage Company Banks
    */
   async getBankAccounts() {
-    const raw = await secureStorage.getItem('company_banks');
+    const raw =
+      (await secureStorage.getItem('company_banks')) ||
+      (await secureStorage.getItem('companyBankAccounts'));
     if (raw) {
       try {
         return JSON.parse(raw);
       } catch {}
     }
     await secureStorage.setItem('company_banks', JSON.stringify(DEFAULT_COMPANY_BANKS));
+    await secureStorage.setItem('companyBankAccounts', JSON.stringify(DEFAULT_COMPANY_BANKS));
     return DEFAULT_COMPANY_BANKS;
   },
 
   async saveBankAccounts(banks: any[]) {
     await secureStorage.setItem('company_banks', JSON.stringify(banks));
+    await secureStorage.setItem('companyBankAccounts', JSON.stringify(banks));
   },
 
   /**
@@ -694,7 +723,10 @@ export const DataSyncManager = {
       console.warn('Backend fetch payment requests error:', e);
     }
 
-    const raw = await secureStorage.getItem('payment_requests');
+    const raw =
+      (await secureStorage.getItem('payment_requests')) ||
+      (await secureStorage.getItem('paymentVerifications')) ||
+      (await secureStorage.getItem('mockPaymentRequests'));
     let localReqs: PaymentRequest[] = [];
     if (raw) {
       try {
@@ -727,6 +759,7 @@ export const DataSyncManager = {
 
     merged.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
     await secureStorage.setItem('payment_requests', JSON.stringify(merged));
+    await secureStorage.setItem('paymentVerifications', JSON.stringify(merged));
     return merged;
   },
 
@@ -764,6 +797,7 @@ export const DataSyncManager = {
     const existing = await this.getPaymentRequests();
     const updated = [newReq, ...existing.filter((r) => r.id !== id)];
     await secureStorage.setItem('payment_requests', JSON.stringify(updated));
+    await secureStorage.setItem('paymentVerifications', JSON.stringify(updated));
     return newReq;
   },
 
@@ -782,6 +816,7 @@ export const DataSyncManager = {
     const existing = await this.getPaymentRequests();
     const updated = existing.map((r) => (r.id === id ? { ...r, ...updateData } : r));
     await secureStorage.setItem('payment_requests', JSON.stringify(updated));
+    await secureStorage.setItem('paymentVerifications', JSON.stringify(updated));
   },
 
   /**
