@@ -20,45 +20,72 @@ export class FixedPlanService {
       const group = await ChitGroup.findById(cycle.chitGroupId).session(session);
       if (!group) throw new ApiError(404, 'Group not found', 'NOT_FOUND');
 
-      const engine = new FixedPlanEngine(group.planSnapshot);
+      const engine = new FixedPlanEngine(group.planSnapshot || {
+        chitValue: group.chitValue,
+        durationMonths: group.durationMonths,
+        monthlyInstallment: group.monthlyInstallment
+      });
+
       if (!engine.validateCycle(cycle)) {
         throw new ApiError(400, 'Cycle validation failed', 'VALIDATION_ERROR');
       }
 
-      // Determine eligible members (for fixed plans, let's assume one payout per month or configurable)
-      // For simplicity, we find the next member who hasn't taken a prize and is ACTIVE
-      const eligibleMember = await ChitMember.findOne({
-        chitGroupId: group._id,
-        status: 'ACTIVE',
-        prizeTaken: false
-      }).sort({ ticketNumber: 1 }).session(session);
+      const cycleNumber = Number(cycle.cycleNumber || 1);
+      const isCompanyMonth = cycleNumber === 1;
 
       let createdPayout = null;
 
-      if (eligibleMember) {
-        const engineResult = await engine.processCycle(cycle);
-        const calc = engineResult.payoutCalculation;
-
-        const payoutNumber = `PAYOUT-F-${Date.now()}`;
+      if (isCompanyMonth) {
+        // FOR FIXED PLAN ALONE: Month 1 goes strictly to Company / Foreman
+        const chitValue = Number(group.chitValue || (group.monthlyInstallment * group.durationMonths));
+        const payoutNumber = `PAYOUT-FIXED-COMPANY-${Date.now()}`;
         const payout = await Payout.create([{
           payoutNumber,
-          customerId: eligibleMember.customerId,
+          customerId: group.createdBy || userId,
           chitGroupId: group._id,
-          chitMemberId: eligibleMember._id,
           cycleId: cycle._id,
           planType: 'FIXED',
-          grossAmount: calc.grossAmount,
-          deductions: calc.deductions,
-          netAmount: calc.netAmount,
-          status: 'PENDING',
+          grossAmount: chitValue,
+          deductions: 0,
+          netAmount: chitValue,
+          status: 'APPROVED',
           approvedBy: userId
         }], { session });
 
-        eligibleMember.prizeTaken = true;
-        eligibleMember.prizeCycleId = cycle._id;
-        await eligibleMember.save({ session });
-
         createdPayout = payout[0];
+      } else {
+        // Months 2..20: Member Prize Payout
+        const eligibleMember = await ChitMember.findOne({
+          chitGroupId: group._id,
+          status: 'ACTIVE',
+          prizeTaken: false
+        }).sort({ ticketNumber: 1 }).session(session);
+
+        if (eligibleMember) {
+          const engineResult = await engine.processCycle(cycle);
+          const calc = engineResult.payoutCalculation;
+
+          const payoutNumber = `PAYOUT-F-${Date.now()}`;
+          const payout = await Payout.create([{
+            payoutNumber,
+            customerId: eligibleMember.customerId,
+            chitGroupId: group._id,
+            chitMemberId: eligibleMember._id,
+            cycleId: cycle._id,
+            planType: 'FIXED',
+            grossAmount: calc.grossAmount,
+            deductions: calc.deductions,
+            netAmount: calc.netAmount,
+            status: 'PENDING',
+            approvedBy: userId
+          }], { session });
+
+          eligibleMember.prizeTaken = true;
+          eligibleMember.prizeCycleId = cycle._id;
+          await eligibleMember.save({ session });
+
+          createdPayout = payout[0];
+        }
       }
 
       // Close cycle
@@ -68,13 +95,14 @@ export class FixedPlanService {
       group.currentCycle = cycle.cycleNumber;
       await group.save({ session });
 
-      // TODO: Create Ledger entries
-
       await session.commitTransaction();
       session.endSession();
 
       return {
-        message: 'Fixed cycle processed successfully',
+        message: isCompanyMonth
+          ? 'Fixed plan Month 1 company cycle processed successfully (1st month to company)'
+          : 'Fixed cycle processed successfully',
+        isCompanyMonth,
         payout: createdPayout
       };
     } catch (error) {

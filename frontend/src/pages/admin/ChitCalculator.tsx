@@ -179,7 +179,7 @@ export const ChitCalculator: React.FC = () => {
       let dividend = 0;
       let installmentDue = baseInstallment;
       let payout = 0;
-      let isCompany = month === 1;
+      let isCompany = scheme === 'FIXED' && month === 1;
       let winnerPayoutDisplay = '';
 
       if (scheme === 'AUCTION') {

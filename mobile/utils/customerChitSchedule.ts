@@ -12,6 +12,7 @@ export interface DueInstallmentRow {
   grossDue: number;
   revisedDue: number;
   eligiblePayout: number;
+  isCompanyMonth?: boolean;
   isWithdrawn: boolean;
   status: 'PAID' | 'DUE' | 'PARTIALLY_PAID' | 'OVERDUE';
   amountPaid: number;
@@ -87,6 +88,7 @@ export const buildCustomerChitSchedule = (params: {
     grossDue: number;
     revisedDue: number;
     eligiblePayout: number;
+  isCompanyMonth?: boolean;
     dividend: number;
     isCompanyMonth?: boolean;
   }[] = [];
@@ -212,6 +214,7 @@ export const buildCustomerChitSchedule = (params: {
       status,
       amountPaid,
       dividend: item.dividend,
+      isCompanyMonth: !!item.isCompanyMonth,
     };
   });
 
@@ -219,10 +222,10 @@ export const buildCustomerChitSchedule = (params: {
   const remainingBalanceDue = Math.max(0, totalDueAmount - totalPaidInLedger);
   const currentDueMonthIndex = firstUnpaidIndex === -1 ? totalDurationMonths : firstUnpaidIndex;
 
-  const currentEligiblePrizeAmount =
-    scheduleRows.find((r) => r.monthNumber === currentDueMonthIndex)?.eligiblePayout ||
-    calculatedRows[0]?.eligiblePayout ||
-    Math.round(chitValue * 0.95);
+  const currentMonthRow = scheduleRows.find((r) => r.monthNumber === currentDueMonthIndex);
+  const currentEligiblePrizeAmount = currentMonthRow
+    ? currentMonthRow.eligiblePayout
+    : (scheme === 'Fixed' ? Math.round(chitValue * 0.70) : Math.round(chitValue * 0.95));
 
   return {
     customerId,

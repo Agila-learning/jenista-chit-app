@@ -12,6 +12,11 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 import { formatCurrency } from '../../utils/format';
+import {
+  calculateAuctionPlanSchedule,
+  calculateFixedPlanSchedule,
+  calculateRegularPlanSchedule,
+} from '../../utils/chitCalculations';
 
 type SchemeType = 'AUCTION' | 'FIXED' | 'REGULAR';
 type ViewMode = 'SCHEDULE' | 'COMPARISON';
@@ -38,19 +43,36 @@ export const ChitCalculatorScreen: React.FC<{ navigation?: any }> = ({ navigatio
     const foremanCommissionTotal = Math.round(chitValue * (foremanCommPercent / 100));
     const foremanCommissionPerMonth = Math.round(foremanCommissionTotal / duration);
 
-    if (scheme === 'FIXED' || scheme === 'REGULAR') {
-      const winnerNetPayout = chitValue - foremanCommissionTotal;
-      const totalPaidByMember = grossMonthlyInstallment * duration;
+    if (scheme === 'FIXED') {
+      const fixedDetails = calculateFixedPlanSchedule(chitValue, duration);
       return {
-        grossMonthlyInstallment,
-        netMonthlyInstallment: grossMonthlyInstallment,
-        totalPaidByMember,
-        winnerNetPayout,
+        grossMonthlyInstallment: fixedDetails.month1Due,
+        netMonthlyInstallment: fixedDetails.standardDue,
+        totalPaidByMember: fixedDetails.totalDue,
+        winnerNetPayout: fixedDetails.maxPayout,
+        minWinnerPayout: fixedDetails.minPayout,
         foremanCommissionTotal,
         foremanCommissionPerMonth,
         totalDividendPerMember: 0,
         dividendPerMonth: 0,
-        netGainOrCost: winnerNetPayout - totalPaidByMember,
+        netGainOrCost: fixedDetails.maxPayout - fixedDetails.totalDue,
+        effectiveAnnualYield: '0.0',
+      };
+    }
+
+    if (scheme === 'REGULAR') {
+      const regDetails = calculateRegularPlanSchedule(chitValue, duration);
+      return {
+        grossMonthlyInstallment: regDetails.grossDue,
+        netMonthlyInstallment: regDetails.firstMonthDue,
+        totalPaidByMember: regDetails.totalDue,
+        winnerNetPayout: regDetails.maxPayout,
+        minWinnerPayout: regDetails.minPayout,
+        foremanCommissionTotal,
+        foremanCommissionPerMonth,
+        totalDividendPerMember: regDetails.totalDividends,
+        dividendPerMonth: Math.round(regDetails.totalDividends / duration),
+        netGainOrCost: regDetails.maxPayout - regDetails.totalDue,
         effectiveAnnualYield: '0.0',
       };
     }
@@ -70,6 +92,7 @@ export const ChitCalculatorScreen: React.FC<{ navigation?: any }> = ({ navigatio
       netMonthlyInstallment,
       totalPaidByMember: totalPaidByPatientSaver,
       winnerNetPayout,
+      minWinnerPayout: winnerNetPayout,
       foremanCommissionTotal,
       foremanCommissionPerMonth,
       totalDividendPerMember: totalDividendEarned,
@@ -94,9 +117,9 @@ export const ChitCalculatorScreen: React.FC<{ navigation?: any }> = ({ navigatio
     const auctionBorrowPayout = chitValue - grossBid;
     const auctionSaverPayout = chitValue - foremanFee;
 
-    // Fixed & Regular
-    const fixedTotalPaid = gross * duration;
-    const fixedPayout = chitValue - foremanFee;
+    // Fixed & Regular Details
+    const fixedDetails = calculateFixedPlanSchedule(chitValue, duration);
+    const regDetails = calculateRegularPlanSchedule(chitValue, duration);
 
     return {
       auction: {
@@ -109,14 +132,18 @@ export const ChitCalculatorScreen: React.FC<{ navigation?: any }> = ({ navigatio
         saverPayout: auctionSaverPayout,
       },
       fixed: {
-        grossInstallment: gross,
-        totalPaid: fixedTotalPaid,
-        winnerPayout: fixedPayout,
+        month1Installment: fixedDetails.month1Due,
+        standardInstallment: fixedDetails.standardDue,
+        totalPaid: fixedDetails.totalDue,
+        minPayout: fixedDetails.minPayout,
+        winnerPayout: fixedDetails.maxPayout,
       },
       regular: {
-        grossInstallment: gross,
-        totalPaid: fixedTotalPaid,
-        winnerPayout: fixedPayout,
+        grossInstallment: regDetails.grossDue,
+        firstMonthInstallment: regDetails.firstMonthDue,
+        totalPaid: regDetails.totalDue,
+        minPayout: regDetails.minPayout,
+        winnerPayout: regDetails.maxPayout,
       },
     };
   }, [chitValue, duration, foremanCommPercent, avgDiscountPercent]);
@@ -125,39 +152,65 @@ export const ChitCalculatorScreen: React.FC<{ navigation?: any }> = ({ navigatio
     const rows = [];
     const baseInstallment = Math.round(chitValue / duration);
     const foremanFee = Math.round(chitValue * (foremanCommPercent / 100));
+    const fixedDetails = calculateFixedPlanSchedule(chitValue, duration);
+    const regDetails = calculateRegularPlanSchedule(chitValue, duration);
 
     let cumulativePaid = 0;
 
     for (let month = 1; month <= duration; month++) {
-      let bidPercent = avgDiscountPercent;
+      let bidPercent = 0;
       let dividend = 0;
-      let netPayable = baseInstallment;
-      let payout = chitValue - foremanFee;
+      let installmentDue = baseInstallment;
+      let payout = 0;
+      let isCompany = scheme === 'FIXED' && month === 1; // Fixed plan alone has Month 1 go to company!
+      let winnerPayoutDisplay = '';
 
       if (scheme === 'AUCTION') {
+        isCompany = false;
         const curveFactor = 1 + (0.35 * ((duration - month) / duration) - 0.15);
         bidPercent = Math.min(35, Math.max(8, Math.round(avgDiscountPercent * curveFactor)));
         const grossDiscount = Math.round(chitValue * (bidPercent / 100));
         payout = chitValue - grossDiscount;
         const divPool = Math.max(0, grossDiscount - foremanFee);
         dividend = Math.round(divPool / duration);
-        netPayable = baseInstallment - dividend;
-      } else {
-        bidPercent = 0;
+        installmentDue = baseInstallment - dividend;
+        winnerPayoutDisplay = formatCurrency(payout);
+      } else if (scheme === 'FIXED') {
+        const rowData = fixedDetails.schedule.find((r) => r.month === month);
+        installmentDue = rowData ? rowData.due : baseInstallment;
         dividend = 0;
-        netPayable = baseInstallment;
-        payout = chitValue - foremanFee;
+        bidPercent = 0;
+        if (month === 1) {
+          isCompany = true;
+          payout = 0;
+          winnerPayoutDisplay = 'COMPANY';
+        } else {
+          isCompany = false;
+          payout = rowData ? rowData.payout : Math.round(chitValue * (0.70 + ((month - 1) / duration) * 0.25));
+          winnerPayoutDisplay = formatCurrency(payout);
+        }
+      } else {
+        // Regular scheme: lucky draw rotation turn
+        const rowData = regDetails.schedule.find((r) => r.month === month);
+        installmentDue = rowData ? rowData.due : baseInstallment;
+        dividend = rowData ? rowData.dividend : 0;
+        bidPercent = rowData ? rowData.bidDiscountPct : 0;
+        isCompany = false;
+        payout = rowData ? rowData.payment : (chitValue - foremanFee);
+        winnerPayoutDisplay = formatCurrency(payout);
       }
 
-      cumulativePaid += netPayable;
+      cumulativePaid += installmentDue;
 
       rows.push({
         month,
-        baseInstallment,
+        baseInstallment: installmentDue,
         bidPercent,
         dividend,
-        netPayable,
+        netPayable: installmentDue,
         winnerPayout: payout,
+        winnerPayoutDisplay,
+        isCompany,
         cumulativePaid,
       });
     }
@@ -302,14 +355,14 @@ export const ChitCalculatorScreen: React.FC<{ navigation?: any }> = ({ navigatio
       {/* KPI Stat Cards Grid */}
       <View style={styles.kpiGrid}>
         <View style={styles.kpiCard}>
-          <Text style={styles.kpiLabel}>STANDARD DUE</Text>
-          <Text style={styles.kpiVal}>{formatCurrency(calculations.grossMonthlyInstallment)}</Text>
-          <Text style={styles.kpiSub}>per month</Text>
+          <Text style={styles.kpiLabel}>{scheme === 'FIXED' ? 'STANDARD DUE (M2-20)' : 'STANDARD DUE'}</Text>
+          <Text style={styles.kpiVal}>{formatCurrency(scheme === 'FIXED' ? calculations.netMonthlyInstallment : calculations.grossMonthlyInstallment)}</Text>
+          <Text style={styles.kpiSub}>{scheme === 'FIXED' ? `M1 Due: ${formatCurrency(calculations.grossMonthlyInstallment)} (5%)` : 'per month'}</Text>
         </View>
 
         <View style={[styles.kpiCard, { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' }]}>
           <Text style={[styles.kpiLabel, { color: '#1d4ed8' }]}>
-            {scheme === 'AUCTION' ? 'EST. NET OUTFLOW' : 'WINNER PAYOUT'}
+            {scheme === 'AUCTION' ? 'EST. NET OUTFLOW' : (scheme === 'FIXED' ? 'WINNER PAYOUT (M2-20)' : 'WINNER PAYOUT')}
           </Text>
           <Text style={[styles.kpiVal, { color: '#1e40af' }]}>
             {scheme === 'AUCTION'
@@ -319,7 +372,7 @@ export const ChitCalculatorScreen: React.FC<{ navigation?: any }> = ({ navigatio
           <Text style={styles.kpiSub}>
             {scheme === 'AUCTION'
               ? `Save ~${formatCurrency(calculations.dividendPerMonth)}/mo in div.`
-              : 'Full value less 5% foreman fee'}
+              : (scheme === 'FIXED' ? `Min: ${formatCurrency(calculations.minWinnerPayout)} (70%) - Max: 95%` : 'Full value less 5% foreman fee')}
           </Text>
         </View>
 
@@ -331,15 +384,15 @@ export const ChitCalculatorScreen: React.FC<{ navigation?: any }> = ({ navigatio
 
         <View style={[styles.kpiCard, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
           <Text style={[styles.kpiLabel, { color: '#15803d' }]}>
-            {scheme === 'AUCTION' ? 'TOTAL DIVIDEND' : 'SAVINGS GOAL'}
+            {scheme === 'AUCTION' ? 'TOTAL DIVIDEND' : (scheme === 'FIXED' ? 'TOTAL OUTFLOW' : 'SAVINGS GOAL')}
           </Text>
           <Text style={[styles.kpiVal, { color: '#166534' }]}>
             {scheme === 'AUCTION'
               ? formatCurrency(calculations.totalDividendPerMember)
-              : formatCurrency(chitValue)}
+              : (scheme === 'FIXED' ? formatCurrency(calculations.totalPaidByMember) : formatCurrency(chitValue))}
           </Text>
           <Text style={styles.kpiSub}>
-            {scheme === 'AUCTION' ? `Yield: ~${calculations.effectiveAnnualYield}%` : `${duration} members`}
+            {scheme === 'AUCTION' ? `Yield: ~${calculations.effectiveAnnualYield}%` : (scheme === 'FIXED' ? 'Month 1 goes to Company' : `${duration} members`)}
           </Text>
         </View>
       </View>
@@ -416,25 +469,29 @@ export const ChitCalculatorScreen: React.FC<{ navigation?: any }> = ({ navigatio
               <Text style={styles.compareBadgeText}>FIXED DRAW CHIT</Text>
             </View>
             <Text style={styles.compareDesc}>
-              Constant, strictly fixed installments with transparent monthly lucky draws.
+              Month 1 is Foreman/Company Chit; member payouts step up from 70% to 95%.
             </Text>
             <View style={styles.compareDetails}>
               <View style={styles.cRow}>
-                <Text style={styles.cLabel}>Fixed Monthly Due:</Text>
-                <Text style={styles.cVal}>{formatCurrency(comparativeData.fixed.grossInstallment)}/mo</Text>
+                <Text style={styles.cLabel}>Month 1 Due (5%):</Text>
+                <Text style={[styles.cVal, { color: '#92400e' }]}>{formatCurrency(comparativeData.fixed.month1Installment)}</Text>
               </View>
               <View style={styles.cRow}>
-                <Text style={styles.cLabel}>Dividend:</Text>
-                <Text style={styles.cVal}>None (Zero discount)</Text>
+                <Text style={styles.cLabel}>Standard Due (M2–20):</Text>
+                <Text style={styles.cVal}>{formatCurrency(comparativeData.fixed.standardInstallment)}/mo</Text>
+              </View>
+              <View style={styles.cRow}>
+                <Text style={styles.cLabel}>Month 1 Payout:</Text>
+                <Text style={[styles.cVal, { color: '#d97706', fontWeight: '800' }]}>COMPANY</Text>
               </View>
               <View style={styles.cRow}>
                 <Text style={styles.cLabel}>Total Contributed:</Text>
                 <Text style={styles.cVal}>{formatCurrency(comparativeData.fixed.totalPaid)}</Text>
               </View>
               <View style={styles.cRow}>
-                <Text style={styles.cLabel}>Guaranteed Net Prize:</Text>
+                <Text style={styles.cLabel}>Prize Range (M2–20):</Text>
                 <Text style={[styles.cVal, { color: '#2563eb', fontWeight: '800' }]}>
-                  {formatCurrency(comparativeData.fixed.winnerPayout)}
+                  {formatCurrency(comparativeData.fixed.minPayout)} - {formatCurrency(comparativeData.fixed.winnerPayout)}
                 </Text>
               </View>
             </View>
@@ -478,8 +535,15 @@ export const ChitCalculatorScreen: React.FC<{ navigation?: any }> = ({ navigatio
           </View>
 
           {projectionSchedule.map((r) => (
-            <View key={r.month} style={styles.scheduleDataRow}>
-              <Text style={styles.tableCol1}>M{r.month}</Text>
+            <View key={r.month} style={[styles.scheduleDataRow, r.isCompany && { backgroundColor: '#fffbeb' }]}>
+              <View style={styles.tableCol1Container}>
+                <Text style={styles.tableCol1}>M{r.month}</Text>
+                {r.isCompany && (
+                  <View style={styles.companyBadgeSmall}>
+                    <Text style={styles.companyBadgeText}>Co.</Text>
+                  </View>
+                )}
+              </View>
               <Text style={styles.tableCol2}>{formatCurrency(r.baseInstallment)}</Text>
               {scheme === 'AUCTION' && (
                 <Text style={[styles.tableCol3, { color: '#15803d' }]}>
@@ -489,9 +553,15 @@ export const ChitCalculatorScreen: React.FC<{ navigation?: any }> = ({ navigatio
               <Text style={[styles.tableCol4, { fontWeight: '800', color: '#0f172a' }]}>
                 {formatCurrency(r.netPayable)}
               </Text>
-              <Text style={[styles.tableCol5, { color: '#2563eb', fontWeight: '700' }]}>
-                {formatCurrency(r.winnerPayout)}
-              </Text>
+              {r.isCompany ? (
+                <View style={styles.companyPayoutBadge}>
+                  <Text style={styles.companyPayoutText}>COMPANY</Text>
+                </View>
+              ) : (
+                <Text style={[styles.tableCol5, { color: '#2563eb', fontWeight: '700' }]}>
+                  {formatCurrency(r.winnerPayout)}
+                </Text>
+              )}
             </View>
           ))}
         </View>
@@ -830,5 +900,38 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#64748b',
     textAlign: 'center',
+  },
+  tableCol1Container: {
+    width: '15%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  companyBadgeSmall: {
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 2,
+    paddingVertical: 1,
+    borderRadius: 3,
+    borderWidth: 0.5,
+    borderColor: '#fde68a',
+  },
+  companyBadgeText: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: '#92400e',
+  },
+  companyPayoutBadge: {
+    width: '21%',
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 3,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 0.5,
+    borderColor: '#fde68a',
+  },
+  companyPayoutText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#92400e',
   },
 });

@@ -177,6 +177,11 @@ export const CustomerScheduleScreen: React.FC<{ route: any; navigation: any }> =
           <View style={styles.monthPill}>
             <Text style={styles.monthPillText}>Month {item.monthNumber}</Text>
           </View>
+          {item.isCompanyMonth && (
+            <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginLeft: 6 }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: '#92400E' }}>Foreman Chit</Text>
+            </View>
+          )}
           <Text style={styles.dueDateText}>Due: {item.dueDate}</Text>
           <View
             style={[
@@ -228,7 +233,7 @@ export const CustomerScheduleScreen: React.FC<{ route: any; navigation: any }> =
           <View style={styles.col}>
             <Text style={styles.colLabel}>Eligible Prize</Text>
             <Text style={[styles.colValue, { color: Colors.gold.text }]}>
-              {isDisbursed ? 'Disbursed' : formatCurrency(item.eligiblePayout)}
+              {item.isCompanyMonth ? 'COMPANY' : (isDisbursed ? 'Disbursed' : formatCurrency(item.eligiblePayout))}
             </Text>
           </View>
         </View>

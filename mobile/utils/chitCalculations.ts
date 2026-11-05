@@ -212,7 +212,7 @@ export interface RegularPlanDetails {
 }
 
 const regularScheduleRatioMatrix: { month: number; duePct: number; paymentPct: number; isCompany?: boolean }[] = [
-  { month: 1, duePct: 0.05, paymentPct: 0, isCompany: true },
+  { month: 1, duePct: 0.05, paymentPct: 0.70, isCompany: false },
   { month: 2, duePct: 0.0375, paymentPct: 0.70 },
   { month: 3, duePct: 0.0375, paymentPct: 0.70 },
   { month: 4, duePct: 0.0375, paymentPct: 0.70 },

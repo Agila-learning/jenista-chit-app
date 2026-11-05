@@ -40,8 +40,8 @@ export class RegularPlanEngine extends ChitPlanEngine {
 
   /**
    * Calculates payout for the month according to the Jenista Chits brochure schedule.
-   * Month 1: Foreman/Company Chit
-   * Months 2-8: 70% Payout
+   * In Regular Plan, lucky draw rotation turns apply to members across cycles (Month 1 is NOT company chit; Fixed Plan ALONE has Month 1 to company).
+   * Months 1-8: 70% Payout
    * Month 9-14: 72% to 82%
    * Month 15-20: 85% to 95%
    */
@@ -50,7 +50,7 @@ export class RegularPlanEngine extends ChitPlanEngine {
     const chitValue = this.configuration.chitValue || (this.configuration.installmentAmount * 20);
 
     const payoutRates: { [key: number]: number } = {
-      1: 0,
+      1: 0.70,
       2: 0.70, 3: 0.70, 4: 0.70, 5: 0.70, 6: 0.70, 7: 0.70, 8: 0.70,
       9: 0.72, 10: 0.74, 11: 0.76, 12: 0.78, 13: 0.80, 14: 0.82,
       15: 0.85, 16: 0.87, 17: 0.89, 18: 0.91, 19: 0.93, 20: 0.95
@@ -63,7 +63,7 @@ export class RegularPlanEngine extends ChitPlanEngine {
     return {
       monthNumber: month,
       grossAmount: chitValue,
-      isCompanyChit: month === 1,
+      isCompanyChit: false,
       commission,
       netPayout: payoutAmount,
     };
