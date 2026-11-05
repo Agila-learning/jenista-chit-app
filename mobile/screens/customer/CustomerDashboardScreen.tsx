@@ -32,6 +32,8 @@ import {
   defaultAuctionCategories,
 } from '../../utils/chitCalculations';
 import { buildCustomerChitSchedule } from '../../utils/customerChitSchedule';
+import { showConfirmDialog, showAlert } from '../../utils/alert';
+import { sanitizeUtr, isValidUtr } from '../../utils/validators';
 import {
   MobileNotificationsManager,
   SystemNotification,
@@ -220,9 +222,16 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
   };
 
   const submitPaymentRequest = async () => {
-    if (payMode !== 'Cash' && !payRefNo.trim()) {
-      Alert.alert('Missing Reference', 'Please enter your Transaction / Reference / UTR ID.');
-      return;
+    if (payMode !== 'Cash') {
+      const cleanUtr = payRefNo.trim();
+      if (!cleanUtr) {
+        showAlert('Missing Reference', 'Please enter your Transaction / Reference / UTR ID.');
+        return;
+      }
+      if (!isValidUtr(cleanUtr)) {
+        showAlert('Invalid UTR', 'UPI / Transaction UTR number must be exactly 12 numeric digits.');
+        return;
+      }
     }
     setPaySubmitting(true);
     try {
@@ -1201,14 +1210,15 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
                 {payMode !== 'Cash' && (
                   <>
                     <Text style={[styles.inputLabel, { marginTop: 12 }]}>
-                      TRANSACTION / UTR REFERENCE NUMBER <Text style={{ color: Colors.danger }}>*</Text>
+                      TRANSACTION / UTR REFERENCE NUMBER (12 DIGITS) <Text style={{ color: Colors.danger }}>*</Text>
                     </Text>
                     <TextInput
                       style={styles.modalInput}
                       value={payRefNo}
-                      onChangeText={setPayRefNo}
-                      placeholder="e.g. 329048102948 or Bank Ref ID"
-                      autoCapitalize="characters"
+                      onChangeText={(text) => setPayRefNo(sanitizeUtr(text, 12))}
+                      placeholder="e.g. 12-digit numeric UTR 329048102948"
+                      keyboardType="numeric"
+                      maxLength={12}
                     />
                   </>
                 )}

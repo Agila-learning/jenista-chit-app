@@ -18,6 +18,7 @@ import { apiClient } from '../../services/api';
 import { DataSyncManager } from '../../services/dataSync';
 import { formatCurrency } from '../../utils/format';
 import { Customer } from '../../types';
+import { showConfirmDialog, showAlert } from '../../utils/alert';
 
 export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = ({
   route,
@@ -49,7 +50,7 @@ export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = (
   const initial = displayName.charAt(0).toUpperCase();
 
   const toggleStatus = async (newStatus: 'ACTIVE' | 'INACTIVE') => {
-    Alert.alert(
+    showConfirmDialog(
       newStatus === 'INACTIVE' ? 'Deactivate Customer' : 'Reactivate Customer',
       `Are you sure you want to ${newStatus === 'INACTIVE' ? 'restrict' : 'restore'} app access for this customer?`,
       [
@@ -66,9 +67,9 @@ export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = (
                 body: JSON.stringify({ status: newStatus }),
               });
               setCurrentStatus(newStatus);
-              Alert.alert('Updated', `Customer is now ${newStatus}`);
+              showAlert('Updated', `Customer is now ${newStatus}`);
             } catch (err: any) {
-              Alert.alert('Error', err.message || 'Status update failed');
+              showAlert('Error', err.message || 'Status update failed');
             } finally {
               setLoadingStatus(false);
             }
@@ -79,7 +80,7 @@ export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = (
   };
 
   const handleDeleteCustomer = () => {
-    Alert.alert(
+    showConfirmDialog(
       'Delete Customer',
       `Permanently delete "${displayName}" (${customer.id})? All records, chits, and payment requests for this customer will be deleted everywhere.`,
       [
@@ -95,10 +96,11 @@ export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = (
                 phone: customer.phone || customer.mobile,
                 name: displayName,
               });
-              Alert.alert('Deleted', `Customer "${displayName}" was permanently deleted.`);
-              navigation.goBack();
+              showAlert('Deleted', `Customer "${displayName}" was permanently deleted.`, () => {
+                navigation.goBack();
+              });
             } catch (err: any) {
-              Alert.alert('Error', err?.message || 'Failed to delete customer');
+              showAlert('Error', err?.message || 'Failed to delete customer');
             }
           },
         },
@@ -192,9 +194,9 @@ export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = (
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
 
-      {/* 1. Deep Navy Profile Header Card (Reference Screen 9) */}
+      {/* 1. Light Profile Header Card */}
       <View style={styles.navyHeader}>
         <View style={styles.headerProfileRow}>
           <View style={styles.avatarBubble}>
@@ -206,14 +208,14 @@ export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = (
           </View>
           <View style={{ flexDirection: 'row', gap: 6 }}>
             <TouchableOpacity style={styles.editIconBtn} activeOpacity={0.7} onPress={handleOpenEdit}>
-              <Ionicons name="pencil" size={16} color={Colors.white} />
+              <Ionicons name="pencil" size={16} color="#1D4ED8" />
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.editIconBtn, { backgroundColor: 'rgba(239, 68, 68, 0.35)' }]}
+              style={[styles.editIconBtn, { backgroundColor: '#FEE2E2', borderColor: '#FECACA' }]}
               activeOpacity={0.7}
               onPress={handleDeleteCustomer}
             >
-              <Ionicons name="trash-outline" size={16} color="#FCA5A5" />
+              <Ionicons name="trash-outline" size={16} color="#DC2626" />
             </TouchableOpacity>
           </View>
         </View>
@@ -266,7 +268,12 @@ export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = (
 
         <TouchableOpacity
           style={styles.navLinkRow}
-          onPress={() => navigation.navigate('Ledger')}
+          onPress={() =>
+            navigation.navigate('Ledger', {
+              customerId: customer.id,
+              customerName: displayName,
+            })
+          }
           activeOpacity={0.7}
         >
           <View style={[styles.navLinkIconBox, { backgroundColor: Colors.blueSubtle }]}>
@@ -283,8 +290,10 @@ export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = (
           onPress={() =>
             navigation.navigate('ReceiptEntry', {
               customerId: customer.id,
-              customerName: customer.name,
-              mobile: customer.phone,
+              customerName: displayName,
+              mobile: customer.phone || customer.mobile || '',
+              amount: customer.pending || 5000,
+              chitGroup: customer.chits?.[0]?.groupName || customer.chits?.[0]?.groupId || '',
             })
           }
           activeOpacity={0.7}
@@ -338,9 +347,10 @@ export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = (
           onPress={() =>
             navigation.navigate('ReceiptEntry', {
               customerId: customer.id,
-              customerName: customer.name,
-              mobile: customer.phone,
+              customerName: displayName,
+              mobile: customer.phone || customer.mobile || '',
               amount: customer.pending || 5000,
+              chitGroup: customer.chits?.[0]?.groupName || customer.chits?.[0]?.groupId || '',
             })
           }
           style={styles.primaryActionBtn}
@@ -498,14 +508,16 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
 
-  // 1. Navy Profile Header Card
+  // 1. Light Profile Header Card
   navyHeader: {
-    backgroundColor: Colors.navy.primary,
+    backgroundColor: '#F8FAFC',
     paddingTop: 16,
     paddingHorizontal: 20,
     paddingBottom: 36,
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
   },
   headerProfileRow: {
     flexDirection: 'row',
@@ -515,24 +527,26 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 18,
-    backgroundColor: Colors.gold.primary,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#0B1A30',
+    color: '#1D4ED8',
   },
   headerCustomerName: {
     fontSize: 18,
     fontWeight: '800',
-    color: Colors.white,
+    color: '#0F172A',
     letterSpacing: 0.3,
   },
   headerCustomerId: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.65)',
+    color: '#64748B',
     fontWeight: '500',
     marginTop: 2,
   },
@@ -540,7 +554,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -660,7 +676,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   primaryActionBtn: {
-    backgroundColor: Colors.gold.primary,
+    backgroundColor: '#059669', // Emerald Green for collection & receipts
   },
 
   // Modal Styles

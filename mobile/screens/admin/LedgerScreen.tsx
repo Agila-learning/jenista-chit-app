@@ -17,9 +17,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 import { formatCurrency, formatDate } from '../../utils/format';
 import { DataSyncManager } from '../../services/dataSync';
+import { showConfirmDialog, showAlert } from '../../utils/alert';
+import { sanitizeUtr } from '../../utils/validators';
 
-export const LedgerScreen: React.FC = () => {
-  const [search, setSearch] = useState('');
+export const LedgerScreen: React.FC<{ route?: any; navigation?: any }> = ({ route, navigation }) => {
+  const initialSearch = route?.params?.customerName || route?.params?.customerId || '';
+  const [search, setSearch] = useState(initialSearch);
+
+  useEffect(() => {
+    if (route?.params?.customerName) {
+      setSearch(route.params.customerName);
+    } else if (route?.params?.customerId) {
+      setSearch(route.params.customerId);
+    }
+  }, [route?.params]);
   const [activeTab, setActiveTab] = useState<'ALL' | 'COMPLETED' | 'PENDING' | 'FAILED'>('ALL');
   const [paymentModeFilter, setPaymentModeFilter] = useState<'ALL' | 'Cash' | 'UPI' | 'Bank Transfer'>('ALL');
   const [planFilter, setPlanFilter] = useState<'ALL' | 'Regular' | 'Fixed' | 'Auction'>('ALL');
@@ -134,7 +145,7 @@ export const LedgerScreen: React.FC = () => {
   };
 
   const handleVoidTransaction = (item: any) => {
-    Alert.alert(
+    showConfirmDialog(
       'Void / Delete Transaction',
       `Permanently void and remove ${item.type} entry for ${item.customerName} of ${formatCurrency(item.amount)}?\n\nThis will remove the transaction from the general ledger records.`,
       [
@@ -146,9 +157,9 @@ export const LedgerScreen: React.FC = () => {
             try {
               await DataSyncManager.voidReceipt(item.id);
               await loadLedger();
-              Alert.alert('Voided', 'Transaction entry has been removed from ledger.');
+              showAlert('Voided', 'Transaction entry has been removed from ledger.');
             } catch (e: any) {
-              Alert.alert('Error', e?.message || 'Failed to void transaction');
+              showAlert('Error', e?.message || 'Failed to void transaction');
             }
           },
         },
@@ -358,7 +369,7 @@ export const LedgerScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
 
       {/* Top Header Bar with New Entry Action */}
       <View style={styles.topHeaderBar}>
@@ -371,7 +382,7 @@ export const LedgerScreen: React.FC = () => {
           onPress={() => setIsAddModalOpen(true)}
           activeOpacity={0.8}
         >
-          <Ionicons name="add-circle" size={17} color="#0B1A30" />
+          <Ionicons name="add-circle" size={17} color="#FFFFFF" />
           <Text style={styles.btnAddEntryText}>New Entry</Text>
         </TouchableOpacity>
       </View>
@@ -397,79 +408,113 @@ export const LedgerScreen: React.FC = () => {
 
       {/* Primary Status Tabs (All, Completed, Pending, Failed) */}
       <View style={styles.filterRow}>
-        {(['ALL', 'COMPLETED', 'PENDING', 'FAILED'] as const).map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            style={[styles.filterTab, activeTab === tab && styles.filterTabActive]}
-            onPress={() => setActiveTab(tab)}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[
-                styles.filterTabText,
-                activeTab === tab && styles.filterTabTextActive,
-              ]}
+        {(['ALL', 'COMPLETED', 'PENDING', 'FAILED'] as const).map((tab) => {
+          const isActive = activeTab === tab;
+          return (
+            <TouchableOpacity
+              key={tab}
+              style={[styles.filterTab, isActive && styles.filterTabActive]}
+              onPress={() => setActiveTab(tab)}
+              activeOpacity={0.8}
             >
-              {tab.charAt(0) + tab.slice(1).toLowerCase()}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Text style={[styles.filterTabText, isActive && styles.filterTabTextActive]}>
+                {tab.charAt(0) + tab.slice(1).toLowerCase()}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
-      {/* Multi-Criteria Filters Horizontal Scroll: Mode, Scheme, Date */}
+      {/* User-Friendly Multi-Criteria Filters (Structured Multi-Tier Layout) */}
       <View style={styles.subFilterSection}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subFiltersScroll}>
-          {/* Payment Mode Pills */}
-          <Text style={styles.subFilterGroupLabel}>MODE:</Text>
-          {(['ALL', 'Cash', 'UPI', 'Bank Transfer'] as const).map((mode) => (
+        {/* Row 1: Payment Mode Chips with Clear Reset Option */}
+        <View style={styles.filterRowWrap}>
+          <View style={styles.filterGroupHeader}>
+            <Ionicons name="card-outline" size={14} color={Colors.primary[600]} />
+            <Text style={styles.filterGroupLabel}>Mode:</Text>
+          </View>
+          {(['ALL', 'Cash', 'UPI', 'Bank Transfer'] as const).map((mode) => {
+            const active = paymentModeFilter === mode;
+            return (
+              <TouchableOpacity
+                key={`mode-${mode}`}
+                style={[styles.subFilterPill, active && styles.subFilterPillActive]}
+                onPress={() => setPaymentModeFilter(mode)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.subFilterPillText, active && styles.subFilterPillTextActive]}>
+                  {mode === 'ALL' ? 'All' : mode}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+
+          {/* Quick Clear All Button if any filter is active */}
+          {(activeTab !== 'ALL' || paymentModeFilter !== 'ALL' || planFilter !== 'ALL' || dateFilter !== 'ALL' || search.length > 0) && (
             <TouchableOpacity
-              key={`mode-${mode}`}
-              style={[styles.subFilterPill, paymentModeFilter === mode && styles.subFilterPillActive]}
-              onPress={() => setPaymentModeFilter(mode)}
+              style={styles.clearFilterChip}
+              onPress={() => {
+                setActiveTab('ALL');
+                setPaymentModeFilter('ALL');
+                setPlanFilter('ALL');
+                setDateFilter('ALL');
+                setSearch('');
+              }}
+              activeOpacity={0.7}
             >
-              <Text style={[styles.subFilterPillText, paymentModeFilter === mode && styles.subFilterPillTextActive]}>
-                {mode}
-              </Text>
+              <Ionicons name="close-circle" size={13} color="#EF4444" />
+              <Text style={styles.clearFilterChipText}>Reset</Text>
             </TouchableOpacity>
-          ))}
+          )}
+        </View>
 
-          <View style={styles.filterSeparator} />
+        {/* Row 2: Scheme Plans & Date Range Chips */}
+        <View style={[styles.filterRowWrap, { marginTop: 6 }]}>
+          <View style={styles.filterGroupHeader}>
+            <Ionicons name="layers-outline" size={14} color={Colors.primary[600]} />
+            <Text style={styles.filterGroupLabel}>Plan:</Text>
+          </View>
+          {(['ALL', 'Regular', 'Fixed', 'Auction'] as const).map((plan) => {
+            const active = planFilter === plan;
+            return (
+              <TouchableOpacity
+                key={`plan-${plan}`}
+                style={[styles.subFilterPill, active && styles.subFilterPillActive]}
+                onPress={() => setPlanFilter(plan)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.subFilterPillText, active && styles.subFilterPillTextActive]}>
+                  {plan}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
 
-          {/* Scheme Plan Pills */}
-          <Text style={styles.subFilterGroupLabel}>PLAN:</Text>
-          {(['ALL', 'Regular', 'Fixed', 'Auction'] as const).map((plan) => (
-            <TouchableOpacity
-              key={`plan-${plan}`}
-              style={[styles.subFilterPill, planFilter === plan && styles.subFilterPillActive]}
-              onPress={() => setPlanFilter(plan)}
-            >
-              <Text style={[styles.subFilterPillText, planFilter === plan && styles.subFilterPillTextActive]}>
-                {plan}
-              </Text>
-            </TouchableOpacity>
-          ))}
-
-          <View style={styles.filterSeparator} />
-
-          {/* Date Filter Pills */}
-          <Text style={styles.subFilterGroupLabel}>DATE:</Text>
+          <View style={[styles.filterGroupHeader, { marginLeft: 8 }]}>
+            <Ionicons name="calendar-outline" size={14} color={Colors.primary[600]} />
+            <Text style={styles.filterGroupLabel}>Date:</Text>
+          </View>
           {([
-            { id: 'ALL', label: 'All Time' },
+            { id: 'ALL', label: 'All' },
             { id: 'TODAY', label: 'Today' },
-            { id: 'WEEK', label: '7 Days' },
+            { id: 'WEEK', label: '7D' },
             { id: 'MONTH', label: 'Month' },
-          ] as const).map((d) => (
-            <TouchableOpacity
-              key={`date-${d.id}`}
-              style={[styles.subFilterPill, dateFilter === d.id && styles.subFilterPillActive]}
-              onPress={() => setDateFilter(d.id)}
-            >
-              <Text style={[styles.subFilterPillText, dateFilter === d.id && styles.subFilterPillTextActive]}>
-                {d.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+          ] as const).map((d) => {
+            const active = dateFilter === d.id;
+            return (
+              <TouchableOpacity
+                key={`date-${d.id}`}
+                style={[styles.subFilterPill, active && styles.subFilterPillActive]}
+                onPress={() => setDateFilter(d.id)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.subFilterPillText, active && styles.subFilterPillTextActive]}>
+                  {d.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
 
       {/* Total Collected Hero Card */}
@@ -598,12 +643,22 @@ export const LedgerScreen: React.FC = () => {
               </View>
 
               <View>
-                <Text style={styles.inputLabel}>Reference / UTR / Voucher No</Text>
+                <Text style={styles.inputLabel}>
+                  {entryMode === 'UPI' ? 'UPI UTR (12 Digits)' : 'Reference / UTR / Voucher No'}
+                </Text>
                 <TextInput
                   style={styles.modalInput}
                   value={entryRef}
-                  onChangeText={setEntryRef}
-                  placeholder="e.g. UTR-9832104"
+                  onChangeText={(text) => {
+                    if (entryMode === 'UPI') {
+                      setEntryRef(sanitizeUtr(text, 12));
+                    } else {
+                      setEntryRef(text);
+                    }
+                  }}
+                  keyboardType={entryMode === 'UPI' ? 'numeric' : 'default'}
+                  maxLength={entryMode === 'UPI' ? 12 : 30}
+                  placeholder={entryMode === 'UPI' ? 'e.g. 329048102948' : 'e.g. UTR-9832104'}
                   placeholderTextColor="#94a3b8"
                 />
               </View>
@@ -674,52 +729,89 @@ const styles = StyleSheet.create({
   },
   filterTab: {
     flex: 1,
-    paddingVertical: 7,
-    borderRadius: 16,
+    paddingVertical: 9,
+    borderRadius: 12,
     backgroundColor: Colors.surface,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: '#e2e8f0',
     alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.navy.primary,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
   filterTabActive: {
-    backgroundColor: Colors.gold.primary,
-    borderColor: Colors.gold.primary,
+    backgroundColor: Colors.primary[600],
+    borderColor: Colors.primary[600],
   },
   filterTabText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.textSecondary,
   },
   filterTabTextActive: {
-    color: Colors.navy.primary,
+    color: '#FFFFFF',
     fontWeight: '800',
   },
   subFilterSection: {
+    paddingHorizontal: 16,
     marginVertical: 6,
+  },
+  filterRowWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  filterGroupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginRight: 2,
+  },
+  filterGroupLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
   },
   subFiltersScroll: {
     paddingHorizontal: 16,
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
-  subFilterGroupLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: Colors.textMuted,
-    marginLeft: 4,
+  filterChipGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    gap: 4,
+  },
+  chipGroupIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    backgroundColor: Colors.primary[50],
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: 2,
   },
   subFilterPill: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    backgroundColor: '#f1f5f9',
+    paddingVertical: 5,
+    borderRadius: 10,
+    backgroundColor: '#F1F5F9',
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: '#E2E8F0',
   },
   subFilterPillActive: {
-    backgroundColor: Colors.navy.primary,
-    borderColor: Colors.navy.primary,
+    backgroundColor: Colors.primary[600],
+    borderColor: Colors.primary[600],
   },
   subFilterPillText: {
     fontSize: 11,
@@ -727,13 +819,25 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   subFilterPillTextActive: {
-    color: Colors.white,
+    color: '#FFFFFF',
+    fontWeight: '800',
   },
-  filterSeparator: {
-    width: 1,
-    height: 18,
-    backgroundColor: '#cbd5e1',
-    marginHorizontal: 4,
+  clearFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 10,
+    marginLeft: 'auto',
+  },
+  clearFilterChipText: {
+    color: '#ef4444',
+    fontSize: 11,
+    fontWeight: '800',
   },
   totalCollectedCardWrapper: {
     paddingHorizontal: 16,

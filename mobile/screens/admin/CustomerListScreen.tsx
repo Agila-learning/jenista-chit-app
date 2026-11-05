@@ -16,6 +16,7 @@ import { Input } from '../../components/common/Input';
 import { DataSyncManager } from '../../services/dataSync';
 import { formatCurrency } from '../../utils/format';
 import { Customer } from '../../types';
+import { showConfirmDialog, showAlert } from '../../utils/alert';
 
 export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
   route,
@@ -88,7 +89,7 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
   });
 
   const handleDeleteCustomer = (cust: Customer) => {
-    Alert.alert(
+    showConfirmDialog(
       'Delete Customer',
       `Permanently delete member "${cust.name}" (${cust.id})? All active chits, payment requests, receipts, and ledger records for this member will also be removed.`,
       [
@@ -105,9 +106,9 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
                 name: cust.name,
               });
               setCustomers((prev) => prev.filter((c) => c.id !== cust.id));
-              Alert.alert('Deleted', `Customer "${cust.name}" was permanently removed.`);
+              showAlert('Deleted', `Customer "${cust.name}" was permanently removed.`);
             } catch (err: any) {
-              Alert.alert('Error', err?.message || 'Failed to delete customer');
+              showAlert('Error', err?.message || 'Failed to delete customer');
             }
           },
         },

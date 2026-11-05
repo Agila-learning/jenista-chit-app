@@ -19,6 +19,8 @@ import { useAuth } from '../../store/AuthContext';
 import { DataSyncManager } from '../../services/dataSync';
 import { generateAndShareReceipt } from '../../services/receiptService';
 import { Customer, ChitGroup } from '../../types';
+import { showConfirmDialog, showAlert } from '../../utils/alert';
+import { sanitizeUtr, isValidUtr } from '../../utils/validators';
 
 export const ReceiptEntryScreen: React.FC<{ route: any; navigation: any }> = ({
   route,
@@ -58,6 +60,17 @@ export const ReceiptEntryScreen: React.FC<{ route: any; navigation: any }> = ({
   const [groupsList, setGroupsList] = useState<ChitGroup[]>([]);
   const [groupSearch, setGroupSearch] = useState('');
   const [loadingGroups, setLoadingGroups] = useState(false);
+
+  // Sync route params when navigated to with new parameters
+  useEffect(() => {
+    if (route.params) {
+      if (route.params.customerName) setCustomerName(route.params.customerName);
+      if (route.params.customerId) setCustomerId(route.params.customerId);
+      if (route.params.mobile) setMobileNumber(route.params.mobile);
+      if (route.params.chitGroup) setChitGroup(route.params.chitGroup);
+      if (route.params.amount) setAmount(String(route.params.amount));
+    }
+  }, [route.params]);
 
   // Load customers and groups on mount
   useEffect(() => {
@@ -156,8 +169,16 @@ export const ReceiptEntryScreen: React.FC<{ route: any; navigation: any }> = ({
 
   const handleSaveReceipt = async () => {
     if (!customerName.trim() || !amount.trim() || Number(amount) <= 0) {
-      Alert.alert('Validation Error', 'Please select a member and enter a valid payment amount.');
+      showAlert('Validation Error', 'Please select a member and enter a valid payment amount.');
       return;
+    }
+
+    if (paymentMode === 'UPI') {
+      const cleanRef = referenceNo.trim();
+      if (cleanRef.length > 0 && !isValidUtr(cleanRef)) {
+        showAlert('Invalid UTR', 'UPI transaction reference / UTR number must be exactly 12 numeric digits.');
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -174,7 +195,7 @@ export const ReceiptEntryScreen: React.FC<{ route: any; navigation: any }> = ({
         paymentDate: selectedDate.toISOString(),
       });
 
-      Alert.alert(
+      showConfirmDialog(
         'Receipt Recorded & Synced',
         `Official Collection Voucher #${receiptNo} for ₹${amount} dated ${formattedDisplayDate} was successfully recorded to live ledger!`,
         [
@@ -199,7 +220,7 @@ export const ReceiptEntryScreen: React.FC<{ route: any; navigation: any }> = ({
         ]
       );
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to record receipt');
+      showAlert('Error', err.message || 'Failed to record receipt');
     } finally {
       setIsSubmitting(false);
     }
@@ -207,7 +228,7 @@ export const ReceiptEntryScreen: React.FC<{ route: any; navigation: any }> = ({
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
 
       {/* Top Header with Back Button */}
       <View style={styles.topHeader}>
@@ -216,7 +237,7 @@ export const ReceiptEntryScreen: React.FC<{ route: any; navigation: any }> = ({
           onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('AdminDashboard'))}
           activeOpacity={0.7}
         >
-          <Ionicons name="arrow-back" size={22} color={Colors.white} />
+          <Ionicons name="arrow-back" size={22} color="#0F172A" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.screenTitle}>Issue Receipt Voucher</Text>
@@ -428,11 +449,23 @@ export const ReceiptEntryScreen: React.FC<{ route: any; navigation: any }> = ({
 
         {/* 6. Reference / UTR (Optional) */}
         <View style={styles.fieldSection}>
-          <Text style={styles.fieldLabel}>Transaction Reference / UTR No (Optional)</Text>
+          <Text style={styles.fieldLabel}>
+            {paymentMode === 'UPI' ? 'UPI UTR / Reference No (12 Digits)' : 'Transaction Reference / UTR No (Optional)'}
+          </Text>
           <Input
-            placeholder="Enter UTR, Cheque No or Voucher Ref"
+            placeholder={paymentMode === 'UPI' ? 'e.g. 12-digit numeric UTR 329048102948' : 'Enter UTR, Cheque No or Voucher Ref'}
             value={referenceNo}
-            onChangeText={setReferenceNo}
+            onChangeText={(text) => {
+              if (paymentMode === 'UPI') {
+                setReferenceNo(sanitizeUtr(text, 12));
+              } else if (paymentMode === 'BANK_TRANSFER') {
+                setReferenceNo(sanitizeUtr(text, 16));
+              } else {
+                setReferenceNo(text);
+              }
+            }}
+            keyboardType={paymentMode === 'UPI' || paymentMode === 'BANK_TRANSFER' ? 'numeric' : 'default'}
+            maxLength={paymentMode === 'UPI' ? 12 : paymentMode === 'BANK_TRANSFER' ? 16 : 30}
             containerStyle={{ marginBottom: 0 }}
           />
         </View>
@@ -731,7 +764,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   topHeader: {
-    backgroundColor: Colors.navy.primary,
+    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
@@ -739,21 +772,23 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     gap: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+    borderBottomColor: '#E2E8F0',
   },
   backButton: {
     padding: 8,
     borderRadius: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   screenTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: Colors.white,
+    color: '#0F172A',
   },
   screenSubtitle: {
     fontSize: 11,
-    color: Colors.gold.primary,
+    color: '#2563EB',
     marginTop: 1,
   },
   receiptBadge: {

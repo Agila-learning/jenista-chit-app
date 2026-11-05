@@ -12,7 +12,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <StatusBar style="light" />
+        <StatusBar style="dark" />
         <RootNavigator />
         {!isSplashDone && (
           <SplashScreen onFinish={() => setIsSplashDone(true)} minDurationMs={1800} />

@@ -75,7 +75,7 @@ export const Button: React.FC<ButtonProps> = ({
 
 const styles = StyleSheet.create({
   base: {
-    backgroundColor: Colors.gold.primary,
+    backgroundColor: Colors.primary[600],
     height: 50,
     borderRadius: 14,
     flexDirection: 'row',
@@ -83,11 +83,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 20,
     gap: 8,
-    shadowColor: Colors.gold.dark,
+    shadowColor: Colors.primary[700],
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.16,
+    shadowOpacity: 0.25,
     shadowRadius: 6,
-    elevation: 2,
+    elevation: 3,
   },
   secondary: {
     backgroundColor: Colors.surface,
@@ -115,10 +115,10 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   text: {
-    color: '#0B1A30',
-    fontWeight: '700',
+    color: Colors.white,
+    fontWeight: '800',
     fontSize: 15,
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
   },
   secondaryText: {
     color: Colors.navy.primary,

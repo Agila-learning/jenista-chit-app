@@ -47,19 +47,26 @@ const AdminBottomTabs = ({ navigation }: any) => {
     <Tab.Navigator
       screenOptions={{
         headerShown: true,
-        headerStyle: { backgroundColor: Colors.navy.primary },
-        headerTintColor: Colors.white,
-        headerTitleStyle: { fontWeight: '800', fontSize: 17 },
+        headerStyle: {
+          backgroundColor: '#FFFFFF',
+          borderBottomColor: '#E2E8F0',
+          borderBottomWidth: 1,
+          elevation: 0,
+          shadowOpacity: 0,
+        },
+        headerTintColor: '#0F172A',
+        headerTitleStyle: { fontWeight: '800', fontSize: 17, color: '#0F172A' },
+        headerRight: () => null,
         tabBarStyle: {
-          backgroundColor: Colors.navy.primary,
-          borderTopColor: 'rgba(255, 255, 255, 0.08)',
+          backgroundColor: '#FFFFFF',
+          borderTopColor: '#E2E8F0',
           borderTopWidth: 1,
           height: 64,
           paddingBottom: 8,
           paddingTop: 6,
         },
-        tabBarActiveTintColor: Colors.gold.primary,
-        tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.55)',
+        tabBarActiveTintColor: '#2563EB',
+        tabBarInactiveTintColor: '#64748B',
         tabBarLabelStyle: {
           fontSize: 10,
           fontWeight: '700',
@@ -69,15 +76,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
             style={{ paddingLeft: 16, paddingRight: 8 }}
             onPress={() => navigation.openDrawer()}
           >
-            <Ionicons name="menu" size={26} color={Colors.white} />
-          </TouchableOpacity>
-        ),
-        headerRight: () => (
-          <TouchableOpacity
-            style={{ paddingRight: 16, paddingLeft: 8 }}
-            onPress={() => navigation.openDrawer()}
-          >
-            <Ionicons name="grid-outline" size={22} color={Colors.gold.primary} />
+            <Ionicons name="menu" size={26} color="#0F172A" />
           </TouchableOpacity>
         ),
       }}
@@ -141,9 +140,16 @@ const AdminDrawer = () => {
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={({ navigation, route }) => ({
         headerShown: true,
-        headerStyle: { backgroundColor: Colors.navy.primary },
-        headerTintColor: Colors.white,
-        headerTitleStyle: { fontWeight: '800', fontSize: 17 },
+        headerStyle: {
+          backgroundColor: '#FFFFFF',
+          borderBottomColor: '#E2E8F0',
+          borderBottomWidth: 1,
+          elevation: 0,
+          shadowOpacity: 0,
+        },
+        headerTintColor: '#0F172A',
+        headerTitleStyle: { fontWeight: '800', fontSize: 17, color: '#0F172A' },
+        headerRight: () => null,
         drawerType: 'front',
         headerLeft: () => (
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -152,25 +158,17 @@ const AdminDrawer = () => {
                 style={{ paddingLeft: 16, paddingRight: 8, paddingVertical: 4 }}
                 onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('AdminTabs'))}
               >
-                <Ionicons name="arrow-back" size={24} color={Colors.white} />
+                <Ionicons name="arrow-back" size={24} color="#0F172A" />
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
                 style={{ paddingLeft: 16, paddingRight: 8 }}
                 onPress={() => navigation.openDrawer()}
               >
-                <Ionicons name="menu" size={26} color={Colors.white} />
+                <Ionicons name="menu" size={26} color="#0F172A" />
               </TouchableOpacity>
             )}
           </View>
-        ),
-        headerRight: () => (
-          <TouchableOpacity
-            style={{ paddingRight: 16, paddingLeft: 8 }}
-            onPress={() => navigation.openDrawer()}
-          >
-            <Ionicons name="grid-outline" size={22} color={Colors.gold.primary} />
-          </TouchableOpacity>
         ),
       })}
     >
@@ -256,19 +254,26 @@ const StaffBottomTabs = ({ navigation }: any) => {
     <Tab.Navigator
       screenOptions={{
         headerShown: true,
-        headerStyle: { backgroundColor: Colors.navy.primary },
-        headerTintColor: Colors.white,
-        headerTitleStyle: { fontWeight: '800', fontSize: 17 },
+        headerStyle: {
+          backgroundColor: '#FFFFFF',
+          borderBottomColor: '#E2E8F0',
+          borderBottomWidth: 1,
+          elevation: 0,
+          shadowOpacity: 0,
+        },
+        headerTintColor: '#0F172A',
+        headerTitleStyle: { fontWeight: '800', fontSize: 17, color: '#0F172A' },
+        headerRight: () => null,
         tabBarStyle: {
-          backgroundColor: Colors.navy.primary,
-          borderTopColor: 'rgba(255, 255, 255, 0.08)',
+          backgroundColor: '#FFFFFF',
+          borderTopColor: '#E2E8F0',
           borderTopWidth: 1,
           height: 64,
           paddingBottom: 8,
           paddingTop: 6,
         },
-        tabBarActiveTintColor: Colors.gold.primary,
-        tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.55)',
+        tabBarActiveTintColor: '#2563EB',
+        tabBarInactiveTintColor: '#64748B',
         tabBarLabelStyle: {
           fontSize: 10,
           fontWeight: '700',
@@ -278,7 +283,7 @@ const StaffBottomTabs = ({ navigation }: any) => {
             style={{ paddingLeft: 16, paddingRight: 8 }}
             onPress={() => navigation.openDrawer()}
           >
-            <Ionicons name="menu" size={26} color={Colors.white} />
+            <Ionicons name="menu" size={26} color="#0F172A" />
           </TouchableOpacity>
         ),
       }}
@@ -342,9 +347,16 @@ const StaffDrawer = () => {
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={({ navigation, route }) => ({
         headerShown: true,
-        headerStyle: { backgroundColor: Colors.navy.primary },
-        headerTintColor: Colors.white,
-        headerTitleStyle: { fontWeight: '800', fontSize: 17 },
+        headerStyle: {
+          backgroundColor: '#FFFFFF',
+          borderBottomColor: '#E2E8F0',
+          borderBottomWidth: 1,
+          elevation: 0,
+          shadowOpacity: 0,
+        },
+        headerTintColor: '#0F172A',
+        headerTitleStyle: { fontWeight: '800', fontSize: 17, color: '#0F172A' },
+        headerRight: () => null,
         drawerType: 'front',
         headerLeft: () => (
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -353,14 +365,14 @@ const StaffDrawer = () => {
                 style={{ paddingLeft: 16, paddingRight: 8, paddingVertical: 4 }}
                 onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('StaffTabs'))}
               >
-                <Ionicons name="arrow-back" size={24} color={Colors.white} />
+                <Ionicons name="arrow-back" size={24} color="#0F172A" />
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
                 style={{ paddingLeft: 16, paddingRight: 8 }}
                 onPress={() => navigation.openDrawer()}
               >
-                <Ionicons name="menu" size={26} color={Colors.white} />
+                <Ionicons name="menu" size={26} color="#0F172A" />
               </TouchableOpacity>
             )}
           </View>
@@ -409,19 +421,26 @@ const CustomerBottomTabs = () => {
     <Tab.Navigator
       screenOptions={{
         headerShown: true,
-        headerStyle: { backgroundColor: Colors.navy.primary },
-        headerTintColor: Colors.white,
-        headerTitleStyle: { fontWeight: '800', fontSize: 17 },
+        headerStyle: {
+          backgroundColor: '#FFFFFF',
+          borderBottomColor: '#E2E8F0',
+          borderBottomWidth: 1,
+          elevation: 0,
+          shadowOpacity: 0,
+        },
+        headerTintColor: '#0F172A',
+        headerTitleStyle: { fontWeight: '800', fontSize: 17, color: '#0F172A' },
+        headerRight: () => null,
         tabBarStyle: {
-          backgroundColor: Colors.navy.primary,
-          borderTopColor: 'rgba(255, 255, 255, 0.08)',
+          backgroundColor: '#FFFFFF',
+          borderTopColor: '#E2E8F0',
           borderTopWidth: 1,
           height: 64,
           paddingBottom: 8,
           paddingTop: 6,
         },
-        tabBarActiveTintColor: Colors.gold.primary,
-        tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.55)',
+        tabBarActiveTintColor: '#2563EB',
+        tabBarInactiveTintColor: '#64748B',
         tabBarLabelStyle: {
           fontSize: 10,
           fontWeight: '700',
@@ -484,16 +503,23 @@ const CustomerStack = () => {
   return (
     <Stack.Navigator
       screenOptions={({ navigation, route }) => ({
-        headerStyle: { backgroundColor: Colors.navy.primary },
-        headerTintColor: Colors.white,
-        headerTitleStyle: { fontWeight: '800' },
+        headerStyle: {
+          backgroundColor: '#FFFFFF',
+          borderBottomColor: '#E2E8F0',
+          borderBottomWidth: 1,
+          elevation: 0,
+          shadowOpacity: 0,
+        },
+        headerTintColor: '#0F172A',
+        headerTitleStyle: { fontWeight: '800', color: '#0F172A' },
+        headerRight: () => null,
         headerLeft: () =>
           route.name !== 'CustomerTabsRoot' ? (
             <TouchableOpacity
               style={{ paddingLeft: 16, paddingRight: 8, paddingVertical: 4 }}
               onPress={() => navigation.goBack()}
             >
-              <Ionicons name="arrow-back" size={24} color={Colors.white} />
+              <Ionicons name="arrow-back" size={24} color="#0F172A" />
             </TouchableOpacity>
           ) : undefined,
       })}
@@ -522,6 +548,29 @@ const CustomerStack = () => {
   );
 };
 
+const getLightStackHeaderOptions = (title: string) => ({ navigation }: any) => ({
+  headerShown: true,
+  title,
+  headerStyle: {
+    backgroundColor: '#FFFFFF',
+    borderBottomColor: '#E2E8F0',
+    borderBottomWidth: 1,
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  headerTintColor: '#0F172A',
+  headerTitleStyle: { fontWeight: '800' as const, fontSize: 17, color: '#0F172A' },
+  headerRight: () => null,
+  headerLeft: () => (
+    <TouchableOpacity
+      style={{ paddingLeft: 16, paddingRight: 8 }}
+      onPress={() => navigation.goBack()}
+    >
+      <Ionicons name="arrow-back" size={24} color="#0F172A" />
+    </TouchableOpacity>
+  ),
+});
+
 export const RootNavigator = () => {
   const { user, isAuthenticated, isLoading } = useAuth();
 
@@ -546,56 +595,77 @@ export const RootNavigator = () => {
             <Stack.Screen
               name="ChitGroupDetail"
               component={ChitGroupDetailScreen}
-              options={({ navigation }) => ({
-                headerShown: true,
-                title: 'Group & Enrolled Members',
-                headerStyle: { backgroundColor: Colors.navy.primary },
-                headerTintColor: Colors.white,
-                headerLeft: () => (
-                  <TouchableOpacity
-                    style={{ paddingLeft: 16, paddingRight: 8 }}
-                    onPress={() => navigation.goBack()}
-                  >
-                    <Ionicons name="arrow-back" size={24} color={Colors.white} />
-                  </TouchableOpacity>
-                ),
-              })}
+              options={getLightStackHeaderOptions('Group & Enrolled Members')}
             />
             <Stack.Screen
               name="CustomerDetail"
               component={CustomerDetailScreen}
-              options={({ navigation }) => ({
-                headerShown: true,
-                title: 'Member Profile',
-                headerStyle: { backgroundColor: Colors.navy.primary },
-                headerTintColor: Colors.white,
-                headerLeft: () => (
-                  <TouchableOpacity
-                    style={{ paddingLeft: 16, paddingRight: 8 }}
-                    onPress={() => navigation.goBack()}
-                  >
-                    <Ionicons name="arrow-back" size={24} color={Colors.white} />
-                  </TouchableOpacity>
-                ),
-              })}
+              options={getLightStackHeaderOptions('Member Profile')}
             />
             <Stack.Screen
               name="CustomerSchedule"
               component={CustomerScheduleScreen}
-              options={({ navigation }) => ({
-                headerShown: true,
-                title: 'Installment Breakdown',
-                headerStyle: { backgroundColor: Colors.navy.primary },
-                headerTintColor: Colors.white,
-                headerLeft: () => (
-                  <TouchableOpacity
-                    style={{ paddingLeft: 16, paddingRight: 8 }}
-                    onPress={() => navigation.goBack()}
-                  >
-                    <Ionicons name="arrow-back" size={24} color={Colors.white} />
-                  </TouchableOpacity>
-                ),
-              })}
+              options={getLightStackHeaderOptions('Installment Breakdown')}
+            />
+            <Stack.Screen
+              name="ReceiptEntry"
+              component={ReceiptEntryScreen}
+              options={{ headerShown: false, title: 'Issue Receipt Voucher' }}
+            />
+            <Stack.Screen
+              name="Ledger"
+              component={LedgerScreen}
+              options={getLightStackHeaderOptions('Payment History & Ledger')}
+            />
+            <Stack.Screen
+              name="Reports"
+              component={ReportsScreen}
+              options={getLightStackHeaderOptions('Overdue Dues Report')}
+            />
+            <Stack.Screen
+              name="Settings"
+              component={SettingsScreen}
+              options={getLightStackHeaderOptions('System & Policy Settings')}
+            />
+            <Stack.Screen
+              name="PaymentVerifications"
+              component={PaymentVerificationsScreen}
+              options={getLightStackHeaderOptions('Payment & Prize Requests')}
+            />
+            <Stack.Screen
+              name="CustomerList"
+              component={CustomerListScreen}
+              options={getLightStackHeaderOptions('Customer Directory')}
+            />
+            <Stack.Screen
+              name="AddCustomer"
+              component={AddCustomerScreen}
+              options={getLightStackHeaderOptions('Register Customer')}
+            />
+            <Stack.Screen
+              name="ChitGroupList"
+              component={ChitGroupListScreen}
+              options={getLightStackHeaderOptions('Chit Groups & Plans')}
+            />
+            <Stack.Screen
+              name="Notifications"
+              component={NotificationsScreen}
+              options={getLightStackHeaderOptions('Notifications & Broadcasts')}
+            />
+            <Stack.Screen
+              name="Leads"
+              component={LeadsScreen}
+              options={getLightStackHeaderOptions('Website Enquiries & Leads')}
+            />
+            <Stack.Screen
+              name="ChitCalculator"
+              component={ChitCalculatorScreen}
+              options={getLightStackHeaderOptions('Chit Scheme Calculator')}
+            />
+            <Stack.Screen
+              name="ManageBanks"
+              component={ManageBanksScreen}
+              options={getLightStackHeaderOptions('Company Bank Accounts')}
             />
           </>
         ) : (
@@ -605,56 +675,77 @@ export const RootNavigator = () => {
             <Stack.Screen
               name="ChitGroupDetail"
               component={ChitGroupDetailScreen}
-              options={({ navigation }) => ({
-                headerShown: true,
-                title: 'Group & Enrolled Members',
-                headerStyle: { backgroundColor: Colors.navy.primary },
-                headerTintColor: Colors.white,
-                headerLeft: () => (
-                  <TouchableOpacity
-                    style={{ paddingLeft: 16, paddingRight: 8 }}
-                    onPress={() => navigation.goBack()}
-                  >
-                    <Ionicons name="arrow-back" size={24} color={Colors.white} />
-                  </TouchableOpacity>
-                ),
-              })}
+              options={getLightStackHeaderOptions('Group & Enrolled Members')}
             />
             <Stack.Screen
               name="CustomerDetail"
               component={CustomerDetailScreen}
-              options={({ navigation }) => ({
-                headerShown: true,
-                title: 'Member Profile',
-                headerStyle: { backgroundColor: Colors.navy.primary },
-                headerTintColor: Colors.white,
-                headerLeft: () => (
-                  <TouchableOpacity
-                    style={{ paddingLeft: 16, paddingRight: 8 }}
-                    onPress={() => navigation.goBack()}
-                  >
-                    <Ionicons name="arrow-back" size={24} color={Colors.white} />
-                  </TouchableOpacity>
-                ),
-              })}
+              options={getLightStackHeaderOptions('Member Profile')}
             />
             <Stack.Screen
               name="CustomerSchedule"
               component={CustomerScheduleScreen}
-              options={({ navigation }) => ({
-                headerShown: true,
-                title: 'Installment Breakdown',
-                headerStyle: { backgroundColor: Colors.navy.primary },
-                headerTintColor: Colors.white,
-                headerLeft: () => (
-                  <TouchableOpacity
-                    style={{ paddingLeft: 16, paddingRight: 8 }}
-                    onPress={() => navigation.goBack()}
-                  >
-                    <Ionicons name="arrow-back" size={24} color={Colors.white} />
-                  </TouchableOpacity>
-                ),
-              })}
+              options={getLightStackHeaderOptions('Installment Breakdown')}
+            />
+            <Stack.Screen
+              name="ReceiptEntry"
+              component={ReceiptEntryScreen}
+              options={{ headerShown: false, title: 'Issue Receipt Voucher' }}
+            />
+            <Stack.Screen
+              name="Ledger"
+              component={LedgerScreen}
+              options={getLightStackHeaderOptions('Payment History & Ledger')}
+            />
+            <Stack.Screen
+              name="Reports"
+              component={ReportsScreen}
+              options={getLightStackHeaderOptions('Overdue Dues Report')}
+            />
+            <Stack.Screen
+              name="Settings"
+              component={SettingsScreen}
+              options={getLightStackHeaderOptions('System & Policy Settings')}
+            />
+            <Stack.Screen
+              name="PaymentVerifications"
+              component={PaymentVerificationsScreen}
+              options={getLightStackHeaderOptions('Payment & Prize Requests')}
+            />
+            <Stack.Screen
+              name="CustomerList"
+              component={CustomerListScreen}
+              options={getLightStackHeaderOptions('Customer Directory')}
+            />
+            <Stack.Screen
+              name="AddCustomer"
+              component={AddCustomerScreen}
+              options={getLightStackHeaderOptions('Register Customer')}
+            />
+            <Stack.Screen
+              name="ChitGroupList"
+              component={ChitGroupListScreen}
+              options={getLightStackHeaderOptions('Chit Groups & Plans')}
+            />
+            <Stack.Screen
+              name="Notifications"
+              component={NotificationsScreen}
+              options={getLightStackHeaderOptions('Notifications & Broadcasts')}
+            />
+            <Stack.Screen
+              name="Leads"
+              component={LeadsScreen}
+              options={getLightStackHeaderOptions('Website Enquiries & Leads')}
+            />
+            <Stack.Screen
+              name="ChitCalculator"
+              component={ChitCalculatorScreen}
+              options={getLightStackHeaderOptions('Chit Scheme Calculator')}
+            />
+            <Stack.Screen
+              name="ManageBanks"
+              component={ManageBanksScreen}
+              options={getLightStackHeaderOptions('Company Bank Accounts')}
             />
           </>
         )}
@@ -666,7 +757,7 @@ export const RootNavigator = () => {
 const styles = StyleSheet.create({
   center: {
     flex: 1,
-    backgroundColor: Colors.navy.primary,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },

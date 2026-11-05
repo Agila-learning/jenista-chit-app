@@ -1,5 +1,7 @@
+import { Platform, Vibration } from 'react-native';
 import { secureStorage } from './storage';
 import { getActiveBaseUrl } from './dataSync';
+import { isCustomerOrLeadDeleted, cascadeDeleteLeadMobile } from './cascadeDeleteMobile';
 
 export interface SystemNotification {
   id: string;
@@ -48,6 +50,74 @@ export interface WebsiteLead {
   convertedCustomerId?: string;
   notes?: string;
 }
+
+// Notification listeners for real-time synchronization across UI screens
+type NotificationListener = () => void;
+const notificationListeners = new Set<NotificationListener>();
+
+export const subscribeToNotifications = (cb: NotificationListener): (() => void) => {
+  notificationListeners.add(cb);
+  return () => {
+    notificationListeners.delete(cb);
+  };
+};
+
+export const notifyNotificationSubscribers = (): void => {
+  notificationListeners.forEach((cb) => {
+    try {
+      cb();
+    } catch {}
+  });
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.dispatchEvent) {
+    try {
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent('jenista_notification_update'));
+    } catch {}
+  }
+};
+
+/**
+ * Plays an audible notification chime (Web Audio API on Web, Haptic on Mobile)
+ */
+export const playNotificationChime = (): void => {
+  try {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        const now = ctx.currentTime;
+
+        // Note 1 (D5 ~ 587.33 Hz)
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(587.33, now);
+        gain1.gain.setValueAtTime(0.18, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.3);
+
+        // Note 2 (A5 ~ 880.00 Hz)
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(880.0, now + 0.1);
+        gain2.gain.setValueAtTime(0.22, now + 0.1);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.start(now + 0.1);
+        osc2.stop(now + 0.55);
+      }
+    } else {
+      Vibration.vibrate([0, 150, 80, 160]);
+    }
+  } catch (err) {
+    console.warn('Notification chime error:', err);
+  }
+};
 
 const DEFAULT_ANNOUNCEMENTS: Announcement[] = [
   {
@@ -130,6 +200,11 @@ export const MobileNotificationsManager = {
     });
   },
 
+  async getUnreadCount(userId?: string, role?: string): Promise<number> {
+    const list = await this.getNotificationsForUser(userId, role);
+    return list.filter(n => !n.isRead).length;
+  },
+
   async addNotification(notif: Omit<SystemNotification, 'id' | 'timestamp' | 'isRead'>): Promise<SystemNotification> {
     const current = await this.getNotifications();
     const newNotif: SystemNotification = {
@@ -140,6 +215,10 @@ export const MobileNotificationsManager = {
     };
     const updated = [newNotif, ...current];
     await secureStorage.setItem('mobile_system_notifications', JSON.stringify(updated));
+
+    // Real-time sound chime and subscriber update
+    playNotificationChime();
+    notifyNotificationSubscribers();
     return newNotif;
   },
 
@@ -151,6 +230,7 @@ export const MobileNotificationsManager = {
     const current = await this.getNotifications();
     const updated = current.map(n => n.id === id ? { ...n, isRead: true } : n);
     await secureStorage.setItem('mobile_system_notifications', JSON.stringify(updated));
+    notifyNotificationSubscribers();
   },
 
   async markAllAsRead(userId?: string, role?: string): Promise<void> {
@@ -163,6 +243,7 @@ export const MobileNotificationsManager = {
       return isTarget ? { ...n, isRead: true } : n;
     });
     await secureStorage.setItem('mobile_system_notifications', JSON.stringify(updated));
+    notifyNotificationSubscribers();
   },
 
   // Announcements
@@ -204,37 +285,26 @@ export const MobileNotificationsManager = {
   async getLeads(): Promise<WebsiteLead[]> {
     try {
       const raw = await secureStorage.getItem('mobile_website_leads');
-      if (raw) {
-        return JSON.parse(raw);
+      if (!raw) {
+        return [];
       }
-      const initialLeads: WebsiteLead[] = [
-        {
-          id: 'LEAD-101',
-          fullName: 'Priya Sharma',
-          firstName: 'Priya',
-          lastName: 'Sharma',
-          phone: '9876543219',
-          email: 'priya.sharma@example.com',
-          interestedPlan: 'Fixed Chit Plan (5 Lakhs)',
-          message: 'Interested in joining a 5 Lakh fixed chit plan for savings.',
-          submittedAt: new Date(Date.now() - 3600000 * 5).toISOString(),
-          status: 'NEW'
-        },
-        {
-          id: 'LEAD-102',
-          fullName: 'Rajesh Kumar',
-          firstName: 'Rajesh',
-          lastName: 'Kumar',
-          phone: '9840192834',
-          email: 'rajesh.k@business.in',
-          interestedPlan: 'Auction Chit Plan (10 Lakhs)',
-          message: 'Need working capital chit with monthly auction option.',
-          submittedAt: new Date(Date.now() - 3600000 * 18).toISOString(),
-          status: 'NEW'
+      const parsed: WebsiteLead[] = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+
+      // Filter out dummy leads and any blacklisted/deleted leads
+      const cleanLeads: WebsiteLead[] = [];
+      for (const lead of parsed) {
+        if (lead.id === 'LEAD-101' || lead.id === 'LEAD-102') continue;
+        const deleted = await isCustomerOrLeadDeleted(lead.id, lead.phone, lead.fullName);
+        if (!deleted) {
+          cleanLeads.push(lead);
         }
-      ];
-      await secureStorage.setItem('mobile_website_leads', JSON.stringify(initialLeads));
-      return initialLeads;
+      }
+
+      if (cleanLeads.length !== parsed.length) {
+        await secureStorage.setItem('mobile_website_leads', JSON.stringify(cleanLeads));
+      }
+      return cleanLeads;
     } catch {
       return [];
     }
@@ -267,8 +337,10 @@ export const MobileNotificationsManager = {
 
     const updated = [newLead, ...current];
     await secureStorage.setItem('mobile_website_leads', JSON.stringify(updated));
+    await secureStorage.setItem('website_leads', JSON.stringify(updated));
+    await secureStorage.setItem('websiteLeads', JSON.stringify(updated));
 
-    // Live Notification
+    // Live Notification with audio chime
     await this.addNotification({
       type: 'NEW_LEAD',
       title: 'New Lead Recorded',
@@ -282,10 +354,34 @@ export const MobileNotificationsManager = {
     return newLead;
   },
 
+  async deleteLead(id: string): Promise<void> {
+    const current = await this.getLeads();
+    const target = current.find(l => l.id === id);
+    const updated = current.filter(l => l.id !== id);
+    await secureStorage.setItem('mobile_website_leads', JSON.stringify(updated));
+    await secureStorage.setItem('website_leads', JSON.stringify(updated));
+    await secureStorage.setItem('websiteLeads', JSON.stringify(updated));
+
+    if (target) {
+      await cascadeDeleteLeadMobile({
+        id: target.id,
+        phone: target.phone,
+        name: target.fullName,
+        convertedCustomerId: target.convertedCustomerId
+      });
+    } else {
+      await cascadeDeleteLeadMobile({ id });
+    }
+    notifyNotificationSubscribers();
+  },
+
   async updateLeadStatus(id: string, status: 'CONVERTED' | 'REJECTED', convertedCustomerId?: string): Promise<WebsiteLead[]> {
     const current = await this.getLeads();
     const updated = current.map(l => l.id === id ? { ...l, status, convertedCustomerId } : l);
     await secureStorage.setItem('mobile_website_leads', JSON.stringify(updated));
+    await secureStorage.setItem('website_leads', JSON.stringify(updated));
+    await secureStorage.setItem('websiteLeads', JSON.stringify(updated));
+    notifyNotificationSubscribers();
     return updated;
   }
 };

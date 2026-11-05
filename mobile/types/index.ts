@@ -129,7 +129,7 @@ export interface PaymentRequest {
   referenceNumber: string;
   screenshotUrl?: string;
   requestedAt: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'PENDING_VERIFICATION' | 'SUBMITTED' | string;
   adminNotes?: string;
   approvedAt?: string;
   rejectedAt?: string;

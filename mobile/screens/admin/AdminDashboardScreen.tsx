@@ -18,7 +18,7 @@ import { Colors } from '../../theme/colors';
 import { useAuth } from '../../store/AuthContext';
 import { DataSyncManager } from '../../services/dataSync';
 import { formatCurrency } from '../../utils/format';
-import { MobileNotificationsManager } from '../../services/notificationsData';
+import { MobileNotificationsManager, subscribeToNotifications } from '../../services/notificationsData';
 
 export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { user } = useAuth();
@@ -246,7 +246,13 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
 
   useEffect(() => {
     loadAllMetrics();
-  }, []);
+    const unsub = subscribeToNotifications(() => {
+      MobileNotificationsManager.getUnreadCount(user?.id, user?.role).then((count) => {
+        setUnreadNotifsCount(count);
+      });
+    });
+    return () => unsub();
+  }, [user?.id, user?.role]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -274,15 +280,15 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
         />
       }
     >
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
 
-      {/* 1. Deep Navy Premium Header (Reference Screen 1) */}
+      {/* 1. Light Premium Header Bar */}
       <View style={styles.navyHeader}>
         {/* Brand bar with notification and profile avatar */}
         <View style={styles.topBarRow}>
           <View style={styles.brandGroup}>
             <View style={styles.logoCircle}>
-              <Ionicons name="sparkles" size={16} color={Colors.gold.primary} />
+              <Ionicons name="sparkles" size={16} color="#1D4ED8" />
             </View>
             <View>
               <Text style={styles.brandTitleText}>Jenista</Text>
@@ -296,7 +302,7 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
               onPress={() => navigation.navigate('Notifications')}
               activeOpacity={0.7}
             >
-              <Ionicons name="notifications-outline" size={20} color={Colors.white} />
+              <Ionicons name="notifications-outline" size={20} color="#0F172A" />
               {unreadNotifsCount > 0 && (
                 <View style={styles.notifBadge}>
                   <Text style={styles.notifBadgeText}>
@@ -318,17 +324,23 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
 
         {/* Greeting Banner */}
         <View style={styles.greetingRow}>
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minWidth: 0, marginRight: 12 }}>
             <Text style={styles.greetingSub}>Good Morning,</Text>
-            <Text style={styles.greetingName}>{displayName}</Text>
-            <Text style={styles.greetingTagline}>Your dreams, our support —</Text>
+            <Text style={styles.greetingName} numberOfLines={1}>{displayName}</Text>
+            <Text style={styles.greetingTagline} numberOfLines={1}>Your dreams, our support —</Text>
           </View>
 
-          {/* Decorative Gold Coins / Pot Graphic Badge */}
-          <View style={styles.coinGraphicBox}>
-            <Ionicons name="wallet" size={32} color={Colors.gold.primary} />
+          {/* Interactive Responsive Wallet & Fund Shortcut */}
+          <TouchableOpacity
+            style={styles.coinGraphicBox}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('Ledger')}
+            accessibilityRole="button"
+            accessibilityLabel="View Ledger and Cumulative Funds"
+          >
+            <Ionicons name="wallet" size={26} color="#1D4ED8" />
             <View style={styles.sparkleDot} />
-          </View>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -341,13 +353,13 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
         >
           <View style={styles.fundCardContent}>
             <View style={styles.fundIconCircle}>
-              <Ionicons name="wallet-outline" size={22} color={Colors.gold.dark} />
+              <Ionicons name="wallet-outline" size={22} color="#1D4ED8" />
             </View>
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.fundLabel}>Total Cumulative Fund</Text>
               <Text style={styles.fundAmount}>{formatCurrency(totalCollections)}</Text>
               <View style={styles.fundTrendRow}>
-                <Ionicons name="trending-up" size={14} color={Colors.success} />
+                <Ionicons name="trending-up" size={14} color="#059669" />
                 <Text style={styles.fundTrendText}>
                   +₹{Math.round(totalCollections * 0.08).toLocaleString('en-IN')} this month
                 </Text>
@@ -358,63 +370,97 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
         </TouchableOpacity>
       </View>
 
-      {/* 3. 2x2 Distinctive Metric Cards Grid (Total Groups, Fixed, Regular, Auction) */}
-      <View style={styles.gridContainer}>
-        {/* Total Groups */}
-        <TouchableOpacity
-          style={styles.metricCard}
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate('ChitGroupList')}
-        >
-          <View style={[styles.metricIconWrap, { backgroundColor: '#FFF8EB' }]}>
-            <Ionicons name="people" size={18} color={Colors.gold.dark} />
+      {/* 3. KPI Cards Section with Photorealistic Gold Coins Hand Visual */}
+      <View style={styles.kpiSectionContainer}>
+        {/* Top Section Header with Title on Left & Photorealistic Gold Coins Growth Visual on Right */}
+        <View style={styles.kpiHeaderRow}>
+          <View style={styles.kpiHeaderLeft}>
+            <View style={styles.kpiBadge}>
+              <View style={styles.kpiBadgeDot} />
+              <Text style={styles.kpiBadgeText}>KEY PORTFOLIO METRICS</Text>
+            </View>
+            <Text style={styles.kpiSectionTitle}>Chit Schemes Overview</Text>
+            <Text style={styles.kpiSectionSubtitle}>Live enrollment status across all funds</Text>
           </View>
-          <Text style={styles.metricTitle}>Total Groups</Text>
-          <Text style={styles.metricValue}>{activeGroups}</Text>
-          <Text style={styles.metricSub}>Active Groups</Text>
-        </TouchableOpacity>
+          <View style={styles.kpiVisualCard}>
+            <Image
+              source={require('../../assets/gold-coins-hand.png')}
+              style={styles.kpiVisualImage}
+              resizeMode="cover"
+            />
+          </View>
+        </View>
 
-        {/* Fixed Enrollments */}
-        <TouchableOpacity
-          style={styles.metricCard}
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate('CustomerList', { schemeFilter: 'FIXED' })}
-        >
-          <View style={[styles.metricIconWrap, { backgroundColor: Colors.blueSubtle }]}>
-            <Ionicons name="person-add" size={18} color={Colors.blueAccent} />
-          </View>
-          <Text style={styles.metricTitle}>Fixed Enrollments</Text>
-          <Text style={styles.metricValue}>{fixedEnrollments}</Text>
-          <Text style={styles.metricSub}>Enrolled Members</Text>
-        </TouchableOpacity>
+        {/* 2 × 2 Premium KPI Cards Grid */}
+        <View style={styles.gridContainer}>
+          {/* Card 1: Total Groups (Blue Accent #102B63) */}
+          <TouchableOpacity
+            style={styles.metricCard}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('ChitGroupList')}
+          >
+            {/* Subtle curved corner decoration */}
+            <View style={[styles.cardCornerDeco, { backgroundColor: '#EFF6FF' }]} />
 
-        {/* Regular Enrollments */}
-        <TouchableOpacity
-          style={styles.metricCard}
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate('CustomerList', { schemeFilter: 'REGULAR' })}
-        >
-          <View style={[styles.metricIconWrap, { backgroundColor: '#F0F9FF' }]}>
-            <Ionicons name="time-outline" size={18} color="#0284C7" />
-          </View>
-          <Text style={styles.metricTitle}>Regular Enrollments</Text>
-          <Text style={styles.metricValue}>{regularEnrollments}</Text>
-          <Text style={styles.metricSub}>Enrolled Members</Text>
-        </TouchableOpacity>
+            <View style={[styles.metricIconWrap, { backgroundColor: '#EFF6FF', borderColor: '#DBEAFE' }]}>
+              <Ionicons name="people" size={19} color="#102B63" />
+            </View>
+            <Text style={styles.metricTitle}>Total Groups</Text>
+            <Text style={styles.metricValue}>{activeGroups}</Text>
+            <Text style={styles.metricSub}>Active Schemes</Text>
+          </TouchableOpacity>
 
-        {/* Auction Enrollments */}
-        <TouchableOpacity
-          style={styles.metricCard}
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate('CustomerList', { schemeFilter: 'AUCTION' })}
-        >
-          <View style={[styles.metricIconWrap, { backgroundColor: Colors.purpleSubtle }]}>
-            <Ionicons name="hammer-outline" size={18} color={Colors.purpleAccent} />
-          </View>
-          <Text style={styles.metricTitle}>Auction Enrollments</Text>
-          <Text style={styles.metricValue}>{auctionEnrollments}</Text>
-          <Text style={styles.metricSub}>Enrolled Members</Text>
-        </TouchableOpacity>
+          {/* Card 2: Fixed Enrollments (Gold Accent #D7A928) */}
+          <TouchableOpacity
+            style={styles.metricCard}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('CustomerList', { schemeFilter: 'FIXED' })}
+          >
+            {/* Subtle curved corner decoration */}
+            <View style={[styles.cardCornerDeco, { backgroundColor: '#FEF9E7' }]} />
+
+            <View style={[styles.metricIconWrap, { backgroundColor: '#FEF9E7', borderColor: '#FDE68A' }]}>
+              <Ionicons name="shield-checkmark" size={19} color="#D7A928" />
+            </View>
+            <Text style={styles.metricTitle}>Fixed Enrollments</Text>
+            <Text style={styles.metricValue}>{fixedEnrollments}</Text>
+            <Text style={styles.metricSub}>Assured Returns</Text>
+          </TouchableOpacity>
+
+          {/* Card 3: Regular Enrollments (Green Accent #18A875) */}
+          <TouchableOpacity
+            style={styles.metricCard}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('CustomerList', { schemeFilter: 'REGULAR' })}
+          >
+            {/* Subtle curved corner decoration */}
+            <View style={[styles.cardCornerDeco, { backgroundColor: '#ECFDF5' }]} />
+
+            <View style={[styles.metricIconWrap, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}>
+              <Ionicons name="trending-up" size={19} color="#18A875" />
+            </View>
+            <Text style={styles.metricTitle}>Regular Enrollments</Text>
+            <Text style={styles.metricValue}>{regularEnrollments}</Text>
+            <Text style={styles.metricSub}>Monthly Dividend</Text>
+          </TouchableOpacity>
+
+          {/* Card 4: Auction Enrollments (Purple Accent #7952D6) */}
+          <TouchableOpacity
+            style={styles.metricCard}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('CustomerList', { schemeFilter: 'AUCTION' })}
+          >
+            {/* Subtle curved corner decoration */}
+            <View style={[styles.cardCornerDeco, { backgroundColor: '#FAF5FF' }]} />
+
+            <View style={[styles.metricIconWrap, { backgroundColor: '#FAF5FF', borderColor: '#E9D5FF' }]}>
+              <Ionicons name="hammer" size={19} color="#7952D6" />
+            </View>
+            <Text style={styles.metricTitle}>Auction Enrollments</Text>
+            <Text style={styles.metricValue}>{auctionEnrollments}</Text>
+            <Text style={styles.metricSub}>Competitive Bidding</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* 4. Quick Actions Tiles Row (Add Group, Add Member, Record Payments, More) */}
@@ -479,116 +525,182 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
         </TouchableOpacity>
       </View>
 
-      {/* 5. Enrolled Members Section (Reference Card Style) */}
-      <View style={styles.sectionHeaderRow}>
-        <Text style={styles.sectionTitle}>Enrolled Members</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('CustomerList')}>
-          <Text style={styles.sectionLink}>View All ({totalCustomers})</Text>
+      {/* 5. Enrolled Members Section */}
+      <View style={styles.sectionHeaderCard}>
+        <View style={styles.sectionHeaderLeft}>
+          <View style={[styles.sectionIconCircle, { backgroundColor: '#EFF6FF' }]}>
+            <Ionicons name="people" size={18} color="#2563EB" />
+          </View>
+          <View>
+            <Text style={styles.sectionTitle}>Enrolled Members</Text>
+            <Text style={styles.sectionSubtitle}>Subscribers & active chits</Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          style={styles.sectionActionPill}
+          onPress={() => navigation.navigate('CustomerList')}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.sectionActionPillText}>View All ({totalCustomers})</Text>
+          <Ionicons name="chevron-forward" size={14} color="#2563EB" />
         </TouchableOpacity>
       </View>
 
       <View style={styles.listWrapper}>
-        {recentCustomers.map((cust) => {
-          const isPending = Number(cust.pending || 0) > 0;
-          const initial = (cust.name || 'M').charAt(0).toUpperCase();
-
-          return (
+        {recentCustomers.length === 0 ? (
+          <View style={styles.emptySectionCard}>
+            <View style={styles.emptyIconCircle}>
+              <Ionicons name="person-add-outline" size={24} color="#94A3B8" />
+            </View>
+            <Text style={styles.emptySectionTitle}>No members registered yet</Text>
+            <Text style={styles.emptySectionSub}>
+              Register members or enroll customers into chit groups to track dues.
+            </Text>
             <TouchableOpacity
-              key={cust.id}
-              style={styles.customerRowCard}
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate('CustomerDetail', { customer: cust })}
+              style={styles.emptyActionBtn}
+              onPress={() => navigation.navigate('AddCustomer')}
+              activeOpacity={0.8}
             >
-              <View style={styles.avatarBubble}>
-                <Text style={styles.avatarBubbleText}>{initial}</Text>
-              </View>
+              <Ionicons name="add" size={16} color="#FFFFFF" />
+              <Text style={styles.emptyActionBtnText}>Add New Member</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          recentCustomers.map((cust) => {
+            const isPending = Number(cust.pending || 0) > 0;
+            const initial = (cust.name || 'M').charAt(0).toUpperCase();
 
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.custRowName}>{cust.name}</Text>
-                <Text style={styles.custRowMeta}>
-                  {cust.chits?.[0]?.groupName || cust.id} • {cust.phone || 'No contact'}
-                </Text>
-              </View>
+            return (
+              <TouchableOpacity
+                key={cust.id}
+                style={styles.customerRowCard}
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate('CustomerDetail', { customer: cust })}
+              >
+                <View style={styles.avatarBubble}>
+                  <Text style={styles.avatarBubbleText}>{initial}</Text>
+                </View>
 
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={styles.custRowAmount}>
-                  {isPending ? formatCurrency(cust.pending) : '₹0'}
-                </Text>
-                <View
-                  style={[
-                    styles.statusPillSmall,
-                    isPending ? styles.pillPending : styles.pillPaid,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.statusPillTextSmall,
-                      isPending ? styles.textPending : styles.textPaid,
-                    ]}
-                  >
-                    {isPending ? 'Pending' : 'Paid'}
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.custRowName}>{cust.name}</Text>
+                  <Text style={styles.custRowMeta}>
+                    {cust.chits?.[0]?.groupName || cust.id} • {cust.phone || 'No contact'}
                   </Text>
                 </View>
-              </View>
 
-              <Ionicons
-                name="chevron-forward"
-                size={18}
-                color={Colors.border}
-                style={{ marginLeft: 6 }}
-              />
-            </TouchableOpacity>
-          );
-        })}
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.custRowAmount}>
+                    {isPending ? formatCurrency(cust.pending) : '₹0'}
+                  </Text>
+                  <View
+                    style={[
+                      styles.statusPillSmall,
+                      isPending ? styles.pillPending : styles.pillPaid,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.statusPillTextSmall,
+                        isPending ? styles.textPending : styles.textPaid,
+                      ]}
+                    >
+                      {isPending ? 'Pending' : 'Paid'}
+                    </Text>
+                  </View>
+                </View>
+
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={Colors.border}
+                  style={{ marginLeft: 6 }}
+                />
+              </TouchableOpacity>
+            );
+          })
+        )}
       </View>
 
       {/* 6. Recent Ledger Transactions Section */}
-      <View style={styles.sectionHeaderRow}>
-        <Text style={styles.sectionTitle}>Recent Payments</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('Ledger')}>
-          <Text style={styles.sectionLink}>Full Ledger</Text>
+      <View style={[styles.sectionHeaderCard, { marginTop: 22 }]}>
+        <View style={styles.sectionHeaderLeft}>
+          <View style={[styles.sectionIconCircle, { backgroundColor: '#ECFDF5' }]}>
+            <Ionicons name="receipt" size={18} color="#059669" />
+          </View>
+          <View>
+            <Text style={styles.sectionTitle}>Recent Payments</Text>
+            <Text style={styles.sectionSubtitle}>Live collections & receipts</Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          style={styles.sectionActionPill}
+          onPress={() => navigation.navigate('Ledger')}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.sectionActionPillText}>Full Ledger</Text>
+          <Ionicons name="chevron-forward" size={14} color="#2563EB" />
         </TouchableOpacity>
       </View>
 
       <View style={styles.listWrapper}>
-        {recentLedger.map((tx) => {
-          const isCredit = tx.type === 'CREDIT';
-          return (
-            <View key={tx.id} style={styles.ledgerRowCard}>
-              <View
-                style={[
-                  styles.txIconBox,
-                  { backgroundColor: isCredit ? Colors.successLight : Colors.dangerLight },
-                ]}
-              >
-                <Ionicons
-                  name={isCredit ? 'arrow-down' : 'arrow-up'}
-                  size={16}
-                  color={isCredit ? Colors.success : Colors.danger}
-                />
-              </View>
-
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.txRowDesc} numberOfLines={1}>
-                  {tx.description}
-                </Text>
-                <Text style={styles.txRowRef}>{tx.reference}</Text>
-              </View>
-
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text
+        {recentLedger.length === 0 ? (
+          <View style={styles.emptySectionCard}>
+            <View style={[styles.emptyIconCircle, { backgroundColor: '#F0FDF4' }]}>
+              <Ionicons name="receipt-outline" size={24} color="#059669" />
+            </View>
+            <Text style={styles.emptySectionTitle}>No payment receipts yet</Text>
+            <Text style={styles.emptySectionSub}>
+              Record collection vouchers or verify member payment proofs to view transactions.
+            </Text>
+            <TouchableOpacity
+              style={[styles.emptyActionBtn, { backgroundColor: '#059669' }]}
+              onPress={() => navigation.navigate('ReceiptEntry')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add-circle-outline" size={16} color="#FFFFFF" />
+              <Text style={styles.emptyActionBtnText}>Record Payment</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          recentLedger.map((tx) => {
+            const isCredit = tx.type === 'CREDIT';
+            return (
+              <View key={tx.id} style={styles.ledgerRowCard}>
+                <View
                   style={[
-                    styles.txRowAmount,
-                    { color: isCredit ? Colors.success : Colors.danger },
+                    styles.txIconBox,
+                    { backgroundColor: isCredit ? Colors.successLight : Colors.dangerLight },
                   ]}
                 >
-                  {isCredit ? '+' : '-'}{formatCurrency(tx.amount)}
-                </Text>
-                <Text style={styles.txRowMode}>{tx.paymentMode || 'Cash'}</Text>
+                  <Ionicons
+                    name={isCredit ? 'arrow-down' : 'arrow-up'}
+                    size={16}
+                    color={isCredit ? Colors.success : Colors.danger}
+                  />
+                </View>
+
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.txRowDesc} numberOfLines={1}>
+                    {tx.description}
+                  </Text>
+                  <Text style={styles.txRowRef}>{tx.reference}</Text>
+                </View>
+
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text
+                    style={[
+                      styles.txRowAmount,
+                      { color: isCredit ? Colors.success : Colors.danger },
+                    ]}
+                  >
+                    {isCredit ? '+' : '-'}{formatCurrency(tx.amount)}
+                  </Text>
+                  <Text style={styles.txRowMode}>{tx.paymentMode || 'Cash'}</Text>
+                </View>
               </View>
-            </View>
-          );
-        })}
+            );
+          })
+        )}
       </View>
 
       <View style={{ height: 48 }} />
@@ -1055,14 +1167,16 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
 
-  // 1. Deep Navy Header
+  // 1. Light Premium Header Bar
   navyHeader: {
-    backgroundColor: Colors.navy.primary,
+    backgroundColor: '#F8FAFC',
     paddingTop: 16,
     paddingHorizontal: 20,
     paddingBottom: 40,
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
   },
   topBarRow: {
     flexDirection: 'row',
@@ -1078,20 +1192,20 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: 'rgba(255, 191, 50, 0.15)',
+    backgroundColor: '#EFF6FF',
     borderWidth: 1,
-    borderColor: 'rgba(255, 191, 50, 0.3)',
+    borderColor: '#BFDBFE',
     alignItems: 'center',
     justifyContent: 'center',
   },
   brandTitleText: {
-    color: Colors.white,
+    color: '#0F172A',
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: 0.3,
   },
   brandSubText: {
-    color: Colors.gold.primary,
+    color: '#2563EB',
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -1106,7 +1220,9 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
@@ -1132,14 +1248,14 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 12,
-    backgroundColor: Colors.navy.secondary,
+    backgroundColor: '#EFF6FF',
     borderWidth: 1.5,
-    borderColor: 'rgba(255, 191, 50, 0.4)',
+    borderColor: '#BFDBFE',
     alignItems: 'center',
     justifyContent: 'center',
   },
   userAvatarText: {
-    color: Colors.gold.primary,
+    color: '#1D4ED8',
     fontSize: 13,
     fontWeight: '800',
   },
@@ -1150,42 +1266,48 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   greetingSub: {
-    color: Colors.textSecondary,
+    color: '#64748B',
     fontSize: 13,
     fontWeight: '500',
   },
   greetingName: {
-    color: Colors.white,
+    color: '#0F172A',
     fontSize: 22,
     fontWeight: '800',
     marginTop: 2,
     letterSpacing: 0.3,
   },
   greetingTagline: {
-    color: 'rgba(255, 255, 255, 0.65)',
+    color: '#475569',
     fontSize: 12,
     fontWeight: '500',
     marginTop: 4,
   },
   coinGraphicBox: {
-    width: 60,
-    height: 60,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 191, 50, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 191, 50, 0.25)',
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1.5,
+    borderColor: '#BFDBFE',
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+    flexShrink: 0,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 3,
   },
   sparkleDot: {
     position: 'absolute',
-    top: 8,
-    right: 10,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.gold.primary,
+    top: 7,
+    right: 7,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#2563EB',
   },
 
   // 2. Overlapping Fund Card
@@ -1243,52 +1365,128 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // 3. 2x2 Distinctive Metric Cards
+  // 3. Premium KPI Section & 2x2 Scheme Metric Cards
+  kpiSectionContainer: {
+    marginTop: 18,
+    marginHorizontal: 16,
+  },
+  kpiHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    paddingHorizontal: 2,
+  },
+  kpiHeaderLeft: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  kpiBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  kpiBadgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#D7A928',
+    marginRight: 6,
+  },
+  kpiBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#D7A928',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  kpiSectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#102B63',
+    letterSpacing: -0.3,
+  },
+  kpiSectionSubtitle: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#64748B',
+    marginTop: 1,
+  },
+  kpiVisualCard: {
+    width: 68,
+    height: 68,
+    borderRadius: 18,
+    backgroundColor: '#FBF8F0',
+    borderWidth: 1.5,
+    borderColor: '#EDE8DF',
+    overflow: 'hidden',
+    shadowColor: '#102B63',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  kpiVisualImage: {
+    width: '100%',
+    height: '100%',
+  },
   gridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: 16,
-    marginTop: 16,
     justifyContent: 'space-between',
   },
   metricCard: {
     width: '48%',
-    backgroundColor: Colors.surface,
-    borderRadius: 18,
-    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 15,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: Colors.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
+    borderColor: '#EDE8DF',
+    position: 'relative',
+    overflow: 'hidden',
+    shadowColor: '#102B63',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  cardCornerDeco: {
+    position: 'absolute',
+    top: -16,
+    right: -16,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    opacity: 0.75,
   },
   metricIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
+    borderWidth: 1,
   },
   metricTitle: {
     fontSize: 12,
-    color: Colors.textSecondary,
+    color: '#475569',
     fontWeight: '600',
+    letterSpacing: -0.1,
   },
   metricValue: {
     fontSize: 22,
     fontWeight: '800',
-    color: Colors.text,
-    marginTop: 2,
+    color: '#102B63',
+    marginTop: 3,
+    marginBottom: 2,
+    letterSpacing: -0.4,
   },
   metricSub: {
-    fontSize: 11,
-    color: Colors.textMuted,
+    fontSize: 10.5,
+    color: '#64748B',
     fontWeight: '500',
-    marginTop: 2,
   },
 
   // 4. Quick Actions
@@ -1334,6 +1532,102 @@ const styles = StyleSheet.create({
   },
 
   // 5. Section Headers & Lists
+  sectionHeaderCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  sectionIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: -0.2,
+  },
+  sectionSubtitle: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  sectionActionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+  },
+  sectionActionPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#2563EB',
+  },
+  emptySectionCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderStyle: 'dashed',
+  },
+  emptyIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  emptySectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+    textAlign: 'center',
+  },
+  emptySectionSub: {
+    fontSize: 12,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 14,
+    maxWidth: 260,
+    lineHeight: 16,
+  },
+  emptyActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2563EB',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 10,
+    gap: 6,
+  },
+  emptyActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1342,16 +1636,10 @@ const styles = StyleSheet.create({
     marginTop: 24,
     marginBottom: 12,
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: Colors.text,
-    letterSpacing: 0.2,
-  },
   sectionLink: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.navy.secondary,
+    color: '#2563EB',
   },
   listWrapper: {
     paddingHorizontal: 20,
@@ -1370,14 +1658,14 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 14,
-    backgroundColor: '#FFECC2',
+    backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarBubbleText: {
     fontSize: 16,
     fontWeight: '800',
-    color: Colors.gold.text,
+    color: '#1D4ED8',
   },
   custRowName: {
     fontSize: 14,

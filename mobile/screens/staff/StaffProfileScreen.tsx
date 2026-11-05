@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 import { useAuth } from '../../store/AuthContext';
+import { showConfirmDialog } from '../../utils/alert';
 import { DataSyncManager } from '../../services/dataSync';
 import { formatCurrency } from '../../utils/format';
 
@@ -40,7 +41,7 @@ export const StaffProfileScreen: React.FC<{ navigation: any }> = ({ navigation }
   };
 
   const handleLogout = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to log out of your field agent account?', [
+    showConfirmDialog('Sign Out', 'Are you sure you want to log out of your field agent account?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign Out',

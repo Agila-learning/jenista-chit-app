@@ -5,6 +5,16 @@
  * Mirrors the exact cleanup logic from the Web Application.
  */
 
+import { inMemoryDeletedCustomerIds, inMemoryDeletedGroupIds } from './cascadeDeleteMobile';
+
+// Auto-blacklist static dummy demo leads
+inMemoryDeletedCustomerIds.add('lead-101');
+inMemoryDeletedCustomerIds.add('lead-102');
+inMemoryDeletedCustomerIds.add('pay-78201');
+inMemoryDeletedCustomerIds.add('pay-78202');
+inMemoryDeletedCustomerIds.add('pay-78203');
+inMemoryDeletedCustomerIds.add('pay-78190');
+
 export const MOCK_GROUP_IDS = new Set([
   'CG-REG-101', 'CG-REG-102', 'CG-REG-103', 'CG-REG-104',
   'CG-FIX-201', 'CG-FIX-202',
@@ -41,7 +51,7 @@ export const MOCK_CUSTOMER_NAMES = new Set([
 ]);
 
 const getLocalDeletedGroupSet = (): Set<string> => {
-  const set = new Set<string>();
+  const set = new Set<string>(inMemoryDeletedGroupIds);
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
       const g1 = window.localStorage.getItem('deleted_group_ids');
@@ -58,7 +68,7 @@ const getLocalDeletedGroupSet = (): Set<string> => {
 };
 
 const getLocalDeletedCustSet = (): Set<string> => {
-  const set = new Set<string>();
+  const set = new Set<string>(inMemoryDeletedCustomerIds);
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
       const c1 = window.localStorage.getItem('deleted_customer_ids');
@@ -79,10 +89,7 @@ export const isMockGroup = (g: any): boolean => {
   const id = String(g.id || g.code || g.groupId || '').trim();
   const name = String(g.name || g.groupName || '').trim();
 
-  if (MOCK_GROUP_IDS.has(id)) return true;
-  if (MOCK_GROUP_NAMES.has(name)) return true;
-  if (/^CHIT-(100K-A|200K-B)$/i.test(id)) return true;
-
+  // Only consider group excluded if explicitly deleted by user
   const deletedGroups = getLocalDeletedGroupSet();
   if (id && deletedGroups.has(id.toLowerCase())) return true;
   if (name && deletedGroups.has(name.toLowerCase())) return true;
@@ -96,11 +103,7 @@ export const isMockCustomer = (c: any): boolean => {
   const name = String(c.name || c.customerName || c.fullName || '').trim();
   const phone = String(c.phone || c.mobile || '').replace(/\D/g, '');
 
-  if (MOCK_CUSTOMER_IDS.has(id)) return true;
-  if (MOCK_CUSTOMER_NAMES.has(name)) return true;
-  if (/^CUST-10(0[1-9]|1[0-9]|20)$/.test(id)) return true;
-  if (/^TC-1004[5-8]$/.test(id)) return true;
-
+  // Only consider customer excluded if explicitly deleted by user
   const deletedCusts = getLocalDeletedCustSet();
   if (id && deletedCusts.has(id.toLowerCase())) return true;
   if (name && deletedCusts.has(name.toLowerCase())) return true;

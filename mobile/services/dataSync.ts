@@ -9,6 +9,11 @@ import {
   cascadeDeleteLeadMobile,
   isGroupDeleted,
   isCustomerOrLeadDeleted,
+  getDeletedCustomerIds,
+  getDeletedGroupIds,
+  unblacklistCustomer,
+  inMemoryDeletedCustomerIds,
+  inMemoryDeletedGroupIds,
 } from './cascadeDeleteMobile';
 
 /**
@@ -24,18 +29,25 @@ const envPort = process.env.PORT || process.env.EXPO_PUBLIC_BACKEND_PORT || '300
 const customEnvUrl = process.env.EXPO_PUBLIC_API_URL;
 const LOCAL_DEV_IP = '192.168.1.35';
 
+let cachedBaseUrl: string | null = null;
+
 export const getActiveBaseUrl = async (): Promise<string> => {
   // 1. User manual override
   try {
     const custom = await secureStorage.getItem('custom_api_base_url');
     if (custom && custom.trim().startsWith('http')) {
-      return custom.trim();
+      cachedBaseUrl = custom.trim();
+      return cachedBaseUrl;
     }
   } catch {}
 
   // 2. If running on Web, use localhost:3000 directly matching web app
   if (Platform.OS === 'web') {
     return customEnvUrl || `http://localhost:${envPort}/api/v1`;
+  }
+
+  if (cachedBaseUrl) {
+    return cachedBaseUrl;
   }
 
   // 3. For native devices (Expo Go / Emulator), test local development backend
@@ -55,13 +67,15 @@ export const getActiveBaseUrl = async (): Promise<string> => {
       }).catch(() => null);
       clearTimeout(timeout);
       if (res && res.status === 200) {
+        cachedBaseUrl = candidate;
         return candidate;
       }
     } catch {}
   }
 
   // Fallback to local dev IP so it never hangs on dead Render URL
-  return `http://${LOCAL_DEV_IP}:${envPort}/api/v1`;
+  cachedBaseUrl = `http://${LOCAL_DEV_IP}:${envPort}/api/v1`;
+  return cachedBaseUrl;
 };
 
 // Initial Seed Data matching the Web App when backend collections are being initialized
@@ -129,10 +143,27 @@ export const DataSyncManager = {
       console.warn('Backend fetch customers failed, loading from local cache:', e);
     }
 
-    const localSavedStr =
-      (await secureStorage.getItem('synced_customers')) ||
-      (await secureStorage.getItem('mockCustomers'));
-    const localSaved: any[] = localSavedStr ? JSON.parse(localSavedStr) : [];
+    const rawSources = [
+      await secureStorage.getItem('mockCustomers'),
+      await secureStorage.getItem('synced_customers'),
+    ];
+    const localSavedMap = new Map<string, any>();
+    for (const src of rawSources) {
+      if (src) {
+        try {
+          const list = JSON.parse(src);
+          if (Array.isArray(list)) {
+            list.forEach((item) => {
+              const k = (item.id || item.customerCode || item.mongoId || item._id || '').toLowerCase().trim();
+              if (k && !localSavedMap.has(k)) {
+                localSavedMap.set(k, item);
+              }
+            });
+          }
+        } catch {}
+      }
+    }
+    const localSaved = Array.from(localSavedMap.values());
 
     // Map MongoDB records
     const mappedMongo: Customer[] = mongoCustomers.map((c) => {
@@ -172,12 +203,33 @@ export const DataSyncManager = {
     });
 
     // Merge any locally added customers that haven't reached mongo yet
-    const unmergedLocal = localSaved.filter(
-      (loc) => !mappedMongo.some((m) => m.id === loc.id || (loc.mongoId && m.mongoId === loc.mongoId))
-    );
+    const unmergedLocal = localSaved.filter((loc) => {
+      // If customer has a mongoId and we got live MongoDB data, but mongoId is missing, it was deleted!
+      if (loc.mongoId && mongoCustomers.length > 0 && !mongoCustomers.some((m) => m._id === loc.mongoId)) {
+        return false;
+      }
+      return !mappedMongo.some((m) => m.id === loc.id || (loc.mongoId && m.mongoId === loc.mongoId));
+    });
+
+    const deletedCustomerIds = await getDeletedCustomerIds();
+    const cleanDigits = (p?: string) => (p || '').replace(/\D/g, '');
+
+    const isRecordDeleted = (c: any): boolean => {
+      if (isMockCustomer(c)) return true;
+      const cId = String(c.id || c.customerCode || '').toLowerCase().trim();
+      const cMongo = String(c.mongoId || c._id || '').toLowerCase().trim();
+      const cPhone = cleanDigits(c.phone || c.mobile);
+      const cName = String(c.name || c.fullName || '').toLowerCase().trim();
+
+      if (cId && deletedCustomerIds.has(cId)) return true;
+      if (cMongo && deletedCustomerIds.has(cMongo)) return true;
+      if (cPhone && deletedCustomerIds.has(cPhone)) return true;
+      if (cName && deletedCustomerIds.has(cName)) return true;
+      return false;
+    };
 
     const merged = [...mappedMongo, ...unmergedLocal]
-      .filter((c) => !isMockCustomer(c))
+      .filter((c) => !isRecordDeleted(c))
       .map((c) => ({
         ...c,
         chits: Array.isArray(c.chits) ? c.chits.filter((ch: any) => !isMockGroup(ch)) : [],
@@ -192,6 +244,13 @@ export const DataSyncManager = {
    * Save or register new customer across backend and persistent mobile cache
    */
   async saveCustomer(customerData: Partial<Customer>): Promise<Customer> {
+    // Un-blacklist this customer if previously deleted
+    await unblacklistCustomer(
+      customerData.id,
+      customerData.phone || customerData.mobile,
+      customerData.name || customerData.fullName
+    );
+
     let mongoSaved: any = null;
     try {
       const baseUrl = await getActiveBaseUrl();
@@ -345,27 +404,39 @@ export const DataSyncManager = {
     }
 
     // 3. Add saved custom groups from local storage
-    const customStored =
-      (await secureStorage.getItem('custom_chit_groups')) ||
-      (await secureStorage.getItem('mockChitGroups'));
-    if (customStored) {
-      try {
-        const customGroups: ChitGroup[] = JSON.parse(customStored);
-        if (Array.isArray(customGroups)) {
-          customGroups.forEach((cg) => {
-            if (cg.id && !isMockGroup(cg)) {
-              const low = cg.id.toLowerCase();
-              if (!groupMap.has(low)) {
-                groupMap.set(low, cg);
+    const groupSources = [
+      await secureStorage.getItem('mockChitGroups'),
+      await secureStorage.getItem('custom_chit_groups'),
+    ];
+    for (const src of groupSources) {
+      if (src) {
+        try {
+          const customGroups: ChitGroup[] = JSON.parse(src);
+          if (Array.isArray(customGroups)) {
+            customGroups.forEach((cg) => {
+              const gId = String(cg.id || cg.name || '').trim();
+              if (gId) {
+                const low = gId.toLowerCase();
+                if (!groupMap.has(low)) {
+                  groupMap.set(low, cg);
+                }
               }
-            }
-          });
-        }
-      } catch {}
+            });
+          }
+        } catch {}
+      }
     }
 
-    // Filter all groups to ensure no mock groups exist
-    const finalGroups = Array.from(groupMap.values()).filter((g) => !isMockGroup(g));
+    // Filter all groups to ensure no mock groups exist and blacklisted groups are excluded
+    const deletedGroupIds = await getDeletedGroupIds();
+    const finalGroups = Array.from(groupMap.values()).filter((g) => {
+      if (isMockGroup(g)) return false;
+      const gId = String(g.id || '').toLowerCase().trim();
+      const gName = String(g.name || '').toLowerCase().trim();
+      if (gId && deletedGroupIds.has(gId)) return false;
+      if (gName && deletedGroupIds.has(gName)) return false;
+      return true;
+    });
     return finalGroups;
   },
 
@@ -565,19 +636,63 @@ export const DataSyncManager = {
       groupName: r.groupName || r.chitGroupId,
     }));
 
-    // Local ledger
-    const raw =
-      (await secureStorage.getItem('synced_ledger')) ||
-      (await secureStorage.getItem('mockLedgerTransactions'));
-    let localLedger: LedgerTransaction[] = [];
-    if (raw) {
+    // Local ledger merged across all sources
+    const ledgerSources = [
+      await secureStorage.getItem('ledgerTransactions'),
+      await secureStorage.getItem('synced_ledger'),
+      await secureStorage.getItem('mockLedgerTransactions'),
+    ];
+    const localLedgerMap = new Map<string, LedgerTransaction>();
+    for (const src of ledgerSources) {
+      if (src) {
+        try {
+          const list = JSON.parse(src);
+          if (Array.isArray(list)) {
+            list.forEach((item: any) => {
+              if (item && item.id) {
+                const low = String(item.id).toLowerCase().trim();
+                if (!localLedgerMap.has(low)) {
+                  localLedgerMap.set(low, item);
+                }
+              }
+            });
+          }
+        } catch {}
+      }
+    }
+    const localLedger = Array.from(localLedgerMap.values());
+
+    const voidedRaw = (await secureStorage.getItem('voided_receipt_numbers')) || (await secureStorage.getItem('voidedReceiptNumbers'));
+    const voidedSet = new Set<string>();
+    if (voidedRaw) {
       try {
-        localLedger = JSON.parse(raw);
+        JSON.parse(voidedRaw).forEach((v: string) => voidedSet.add(String(v).toLowerCase()));
       } catch {}
     }
 
     const seenIds = new Set(mappedMongo.map((m) => m.id));
-    const combined = [...mappedMongo, ...localLedger.filter((l) => !seenIds.has(l.id))];
+    const deletedCustomerIds = await getDeletedCustomerIds();
+    const deletedGroupIds = await getDeletedGroupIds();
+    const cleanDigits = (p?: string) => (p || '').replace(/\D/g, '');
+
+    const combined = [...mappedMongo, ...localLedger.filter((l) => !seenIds.has(l.id))]
+      .filter((t) => {
+        const tId = String(t.id || '').toLowerCase().trim();
+        if (voidedSet.has(tId)) return false;
+        if (inMemoryDeletedCustomerIds.has(tId)) return false;
+
+        const cId = String(t.customerId || '').toLowerCase().trim();
+        const cPhone = cleanDigits((t as any).customerMobile || (t as any).mobileNumber || (t as any).mobile);
+        const cName = String(t.customerName || '').toLowerCase().trim();
+        const gName = String(t.groupName || (t as any).chitGroup || (t as any).groupId || '').toLowerCase().trim();
+
+        if (cId && (deletedCustomerIds.has(cId) || inMemoryDeletedCustomerIds.has(cId))) return false;
+        if (cPhone && (deletedCustomerIds.has(cPhone) || inMemoryDeletedCustomerIds.has(cPhone))) return false;
+        if (cName && (deletedCustomerIds.has(cName) || inMemoryDeletedCustomerIds.has(cName))) return false;
+        if (tId && (deletedCustomerIds.has(tId) || inMemoryDeletedCustomerIds.has(tId))) return false;
+        if (gName && (deletedGroupIds.has(gName) || inMemoryDeletedGroupIds.has(gName))) return false;
+        return true;
+      });
 
     // Sort by date descending
     combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -623,7 +738,7 @@ export const DataSyncManager = {
       console.warn('Backend record receipt error:', e);
     }
 
-    // 2. Save in local ledger
+    // 2. Save in local ledger across all storage keys
     const ledger = await this.getLedgerTransactions();
     const entry: LedgerTransaction = {
       id: receiptData.receiptNo,
@@ -643,21 +758,100 @@ export const DataSyncManager = {
     const updatedLedger = [entry, ...ledger.filter((l) => l.id !== entry.id)];
     await secureStorage.setItem('synced_ledger', JSON.stringify(updatedLedger));
     await secureStorage.setItem('mockLedgerTransactions', JSON.stringify(updatedLedger));
+    await secureStorage.setItem('ledgerTransactions', JSON.stringify(updatedLedger));
 
-    // 3. Update customer's paid & pending balances in persistent storage
+    // 2b. Add to staffReceipts for instant reflection on Staff and Customer dashboards
+    try {
+      const rawStaff = await secureStorage.getItem('staffReceipts');
+      const staffList = rawStaff ? JSON.parse(rawStaff) : [];
+      const staffEntry = {
+        receiptNo: receiptData.receiptNo,
+        date: entryDate.split('T')[0],
+        timestamp: entryDate,
+        customerId: receiptData.customerId,
+        customerName: receiptData.customerName,
+        mobileNumber: '',
+        chitGroup: receiptData.chitGroup,
+        monthNumber: '1',
+        amount: Number(receiptData.amount),
+        dueAmount: Number(receiptData.amount),
+        remainingBalance: 0,
+        isPartial: false,
+        mode: receiptData.paymentMode,
+        referenceNo: receiptData.referenceNo || '',
+        executive: receiptData.executive || 'Jenista Staff',
+        status: 'COLLECTED',
+        type: 'COLLECTION',
+      };
+      await secureStorage.setItem(
+        'staffReceipts',
+        JSON.stringify([staffEntry, ...staffList.filter((s: any) => s.receiptNo !== receiptData.receiptNo)])
+      );
+    } catch {}
+
+    // 3. Update customer's paid & pending balances and chits in persistent storage
     const customers = await this.getCustomers();
+    const cleanCustId = String(receiptData.customerId).trim().toLowerCase();
+    const cleanCustName = String(receiptData.customerName).trim().toLowerCase();
+    const amt = Number(receiptData.amount || 0);
+
     const updatedCusts = customers.map((c) => {
-      if (c.id === receiptData.customerId || c.name === receiptData.customerName) {
+      const cId = String(c.id || c.mongoId || '').toLowerCase();
+      const cName = String(c.name || c.fullName || '').toLowerCase();
+      if (cId === cleanCustId || cName === cleanCustName) {
+        const curPaid = Number(c.totalPaid || 0);
+        const curPending = Number(c.pending || 0);
+        const chits = Array.isArray(c.chits)
+          ? c.chits.map((ch: any) => {
+              if (
+                !receiptData.chitGroup ||
+                ch.groupId === receiptData.chitGroup ||
+                ch.groupName === receiptData.chitGroup
+              ) {
+                return {
+                  ...ch,
+                  paymentStatus: 'PAID',
+                  totalPaid: Number(ch.totalPaid || ch.paidAmount || 0) + amt,
+                  pending: Math.max(0, Number(ch.pending || ch.monthlyInstallment || 0) - amt),
+                };
+              }
+              return ch;
+            })
+          : [];
+
         return {
           ...c,
-          totalPaid: Number(c.totalPaid || 0) + Number(receiptData.amount),
-          pending: Math.max(0, Number(c.pending || 0) - Number(receiptData.amount)),
+          totalPaid: curPaid + amt,
+          pending: Math.max(0, curPending - amt),
+          chits,
         };
       }
       return c;
     });
     await secureStorage.setItem('synced_customers', JSON.stringify(updatedCusts));
     await secureStorage.setItem('mockCustomers', JSON.stringify(updatedCusts));
+
+    // 4. Update Chit Group Memberships and mockChitGroups
+    try {
+      const rawMem = await secureStorage.getItem('chitGroupMemberships');
+      if (rawMem) {
+        const memberships = JSON.parse(rawMem);
+        const updatedMem = memberships.map((m: any) => {
+          if (
+            (String(m.customerId).toLowerCase() === cleanCustId || String(m.customerName).toLowerCase() === cleanCustName) &&
+            (!receiptData.chitGroup || m.groupId === receiptData.chitGroup || m.groupName === receiptData.chitGroup)
+          ) {
+            return { ...m, paymentStatus: 'PAID' };
+          }
+          return m;
+        });
+        await secureStorage.setItem('chitGroupMemberships', JSON.stringify(updatedMem));
+      }
+    } catch {}
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('storage'));
+    }
   },
 
   /**
@@ -723,16 +917,29 @@ export const DataSyncManager = {
       console.warn('Backend fetch payment requests error:', e);
     }
 
-    const raw =
-      (await secureStorage.getItem('payment_requests')) ||
-      (await secureStorage.getItem('paymentVerifications')) ||
-      (await secureStorage.getItem('mockPaymentRequests'));
-    let localReqs: PaymentRequest[] = [];
-    if (raw) {
-      try {
-        localReqs = JSON.parse(raw);
-      } catch {}
+    const pSources = [
+      await secureStorage.getItem('paymentRequests'),
+      await secureStorage.getItem('payment_requests'),
+      await secureStorage.getItem('paymentVerifications'),
+      await secureStorage.getItem('mockPaymentRequests'),
+    ];
+    const localReqsMap = new Map<string, PaymentRequest>();
+    for (const src of pSources) {
+      if (src) {
+        try {
+          const list = JSON.parse(src);
+          if (Array.isArray(list)) {
+            list.forEach((item: any) => {
+              const key = String(item.id || item._id || item.referenceNumber || '').toLowerCase().trim();
+              if (key && !localReqsMap.has(key)) {
+                localReqsMap.set(key, item);
+              }
+            });
+          }
+        } catch {}
+      }
     }
+    const localReqs: PaymentRequest[] = Array.from(localReqsMap.values());
 
     const mappedMongo: PaymentRequest[] = mongoReqs.map((m) => ({
       id: m.id || m._id,
@@ -752,14 +959,29 @@ export const DataSyncManager = {
       adminNotes: m.adminNotes,
     }));
 
+    const deletedIds = await getDeletedCustomerIds();
+    const cleanDigits = (p?: string) => (p || '').replace(/\D/g, '');
     const seenIds = new Set(mappedMongo.map((m) => m.id));
-    const merged = [...mappedMongo, ...localReqs.filter((l) => !seenIds.has(l.id))].filter(
-      (r) => !['PAY-78201', 'PAY-78202', 'PAY-78203', 'PAY-78190'].includes(r.id)
-    );
+    const merged = [...mappedMongo, ...localReqs.filter((l) => !seenIds.has(l.id))].filter((r) => {
+      const rId = String(r.id || '').toLowerCase();
+      const rCustId = String(r.customerId || '').toLowerCase();
+      const rPhone = cleanDigits(r.customerMobile);
+      const rName = String(r.customerName || '').toLowerCase().trim();
+
+      if (['PAY-78201', 'PAY-78202', 'PAY-78203', 'PAY-78190'].includes(r.id)) return false;
+      if (rId && deletedIds.has(rId)) return false;
+      if (rCustId && deletedIds.has(rCustId)) return false;
+      if (rPhone && deletedIds.has(rPhone)) return false;
+      if (rName && deletedIds.has(rName)) return false;
+      if (r.referenceNumber && deletedIds.has(String(r.referenceNumber).toLowerCase())) return false;
+      return true;
+    });
 
     merged.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
     await secureStorage.setItem('payment_requests', JSON.stringify(merged));
+    await secureStorage.setItem('paymentRequests', JSON.stringify(merged));
     await secureStorage.setItem('paymentVerifications', JSON.stringify(merged));
+    await secureStorage.setItem('mockPaymentRequests', JSON.stringify(merged));
     return merged;
   },
 
@@ -793,11 +1015,17 @@ export const DataSyncManager = {
       console.warn('Backend submit payment request error:', e);
     }
 
-    // 2. Save in local cache
+    // 2. Save in local cache across all storage keys
     const existing = await this.getPaymentRequests();
     const updated = [newReq, ...existing.filter((r) => r.id !== id)];
     await secureStorage.setItem('payment_requests', JSON.stringify(updated));
+    await secureStorage.setItem('paymentRequests', JSON.stringify(updated));
     await secureStorage.setItem('paymentVerifications', JSON.stringify(updated));
+    await secureStorage.setItem('mockPaymentRequests', JSON.stringify(updated));
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('storage'));
+    }
     return newReq;
   },
 
@@ -814,9 +1042,17 @@ export const DataSyncManager = {
     }
 
     const existing = await this.getPaymentRequests();
-    const updated = existing.map((r) => (r.id === id ? { ...r, ...updateData } : r));
+    const updated = existing.map((r) =>
+      r.id === id || (r as any)._id === id || r.referenceNumber === id ? { ...r, ...updateData } : r
+    );
     await secureStorage.setItem('payment_requests', JSON.stringify(updated));
+    await secureStorage.setItem('paymentRequests', JSON.stringify(updated));
     await secureStorage.setItem('paymentVerifications', JSON.stringify(updated));
+    await secureStorage.setItem('mockPaymentRequests', JSON.stringify(updated));
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('storage'));
+    }
   },
 
   /**
@@ -863,11 +1099,23 @@ export const DataSyncManager = {
       transactionReference: m.transactionReference,
     }));
 
+    const deletedIds = await getDeletedCustomerIds();
     const seenIds = new Set(mappedMongo.map((m) => m.id));
     const merged = [...mappedMongo, ...localClaims.filter((l) => !seenIds.has(l.id))];
-    merged.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
-    await secureStorage.setItem('withdrawal_requests', JSON.stringify(merged));
-    return merged;
+    const filtered = merged.filter((claim) => {
+      const cId = String(claim.id || '').toLowerCase().trim();
+      const custId = String(claim.customerId || '').toLowerCase().trim();
+      const mobile = String(claim.mobile || '').replace(/\D/g, '');
+      const name = String(claim.customerName || '').toLowerCase().trim();
+      if (cId && deletedIds.has(cId)) return false;
+      if (custId && deletedIds.has(custId)) return false;
+      if (mobile && deletedIds.has(mobile)) return false;
+      if (name && deletedIds.has(name)) return false;
+      return true;
+    });
+    filtered.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
+    await secureStorage.setItem('withdrawal_requests', JSON.stringify(filtered));
+    return filtered;
   },
 
   async submitWithdrawalRequest(claimData: any): Promise<any> {
@@ -917,13 +1165,13 @@ export const DataSyncManager = {
    * Delete Payment Request with permanent cascade and blacklisting
    */
   async deletePaymentRequest(
-    target: { id: string; customerId?: string; customerMobile?: string } | string,
+    target: { id: string; customerId?: string; customerMobile?: string; referenceNo?: string } | string,
     referenceNo?: string
   ): Promise<void> {
     if (typeof target === 'string') {
-      await cascadeDeletePaymentRequestMobile({ id: target });
+      await cascadeDeletePaymentRequestMobile({ id: target, referenceNo });
     } else {
-      await cascadeDeletePaymentRequestMobile(target);
+      await cascadeDeletePaymentRequestMobile({ ...target, referenceNo: target.referenceNo || referenceNo });
     }
   },
 
@@ -984,6 +1232,11 @@ export const DataSyncManager = {
     const ledger = await this.getLedgerTransactions();
     const updatedLedger = [newTxn, ...ledger];
     await secureStorage.setItem('synced_ledger', JSON.stringify(updatedLedger));
+    try {
+      if (typeof window !== 'undefined' && window.dispatchEvent) {
+        window.dispatchEvent(new Event('storage'));
+      }
+    } catch {}
     return newTxn;
   },
 
@@ -991,8 +1244,59 @@ export const DataSyncManager = {
    * Void / Delete Receipt from Ledger
    */
   async voidReceipt(receiptNo: string): Promise<void> {
-    const ledger = await this.getLedgerTransactions();
-    const updated = ledger.filter((l) => l.id !== receiptNo);
-    await secureStorage.setItem('synced_ledger', JSON.stringify(updated));
+    const lowReceipt = (receiptNo || '').toLowerCase().trim();
+    if (lowReceipt) {
+      inMemoryDeletedCustomerIds.add(lowReceipt);
+    }
+
+    // 1. Blacklist receiptNo
+    try {
+      const raw = (await secureStorage.getItem('voided_receipt_numbers')) || (await secureStorage.getItem('voidedReceiptNumbers'));
+      const list: string[] = raw ? JSON.parse(raw) : [];
+      if (receiptNo && !list.includes(receiptNo)) list.push(receiptNo);
+      await secureStorage.setItem('voided_receipt_numbers', JSON.stringify(list));
+      await secureStorage.setItem('voidedReceiptNumbers', JSON.stringify(list));
+
+      const rawCust = await secureStorage.getItem('deleted_customer_ids');
+      const custIds: string[] = rawCust ? JSON.parse(rawCust) : [];
+      if (receiptNo && !custIds.includes(receiptNo)) custIds.push(receiptNo);
+      await secureStorage.setItem('deleted_customer_ids', JSON.stringify(custIds));
+      await secureStorage.setItem('deletedCustomerIds', JSON.stringify(custIds));
+    } catch {}
+
+    // 2. Remove from ledger stores & payment requests
+    for (const key of ['synced_ledger', 'mockLedgerTransactions', 'ledgerTransactions', 'payment_requests', 'paymentRequests']) {
+      try {
+        const raw = await secureStorage.getItem(key);
+        if (raw) {
+          const list: any[] = JSON.parse(raw);
+          const filtered = list.filter((l) => l.id !== receiptNo && l.reference !== receiptNo && l.referenceNumber !== receiptNo);
+          await secureStorage.setItem(key, JSON.stringify(filtered));
+        }
+      } catch {}
+    }
+
+    // 3. Remove from staffReceipts
+    try {
+      const raw = await secureStorage.getItem('staffReceipts');
+      if (raw) {
+        const list: any[] = JSON.parse(raw);
+        const filtered = list.filter((r) => r.id !== receiptNo && r.receiptNumber !== receiptNo && r.receiptNo !== receiptNo);
+        await secureStorage.setItem('staffReceipts', JSON.stringify(filtered));
+      }
+    } catch {}
+
+    // 4. Delete on backend MongoDB if endpoint available
+    try {
+      const baseUrl = await getActiveBaseUrl();
+      await fetch(`${baseUrl}/receipts/${encodeURIComponent(receiptNo)}`, { method: 'DELETE' });
+    } catch {}
+
+    // 5. Trigger web storage event
+    try {
+      if (typeof window !== 'undefined' && window.dispatchEvent) {
+        window.dispatchEvent(new Event('storage'));
+      }
+    } catch {}
   },
 };

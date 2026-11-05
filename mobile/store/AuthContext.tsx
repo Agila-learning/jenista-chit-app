@@ -9,6 +9,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   loginAsAdminOrStaff: (identifier: string, pass: string) => Promise<void>;
+  login: (identifier: string, pass: string) => Promise<AuthUser>;
   loginAsCustomer: (identifier: string, pass: string) => Promise<void>;
   logout: () => Promise<void>;
   hasPermission: (perm: string) => boolean;
@@ -205,6 +206,85 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     throw new Error('Invalid mobile number or credentials. Please check and try again.');
   };
 
+  const login = async (identifier: string, pass: string): Promise<AuthUser> => {
+    const rawId = (identifier || '').trim();
+    const cleanId = rawId.toLowerCase();
+    const cleanDigits = rawId.replace(/\D/g, '');
+
+    // 1. Quick demo roles
+    if (cleanId === 'admin' && pass === 'admin') {
+      await loginAsAdminOrStaff(identifier, pass);
+      const adminUser: AuthUser = {
+        id: '1',
+        name: 'System Admin',
+        role: 'SUPER_ADMIN',
+        permissions: ['*'],
+      };
+      return adminUser;
+    }
+
+    if (cleanId === 'staff' && pass === 'staff') {
+      await loginAsAdminOrStaff(identifier, pass);
+      const staffUser: AuthUser = {
+        id: 'staff-1',
+        name: 'Rajesh Kumar (Staff)',
+        role: 'STAFF',
+        permissions: ['receipts.create', 'receipts.read', 'customers.create', 'customers.read'],
+      };
+      return staffUser;
+    }
+
+    if (cleanId === 'customer' && pass === 'customer') {
+      await loginAsCustomer(identifier, pass);
+      const demoCust: AuthUser = {
+        id: '2',
+        name: 'Customer Demo',
+        phone: '9840123456',
+        mobile: '9840123456',
+        role: 'CUSTOMER',
+        permissions: ['customer.read'],
+      };
+      return demoCust;
+    }
+
+    // 2. If it is clearly an admin or staff username/email (contains letters, no 10-digit phone)
+    const isLikelyAdminOrStaff = /^[a-zA-Z_]+$/.test(cleanId) || cleanId.includes('@');
+    if (isLikelyAdminOrStaff) {
+      try {
+        await loginAsAdminOrStaff(identifier, pass);
+        const storedUser = await secureStorage.getItem('auth_user');
+        if (storedUser) return JSON.parse(storedUser);
+      } catch (adminErr: any) {
+        // If it specifically failed admin/staff check, try customer before throwing
+        try {
+          await loginAsCustomer(identifier, pass);
+          const storedUser = await secureStorage.getItem('auth_user');
+          if (storedUser) return JSON.parse(storedUser);
+        } catch {
+          throw adminErr;
+        }
+      }
+    }
+
+    // 3. If it looks like a phone number or customer identifier (digits or code)
+    try {
+      await loginAsCustomer(identifier, pass);
+      const storedUser = await secureStorage.getItem('auth_user');
+      if (storedUser) return JSON.parse(storedUser);
+    } catch (custErr: any) {
+      // If customer failed, attempt admin/staff login as fallback
+      try {
+        await loginAsAdminOrStaff(identifier, pass);
+        const storedUser = await secureStorage.getItem('auth_user');
+        if (storedUser) return JSON.parse(storedUser);
+      } catch {
+        throw custErr;
+      }
+    }
+
+    throw new Error('Invalid credentials. Please enter a valid Mobile Number, Username, or Staff ID and Password.');
+  };
+
   const logout = async (): Promise<void> => {
     try {
       await secureStorage.removeItem('auth_token');
@@ -228,6 +308,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         token,
         isAuthenticated: !!user,
         isLoading,
+        login,
         loginAsAdminOrStaff,
         loginAsCustomer,
         logout,

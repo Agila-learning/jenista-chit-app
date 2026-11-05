@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Modal,
   TextInput,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
@@ -17,6 +18,8 @@ import { formatCurrency, formatDate } from '../../utils/format';
 import { PaymentRequest } from '../../types';
 import { DataSyncManager } from '../../services/dataSync';
 import { MobileNotificationsManager } from '../../services/notificationsData';
+import { showConfirmDialog, showAlert } from '../../utils/alert';
+import { sanitizeUtr } from '../../utils/validators';
 
 export const PaymentVerificationsScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState<'PAYMENTS' | 'WITHDRAWALS'>('PAYMENTS');
@@ -58,7 +61,7 @@ export const PaymentVerificationsScreen: React.FC<{ navigation?: any }> = ({ nav
 
   // Payment Actions
   const approvePayment = (item: PaymentRequest) => {
-    Alert.alert(
+    showConfirmDialog(
       'Approve Payment Proof',
       `Confirm credit of ₹${item.amount.toLocaleString('en-IN')} from ${item.customerName}?`,
       [
@@ -94,9 +97,9 @@ export const PaymentVerificationsScreen: React.FC<{ navigation?: any }> = ({ nav
               });
 
               await loadData();
-              Alert.alert('Payment Approved', 'Voucher created and ledger credited.');
+              showAlert('Payment Approved', 'Voucher created and ledger credited.');
             } catch (e: any) {
-              Alert.alert('Error', e?.message || 'Failed to approve payment');
+              showAlert('Error', e?.message || 'Failed to approve payment');
             }
           },
         },
@@ -105,28 +108,33 @@ export const PaymentVerificationsScreen: React.FC<{ navigation?: any }> = ({ nav
   };
 
   const rejectPayment = (item: PaymentRequest) => {
-    Alert.alert('Reject Payment', `Are you sure you want to reject this payment request from ${item.customerName}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Reject',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await DataSyncManager.updatePaymentRequest(item.id, {
-              status: 'REJECTED',
-              rejectedAt: new Date().toISOString(),
-            });
-            await loadData();
-          } catch (e: any) {
-            Alert.alert('Error', e?.message || 'Failed to reject payment');
-          }
+    showConfirmDialog(
+      'Reject Payment',
+      `Are you sure you want to reject this payment request from ${item.customerName}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reject',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await DataSyncManager.updatePaymentRequest(item.id, {
+                status: 'REJECTED',
+                rejectedAt: new Date().toISOString(),
+              });
+              await loadData();
+              showAlert('Payment Rejected', 'Payment request marked as rejected.');
+            } catch (e: any) {
+              showAlert('Error', e?.message || 'Failed to reject payment');
+            }
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
   const handleDeletePayment = (item: PaymentRequest) => {
-    Alert.alert(
+    showConfirmDialog(
       'Delete Payment Request',
       `Permanently delete payment request ${item.referenceNumber || item.id} (₹${Number(item.amount || 0).toLocaleString('en-IN')}) for ${item.customerName}?\n\nThis will remove this payment record from the verification queue and ledger.`,
       [
@@ -138,9 +146,9 @@ export const PaymentVerificationsScreen: React.FC<{ navigation?: any }> = ({ nav
             try {
               await DataSyncManager.deletePaymentRequest(item.id, item.referenceNumber);
               await loadData();
-              Alert.alert('Deleted', 'Payment request record has been permanently removed.');
+              showAlert('Deleted', 'Payment request record has been permanently removed.');
             } catch (e: any) {
-              Alert.alert('Error', e?.message || 'Failed to delete payment request');
+              showAlert('Error', e?.message || 'Failed to delete payment request');
             }
           },
         },
@@ -149,7 +157,7 @@ export const PaymentVerificationsScreen: React.FC<{ navigation?: any }> = ({ nav
   };
 
   const handleDeleteWithdrawal = (item: any) => {
-    Alert.alert(
+    showConfirmDialog(
       'Delete Prize Claim',
       `Permanently delete prize withdrawal claim for ${item.customerName} (₹${Number(item.eligibleAmount || 0).toLocaleString('en-IN')})?\n\nThis will remove this claim from the disbursal queue.`,
       [
@@ -161,9 +169,9 @@ export const PaymentVerificationsScreen: React.FC<{ navigation?: any }> = ({ nav
             try {
               await DataSyncManager.deleteWithdrawalRequest(item.id);
               await loadData();
-              Alert.alert('Deleted', 'Prize claim record has been permanently removed.');
+              showAlert('Deleted', 'Prize claim record has been permanently removed.');
             } catch (e: any) {
-              Alert.alert('Error', e?.message || 'Failed to delete prize claim');
+              showAlert('Error', e?.message || 'Failed to delete prize claim');
             }
           },
         },
@@ -213,28 +221,36 @@ export const PaymentVerificationsScreen: React.FC<{ navigation?: any }> = ({ nav
   };
 
   const handleRejectWithdrawal = (item: any) => {
-    Alert.alert('Reject Claim', `Reject prize disbursement claim for ${item.customerName}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Reject',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await DataSyncManager.updateWithdrawalRequest(item.id, {
-              status: 'REJECTED',
-            });
-            await loadData();
-          } catch (e: any) {
-            Alert.alert('Error', e?.message || 'Failed to reject claim');
-          }
+    showConfirmDialog(
+      'Reject Claim',
+      `Reject prize disbursement claim for ${item.customerName}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reject',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await DataSyncManager.updateWithdrawalRequest(item.id, {
+                status: 'REJECTED',
+              });
+              await loadData();
+              showAlert('Claim Rejected', 'Prize claim marked as rejected.');
+            } catch (e: any) {
+              showAlert('Error', e?.message || 'Failed to reject claim');
+            }
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
   // Render Payment Request Item
   const renderPaymentItem = ({ item }: { item: PaymentRequest }) => {
-    const isPending = item.status === 'PENDING';
+    const isPending =
+      (item.status as string) === 'PENDING' ||
+      (item.status as string) === 'PENDING_VERIFICATION' ||
+      (item.status as string) === 'SUBMITTED';
     const isApproved = item.status === 'APPROVED';
 
     return (
@@ -302,7 +318,7 @@ export const PaymentVerificationsScreen: React.FC<{ navigation?: any }> = ({ nav
               onPress={() => approvePayment(item)}
               activeOpacity={0.8}
             >
-              <Ionicons name="checkmark-circle" size={16} color="#0B1A30" />
+              <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
               <Text style={styles.btnApproveText}>Approve & Credit</Text>
             </TouchableOpacity>
 
@@ -405,7 +421,7 @@ export const PaymentVerificationsScreen: React.FC<{ navigation?: any }> = ({ nav
               onPress={() => handleOpenDisburse(item)}
               activeOpacity={0.8}
             >
-              <Ionicons name="cash" size={16} color="#0B1A30" />
+              <Ionicons name="cash" size={16} color="#FFFFFF" />
               <Text style={styles.btnApproveText}>Disburse Prize Money</Text>
             </TouchableOpacity>
 
@@ -430,6 +446,7 @@ export const PaymentVerificationsScreen: React.FC<{ navigation?: any }> = ({ nav
 
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
       {/* Tab Switcher */}
       <View style={styles.tabContainer}>
         <TouchableOpacity
@@ -440,7 +457,7 @@ export const PaymentVerificationsScreen: React.FC<{ navigation?: any }> = ({ nav
           <Ionicons
             name="receipt-outline"
             size={16}
-            color={activeTab === 'PAYMENTS' ? '#0B1A30' : Colors.textSecondary}
+            color={activeTab === 'PAYMENTS' ? '#FFFFFF' : Colors.textSecondary}
           />
           <Text style={[styles.tabText, activeTab === 'PAYMENTS' && styles.tabTextActive]}>
             Payment Proofs ({pendingPaymentsCount})
@@ -455,7 +472,7 @@ export const PaymentVerificationsScreen: React.FC<{ navigation?: any }> = ({ nav
           <Ionicons
             name="trophy-outline"
             size={16}
-            color={activeTab === 'WITHDRAWALS' ? '#0B1A30' : Colors.textSecondary}
+            color={activeTab === 'WITHDRAWALS' ? '#FFFFFF' : Colors.textSecondary}
           />
           <Text style={[styles.tabText, activeTab === 'WITHDRAWALS' && styles.tabTextActive]}>
             Prize Claims ({pendingWithdrawalsCount})
@@ -529,8 +546,10 @@ export const PaymentVerificationsScreen: React.FC<{ navigation?: any }> = ({ nav
                 <TextInput
                   style={styles.textInput}
                   value={disburseRefNo}
-                  onChangeText={setDisburseRefNo}
-                  placeholder="e.g. UTR847291048201"
+                  onChangeText={(text) => setDisburseRefNo(sanitizeUtr(text, 16))}
+                  keyboardType="numeric"
+                  maxLength={16}
+                  placeholder="e.g. 847291048201 (12-16 digits)"
                   placeholderTextColor={Colors.textSecondary}
                 />
 
@@ -578,9 +597,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     padding: 12,
     gap: 8,
-    backgroundColor: Colors.navy.primary,
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+    borderBottomColor: '#E2E8F0',
   },
   tabButton: {
     flex: 1,
@@ -590,18 +609,18 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 10,
     borderRadius: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: '#F1F5F9',
   },
   tabButtonActive: {
-    backgroundColor: Colors.gold.primary,
+    backgroundColor: '#2563EB',
   },
   tabText: {
     fontSize: 13,
     fontWeight: '700',
-    color: Colors.textSecondary,
+    color: '#64748B',
   },
   tabTextActive: {
-    color: '#0B1A30',
+    color: '#FFFFFF',
     fontWeight: '800',
   },
   listContent: {
@@ -738,16 +757,21 @@ const styles = StyleSheet.create({
   },
   btnApprove: {
     flex: 1,
-    backgroundColor: Colors.gold.primary,
+    backgroundColor: '#059669', // Emerald Green for approval & disbursal
     height: 42,
     borderRadius: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
+    shadowColor: '#059669',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
   btnApproveText: {
-    color: '#0B1A30',
+    color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '800',
   },

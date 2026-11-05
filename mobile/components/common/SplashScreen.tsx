@@ -7,6 +7,7 @@ import {
   Image,
   Dimensions,
   Platform,
+  ActivityIndicator,
   TouchableOpacity,
   SafeAreaView,
 } from 'react-native';
@@ -18,173 +19,154 @@ interface SplashScreenProps {
   minDurationMs?: number;
 }
 
-const SCREENS = [
-  {
-    id: 1,
-    title: 'Jenista CHITS',
-    subtitle: 'Your Trust • Our Commitment',
-    tagline: 'Together Towards Your Bigger Dreams',
-    image: require('../../assets/loading-screen-1.png'),
-    progress: '33%',
-    progressStep: 1,
-  },
-  {
-    id: 2,
-    title: 'Jenista CHITS',
-    subtitle: 'Save Today • Grow Tomorrow',
-    tagline: 'Small Steps Build Big Futures',
-    image: require('../../assets/loading-screen-2.png'),
-    progress: '66%',
-    progressStep: 2,
-  },
-  {
-    id: 3,
-    title: 'Jenista CHITS',
-    subtitle: 'Plan • Save • Achieve',
-    tagline: 'Your Growth Is Our Success',
-    image: require('../../assets/loading-screen-3.png'),
-    progress: '100%',
-    progressStep: 3,
-  },
-];
-
 export const SplashScreen: React.FC<SplashScreenProps> = ({
   onFinish,
-  minDurationMs = 2000,
+  minDurationMs = 1800,
 }) => {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
   const exitAnim = useRef(new Animated.Value(1)).current;
-  const progressAnim = useRef(new Animated.Value(0.33)).current;
+  const [loadingStep, setLoadingStep] = useState('Securing session...');
 
-  // Auto progression timer across the 3 screens
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentIndex((prev) => {
-        if (prev < SCREENS.length - 1) {
-          const nextIndex = prev + 1;
-          animateToStep(nextIndex);
-          return nextIndex;
-        } else {
-          clearInterval(timer);
-          finishSequence();
-          return prev;
-        }
-      });
-    }, minDurationMs);
-
-    return () => clearInterval(timer);
-  }, [minDurationMs]);
-
-  const animateToStep = (index: number) => {
-    // Quick cross fade
-    Animated.sequence([
-      Animated.timing(fadeAnim, {
-        toValue: 0.3,
-        duration: 180,
-        useNativeDriver: Platform.OS !== 'web',
-      }),
+    // 1. Entrance animation
+    Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 250,
+        duration: 500,
+        useNativeDriver: Platform.OS !== 'web',
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 6,
+        tension: 40,
         useNativeDriver: Platform.OS !== 'web',
       }),
     ]).start();
 
-    // Progress bar fill
+    // 2. Pulse animation for brand glow
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.08,
+          duration: 900,
+          useNativeDriver: Platform.OS !== 'web',
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: Platform.OS !== 'web',
+        }),
+      ])
+    );
+    pulseLoop.start();
+
+    // 3. Progress bar fill
     Animated.timing(progressAnim, {
-      toValue: (index + 1) / SCREENS.length,
-      duration: 350,
+      toValue: 1,
+      duration: minDurationMs,
       useNativeDriver: false,
     }).start();
-  };
 
-  const handleNext = () => {
-    if (currentIndex < SCREENS.length - 1) {
-      const nextIndex = currentIndex + 1;
-      setCurrentIndex(nextIndex);
-      animateToStep(nextIndex);
-    } else {
-      finishSequence();
-    }
-  };
+    // Step text updates
+    const t1 = setTimeout(() => setLoadingStep('Syncing Chit Ledgers...'), 600);
+    const t2 = setTimeout(() => setLoadingStep('Ready to Serve'), 1200);
 
-  const finishSequence = () => {
+    // 4. Exit sequence
+    const exitTimer = setTimeout(() => {
+      finishSplash();
+    }, minDurationMs);
+
+    return () => {
+      pulseLoop.stop();
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(exitTimer);
+    };
+  }, [minDurationMs]);
+
+  const finishSplash = () => {
     Animated.timing(exitAnim, {
       toValue: 0,
-      duration: 300,
+      duration: 350,
       useNativeDriver: Platform.OS !== 'web',
     }).start(() => {
       if (onFinish) onFinish();
     });
   };
 
-  const currentScreen = SCREENS[currentIndex];
+  const progressWidth = progressAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
 
   return (
     <Animated.View style={[styles.container, { opacity: exitAnim }]}>
       <SafeAreaView style={styles.safeArea}>
-        {/* Top Header with Skip Button */}
+        {/* Skip button in header */}
         <View style={styles.topBar}>
-          <View style={styles.brandBadge}>
-            <Ionicons name="shield-checkmark" size={14} color={Colors.gold.primary} />
-            <Text style={styles.brandBadgeText}>GOVERNMENT REGISTERED</Text>
+          <View style={styles.govBadge}>
+            <Ionicons name="shield-checkmark" size={13} color="#F59E0B" />
+            <Text style={styles.govBadgeText}>GOVT. REGISTERED CHIT FUND</Text>
           </View>
-          <TouchableOpacity
-            style={styles.skipButton}
-            onPress={finishSequence}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.skipButtonText}>Skip</Text>
-            <Ionicons name="chevron-forward" size={16} color={Colors.gold.primary} />
+          <TouchableOpacity onPress={finishSplash} style={styles.skipBtn} activeOpacity={0.7}>
+            <Text style={styles.skipBtnText}>Skip</Text>
+            <Ionicons name="chevron-forward" size={14} color="rgba(255, 255, 255, 0.6)" />
           </TouchableOpacity>
         </View>
 
-        {/* Screen Content */}
-        <Animated.View style={[styles.mainContent, { opacity: fadeAnim }]}>
-          {/* Main Cropped Screen Image */}
-          <View style={styles.imageCard}>
+        {/* Center Animated Brand Content */}
+        <Animated.View
+          style={[
+            styles.centerBox,
+            {
+              opacity: fadeAnim,
+              transform: [{ scale: scaleAnim }],
+            },
+          ]}
+        >
+          {/* Glowing Aura Ring */}
+          <Animated.View
+            style={[
+              styles.glowRing,
+              {
+                transform: [{ scale: pulseAnim }],
+              },
+            ]}
+          />
+
+          {/* Logo Card */}
+          <View style={styles.logoCard}>
             <Image
-              source={currentScreen.image}
-              style={styles.screenImage}
+              source={require('../../assets/icon.png')}
+              style={styles.logoImage}
               resizeMode="contain"
             />
           </View>
 
-          {/* Stepper Dots & Indicator */}
-          <View style={styles.stepperRow}>
-            {SCREENS.map((s, idx) => (
-              <View
-                key={s.id}
-                style={[
-                  styles.stepDot,
-                  idx === currentIndex && styles.stepDotActive,
-                  idx < currentIndex && styles.stepDotCompleted,
-                ]}
-              />
-            ))}
+          {/* Brand Titles */}
+          <Text style={styles.brandTitle}>JENISTA CHITS</Text>
+          <Text style={styles.brandTagline}>Smart • Transparent • Secure Savings</Text>
+
+          {/* Animated Progress Bar */}
+          <View style={styles.progressContainer}>
+            <View style={styles.progressTrack}>
+              <Animated.View style={[styles.progressBar, { width: progressWidth }]} />
+            </View>
+            <View style={styles.loadingRow}>
+              <ActivityIndicator size="small" color="#38BDF8" />
+              <Text style={styles.loadingStepText}>{loadingStep}</Text>
+            </View>
           </View>
         </Animated.View>
 
-        {/* Bottom Bar: Action & Continuous Progress */}
-        <View style={styles.bottomBar}>
-          <TouchableOpacity
-            style={styles.nextButton}
-            onPress={handleNext}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.nextButtonText}>
-              {currentIndex === SCREENS.length - 1 ? 'Get Started' : 'Next'}
-            </Text>
-            <Ionicons
-              name={currentIndex === SCREENS.length - 1 ? 'arrow-forward' : 'arrow-forward-outline'}
-              size={18}
-              color="#0B1A30"
-            />
-          </TouchableOpacity>
-
-          <Text style={styles.footerLegal}>
-            Jenista Chit Funds • Secure & Transparent Savings
+        {/* Footer */}
+        <View style={styles.footer}>
+          <Text style={styles.footerLegal}>Jenista Chit Funds Pvt. Ltd. • ISO Certified</Text>
+          <Text style={styles.footerSecurity}>
+            <Ionicons name="lock-closed" size={11} color="rgba(255,255,255,0.4)" /> 256-Bit Bank Grade Encryption
           </Text>
         </View>
       </SafeAreaView>
@@ -192,7 +174,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
   );
 };
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 const styles = StyleSheet.create({
   container: {
@@ -217,24 +199,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 8,
   },
-  brandBadge: {
+  govBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(217, 119, 6, 0.15)',
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(217, 119, 6, 0.4)',
+    borderColor: 'rgba(245, 158, 11, 0.35)',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 20,
   },
-  brandBadgeText: {
-    color: Colors.gold.primary,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.8,
+  govBadgeText: {
+    color: '#F59E0B',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
   },
-  skipButton: {
+  skipBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
@@ -243,85 +225,102 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
   },
-  skipButtonText: {
-    color: Colors.gold.primary,
-    fontSize: 13,
-    fontWeight: '700',
+  skipBtnText: {
+    color: 'rgba(255, 255, 255, 0.75)',
+    fontSize: 12,
+    fontWeight: '600',
   },
-  mainContent: {
-    flex: 1,
+  centerBox: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 20,
-  },
-  imageCard: {
-    width: Math.min(width * 0.88, 360),
-    height: Math.min(height * 0.65, 580),
-    borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: '#0A1322',
-    borderWidth: 1.5,
-    borderColor: 'rgba(217, 119, 6, 0.35)',
-    shadowColor: Colors.gold.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  screenImage: {
-    width: '100%',
-    height: '100%',
-  },
-  stepperRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 18,
-  },
-  stepDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  stepDotActive: {
-    width: 28,
-    backgroundColor: Colors.gold.primary,
-  },
-  stepDotCompleted: {
-    backgroundColor: 'rgba(217, 119, 6, 0.6)',
-  },
-  bottomBar: {
     paddingHorizontal: 24,
-    paddingBottom: 16,
+  },
+  glowRing: {
+    position: 'absolute',
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(37, 99, 235, 0.18)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(56, 189, 248, 0.35)',
+  },
+  logoCard: {
+    width: 108,
+    height: 108,
+    borderRadius: 28,
+    backgroundColor: '#0A1526',
+    borderWidth: 2,
+    borderColor: 'rgba(56, 189, 248, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#38BDF8',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 18,
+    elevation: 12,
+    marginBottom: 24,
+  },
+  logoImage: {
+    width: 78,
+    height: 78,
+    borderRadius: 18,
+  },
+  brandTitle: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 2,
+    textAlign: 'center',
+  },
+  brandTagline: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#94A3B8',
+    marginTop: 6,
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  progressContainer: {
+    width: Math.min(width * 0.75, 280),
+    marginTop: 36,
+    alignItems: 'center',
     gap: 12,
   },
-  nextButton: {
-    backgroundColor: Colors.gold.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
+  progressTrack: {
+    width: '100%',
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: '#38BDF8',
+    borderRadius: 2,
+  },
+  loadingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 8,
-    shadowColor: Colors.gold.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 6,
   },
-  nextButtonText: {
-    color: '#0B1A30',
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: 0.4,
+  loadingStepText: {
+    color: '#E2E8F0',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  footer: {
+    alignItems: 'center',
+    gap: 4,
+    paddingBottom: 8,
   },
   footerLegal: {
-    textAlign: 'center',
-    color: Colors.textSecondary,
-    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  footerSecurity: {
+    color: 'rgba(255, 255, 255, 0.4)',
+    fontSize: 10,
+    fontWeight: '500',
   },
 });

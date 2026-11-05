@@ -25,17 +25,18 @@ export const Colors = {
     900: '#0F172A',
     950: '#020617',
   },
-  // Radiant Warm Gold & Amber (Chit Funds & Savings)
+  // Vibrant Modern Blue Accent (replacing brownish orange across all pills & tabs)
   gold: {
-    primary: '#F59E0B',
-    light: '#FEF3C7',
-    dark: '#D97706',
-    subtle: '#FFFBEB',
-    text: '#B45309',
+    primary: '#2563EB',
+    light: '#EFF6FF',
+    dark: '#1D4ED8',
+    subtle: '#DBEAFE',
+    text: '#1D4ED8',
   },
-  accent: '#F59E0B',
-  accentLight: '#FFFBEB',
-  accentDark: '#D97706',
+  // Brand Accent: Emerald Green (Collections, Savings & Trust)
+  accent: '#059669',
+  accentLight: '#ECFDF5',
+  accentDark: '#047857',
 
   // Surfaces & Backgrounds
   background: '#F8FAFC',

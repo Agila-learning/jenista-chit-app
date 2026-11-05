@@ -14,6 +14,7 @@ import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
 import { formatCurrency } from '../../utils/format';
 import { DataSyncManager } from '../../services/dataSync';
+import { showConfirmDialog, showAlert } from '../../utils/alert';
 
 interface BankItem {
   id: string;
@@ -98,7 +99,7 @@ export const ManageBanksScreen: React.FC = () => {
   };
 
   const deleteBank = (id: string) => {
-    Alert.alert('Delete Bank', 'Are you sure you want to remove this bank account?', [
+    showConfirmDialog('Delete Bank', 'Are you sure you want to remove this bank account?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -107,6 +108,7 @@ export const ManageBanksScreen: React.FC = () => {
           const updated = banks.filter((b) => b.id !== id);
           setBanks(updated);
           await DataSyncManager.saveBankAccounts(updated);
+          showAlert('Deleted', 'Bank account removed successfully.');
         },
       },
     ]);

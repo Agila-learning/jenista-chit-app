@@ -17,6 +17,8 @@ import { Colors } from '../../theme/colors';
 import { useAuth } from '../../store/AuthContext';
 import { DataSyncManager } from '../../services/dataSync';
 import { formatCurrency, formatDate } from '../../utils/format';
+import { showAlert } from '../../utils/alert';
+import { sanitizeUtr, isValidUtr } from '../../utils/validators';
 
 export const CustomerPaymentsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { user } = useAuth();
@@ -113,11 +115,16 @@ export const CustomerPaymentsScreen: React.FC<{ navigation: any }> = ({ navigati
   const handleSubmitProof = async () => {
     const val = parseFloat(amount);
     if (isNaN(val) || val <= 0) {
-      Alert.alert('Required', 'Please enter a valid installment amount.');
+      showAlert('Required', 'Please enter a valid installment amount.');
       return;
     }
-    if (!referenceNo.trim()) {
-      Alert.alert('Required', 'Please enter transaction UTR or Reference Number.');
+    const cleanUtr = referenceNo.trim();
+    if (!cleanUtr) {
+      showAlert('Required', 'Please enter transaction UTR or Reference Number.');
+      return;
+    }
+    if (!isValidUtr(cleanUtr)) {
+      showAlert('Invalid UTR', 'UPI / Transaction UTR number must be exactly 12 numeric digits.');
       return;
     }
 
@@ -131,17 +138,17 @@ export const CustomerPaymentsScreen: React.FC<{ navigation: any }> = ({ navigati
         groupName: selectedChit?.groupName || 'Chit Scheme',
         amount: val,
         paymentMode,
-        referenceNumber: referenceNo.trim(),
+        referenceNumber: cleanUtr,
       });
 
       setReferenceNo('');
       await loadData();
-      Alert.alert(
+      showAlert(
         'Proof Submitted! 🎉',
         'Your payment proof has been submitted to the verification desk. Once verified, your ledger passbook will be credited automatically.'
       );
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to submit payment proof');
+      showAlert('Error', e?.message || 'Failed to submit payment proof');
     } finally {
       setSubmitting(false);
     }
@@ -271,13 +278,15 @@ export const CustomerPaymentsScreen: React.FC<{ navigation: any }> = ({ navigati
         </View>
 
         {/* UTR / Reference Number Input */}
-        <Text style={styles.fieldLabel}>TRANSACTION REFERENCE / UTR NUMBER *</Text>
+        <Text style={styles.fieldLabel}>TRANSACTION REFERENCE / UTR NUMBER (12 DIGITS) *</Text>
         <TextInput
           style={styles.refInput}
           value={referenceNo}
-          onChangeText={setReferenceNo}
+          onChangeText={(text) => setReferenceNo(sanitizeUtr(text, 12))}
           placeholder="e.g. 984029184712 (12-digit UTR)"
           placeholderTextColor="#94a3b8"
+          keyboardType="numeric"
+          maxLength={12}
         />
 
         {/* Submit Proof Button */}

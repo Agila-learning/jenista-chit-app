@@ -15,7 +15,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 import { Input } from '../../components/common/Input';
 import { Button } from '../../components/common/Button';
-import { apiClient } from '../../services/api';
+import { DataSyncManager } from '../../services/dataSync';
+import { showAlert } from '../../utils/alert';
 
 export const AddCustomerScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [name, setName] = useState('');
@@ -84,17 +85,14 @@ export const AddCustomerScreen: React.FC<{ navigation: any }> = ({ navigation })
         address: address.trim(),
         city: city.trim(),
         pincode: pincode.trim(),
-        status: 'ACTIVE',
+        status: 'ACTIVE' as const,
       };
 
-      await apiClient('/customers', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
+      await DataSyncManager.saveCustomer(payload);
 
-      Alert.alert('Success', 'Customer registered successfully!', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
+      showAlert('Success', 'Customer registered successfully!', () => {
+        navigation.goBack();
+      });
     } catch (err: any) {
       Alert.alert('Failed to register customer', err.message || 'Something went wrong.');
     } finally {

@@ -19,6 +19,7 @@ import { Colors } from '../../theme/colors';
 import { DataSyncManager } from '../../services/dataSync';
 import { formatCurrency } from '../../utils/format';
 import { ChitGroup } from '../../types';
+import { showConfirmDialog, showAlert } from '../../utils/alert';
 
 export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = ({
   route,
@@ -228,7 +229,7 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
   };
 
   const handleDeleteThisGroup = () => {
-    Alert.alert(
+    showConfirmDialog(
       'Delete Chit Group',
       `Permanently delete "${currentGroup.name}"? All associated member enrollments and records will be deleted everywhere.`,
       [
@@ -239,10 +240,11 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
           onPress: async () => {
             try {
               await DataSyncManager.deleteChitGroup({ id: currentGroup.id, name: currentGroup.name });
-              Alert.alert('Deleted', `Chit group "${currentGroup.name}" was permanently removed.`);
-              navigation.goBack();
+              showAlert('Deleted', `Chit group "${currentGroup.name}" was permanently removed.`, () => {
+                navigation.goBack();
+              });
             } catch (err: any) {
-              Alert.alert('Error', err?.message || 'Failed to delete chit group');
+              showAlert('Error', err?.message || 'Failed to delete chit group');
             }
           },
         },
@@ -252,7 +254,7 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
 
   const handleSaveEditGroup = async () => {
     if (!editGroupName.trim()) {
-      Alert.alert('Error', 'Please enter a group name');
+      showAlert('Error', 'Please enter a group name');
       return;
     }
     setIsSavingGroup(true);
@@ -267,16 +269,16 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
         setCurrentGroup(patched);
       }
       setIsEditGroupModalOpen(false);
-      Alert.alert('Updated', 'Group details updated successfully.');
+      showAlert('Updated', 'Group details updated successfully.');
     } catch (err: any) {
-      Alert.alert('Error', err?.message || 'Failed to update group');
+      showAlert('Error', err?.message || 'Failed to update group');
     } finally {
       setIsSavingGroup(false);
     }
   };
 
   const handleRemoveMember = (member: any) => {
-    Alert.alert(
+    showConfirmDialog(
       'Remove Member',
       `Remove "${member.customerName}" from ${currentGroup.name}?`,
       [
@@ -299,9 +301,9 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
                 await DataSyncManager.updateCustomer(cust.id, { chits: remaining });
               }
               await loadGroupMembers();
-              Alert.alert('Removed', `Member removed from ${currentGroup.name}`);
+              showAlert('Removed', `Member removed from ${currentGroup.name}`);
             } catch (err: any) {
-              Alert.alert('Error', err?.message || 'Failed to remove member');
+              showAlert('Error', err?.message || 'Failed to remove member');
             }
           },
         },
@@ -340,29 +342,29 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
 
-      {/* 1. Deep Navy Header Banner (Matches Web Group Header Drilldown) */}
+      {/* 1. Light Premium Header Banner */}
       <View style={styles.headerHero}>
         <View style={styles.groupHeroTop}>
           <View style={styles.groupHeroIconBox}>
-            <Ionicons name="people" size={26} color={Colors.white} />
+            <Ionicons name="people" size={26} color="#2563EB" />
           </View>
           <View style={{ flex: 1, marginLeft: 12 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
               <Text style={styles.groupHeroTitle} numberOfLines={1}>{currentGroup.name}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <TouchableOpacity
-                  style={{ padding: 6, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 6 }}
+                  style={{ padding: 6, backgroundColor: '#EFF6FF', borderRadius: 8, borderWidth: 1, borderColor: '#BFDBFE' }}
                   onPress={() => setIsEditGroupModalOpen(true)}
                 >
-                  <Ionicons name="create-outline" size={16} color={Colors.white} />
+                  <Ionicons name="create-outline" size={16} color="#1D4ED8" />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={{ padding: 6, backgroundColor: 'rgba(239, 68, 68, 0.35)', borderRadius: 6 }}
+                  style={{ padding: 6, backgroundColor: '#FEE2E2', borderRadius: 8, borderWidth: 1, borderColor: '#FECACA' }}
                   onPress={handleDeleteThisGroup}
                 >
-                  <Ionicons name="trash-outline" size={16} color="#FCA5A5" />
+                  <Ionicons name="trash-outline" size={16} color="#DC2626" />
                 </TouchableOpacity>
                 <View style={styles.statusPillActive}>
                   <Text style={styles.statusPillActiveText}>{currentGroup.status || 'Active'}</Text>
@@ -370,25 +372,25 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
               </View>
             </View>
 
-            {/* Total Enrolled Value Badge (Identical to Web) */}
+            {/* Total Enrolled Value Badge */}
             <View style={styles.totalEnrolledBadge}>
-              <Ionicons name="cash-outline" size={13} color="#78350F" />
+              <Ionicons name="cash-outline" size={13} color="#1D4ED8" />
               <Text style={styles.totalEnrolledBadgeText}>
                 Total Enrolled Value: {formatCurrency(enrolledTotalChitValueSum)}
               </Text>
             </View>
 
-            {/* Capacity & Scheme Breakdown subtitle (Identical to Web) */}
+            {/* Capacity & Scheme Breakdown subtitle */}
             <Text style={styles.groupHeroBreakdown}>
               {membersCapacity > 0
                 ? `${membersCapacity} Capacity (${enrolledMembers.length} Enrolled)`
                 : `${enrolledMembers.length} Enrolled`}
               {' • '}
-              <Text style={{ color: '#6EE7B7', fontWeight: '700' }}>{fixedCount} Fixed</Text>
+              <Text style={{ color: '#059669', fontWeight: '700' }}>{fixedCount} Fixed</Text>
               {' • '}
-              <Text style={{ color: '#FDE68A', fontWeight: '700' }}>{regularCount} Regular</Text>
+              <Text style={{ color: '#2563EB', fontWeight: '700' }}>{regularCount} Regular</Text>
               {' • '}
-              <Text style={{ color: '#E9D5FF', fontWeight: '700' }}>{auctionCount} Auction</Text>
+              <Text style={{ color: '#7C3AED', fontWeight: '700' }}>{auctionCount} Auction</Text>
             </Text>
           </View>
         </View>
@@ -471,11 +473,11 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
               activeOpacity={0.85}
               onPress={() => setActiveTab(activeTab === 'MEMBERS' ? 'OVERVIEW' : 'MEMBERS')}
             >
-              <Ionicons name="people" size={16} color="#0B1A30" />
+              <Ionicons name="people" size={16} color="#FFFFFF" />
               <Text style={styles.viewMembersBtnText}>
                 {activeTab === 'MEMBERS' ? 'Hide' : 'Members'}
               </Text>
-              <Ionicons name="chevron-forward" size={14} color="#0B1A30" />
+              <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -506,7 +508,7 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
             activeOpacity={0.85}
             onPress={() =>
               navigation.navigate('ReceiptEntry', {
-                chitGroup: group.id || group.name,
+                chitGroup: currentGroup?.name || currentGroup?.id || group?.name || group?.id,
                 amount: monthlyInstallment,
               })
             }
@@ -1011,14 +1013,16 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
 
-  // 1. Deep Navy Header Banner
+  // 1. Light Premium Header Banner
   headerHero: {
-    backgroundColor: Colors.navy.primary,
+    backgroundColor: '#F8FAFC',
     paddingTop: 16,
     paddingHorizontal: 20,
     paddingBottom: 36,
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
   },
   groupHeroTop: {
     flexDirection: 'row',
@@ -1028,33 +1032,35 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: '#EFF6FF',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: '#BFDBFE',
     alignItems: 'center',
     justifyContent: 'center',
   },
   groupHeroTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: Colors.white,
+    color: '#0F172A',
     letterSpacing: 0.3,
   },
   groupHeroMembers: {
     fontSize: 12,
     fontWeight: '600',
-    color: Colors.gold.primary,
+    color: '#2563EB',
     marginTop: 2,
   },
   statusPillActive: {
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(21, 150, 106, 0.25)',
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
   },
   statusPillActiveText: {
-    color: '#34D399',
+    color: '#059669',
     fontSize: 10,
     fontWeight: '800',
     textTransform: 'uppercase',
@@ -1063,24 +1069,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: '#EFF6FF',
     paddingHorizontal: 9,
     paddingVertical: 3,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#FCD34D',
+    borderColor: '#BFDBFE',
     alignSelf: 'flex-start',
     marginTop: 6,
   },
   totalEnrolledBadgeText: {
     fontSize: 11,
     fontWeight: '800',
-    color: '#78350F',
+    color: '#1D4ED8',
   },
   groupHeroBreakdown: {
     fontSize: 11,
     fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.85)',
+    color: '#64748B',
     marginTop: 5,
     lineHeight: 16,
   },
@@ -1207,14 +1213,14 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   viewMembersBtn: {
-    backgroundColor: Colors.gold.primary,
+    backgroundColor: Colors.primary[600],
     height: 48,
     borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    shadowColor: Colors.gold.dark,
+    shadowColor: Colors.primary[700],
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
@@ -1223,7 +1229,7 @@ const styles = StyleSheet.create({
   viewMembersBtnText: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#0B1A30',
+    color: '#FFFFFF',
   },
 
   // 4. Next Payment Due Card
@@ -1259,13 +1265,18 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   recordPaymentNavyBtn: {
-    backgroundColor: Colors.navy.primary,
+    backgroundColor: '#059669', // Emerald Green for Payment Voucher collection
     height: 46,
     borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
+    shadowColor: '#059669',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
   recordPaymentNavyText: {
     fontSize: 14,

@@ -23,6 +23,7 @@ import {
 } from '../../services/notificationsData';
 import { DataSyncManager } from '../../services/dataSync';
 import { secureStorage } from '../../services/storage';
+import { showConfirmDialog, showAlert } from '../../utils/alert';
 
 export const LeadsScreen: React.FC = () => {
   const [leads, setLeads] = useState<WebsiteLead[]>([]);
@@ -145,7 +146,7 @@ export const LeadsScreen: React.FC = () => {
   };
 
   const handleDeleteLead = (lead: WebsiteLead) => {
-    Alert.alert(
+    showConfirmDialog(
       'Delete Enquiry Lead',
       `Permanently delete enquiry from "${lead.fullName}" (${lead.phone})?\n\nThis will remove the lead and cascade clean any associated references across the system.`,
       [
@@ -156,10 +157,11 @@ export const LeadsScreen: React.FC = () => {
           onPress: async () => {
             try {
               await DataSyncManager.deleteLead(lead.id, lead.phone, lead.fullName);
+              await MobileNotificationsManager.deleteLead(lead.id);
               await loadLeads();
-              Alert.alert('Lead Deleted', 'Enquiry lead has been permanently removed.');
+              showAlert('Lead Deleted', 'Enquiry lead has been permanently removed.');
             } catch (e: any) {
-              Alert.alert('Error', e?.message || 'Failed to delete lead');
+              showAlert('Error', e?.message || 'Failed to delete lead');
             }
           },
         },

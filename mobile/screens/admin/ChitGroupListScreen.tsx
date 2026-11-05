@@ -17,6 +17,7 @@ import { Colors } from '../../theme/colors';
 import { DataSyncManager } from '../../services/dataSync';
 import { formatCurrency } from '../../utils/format';
 import { ChitGroup } from '../../types';
+import { showConfirmDialog, showAlert } from '../../utils/alert';
 
 export const ChitGroupListScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [groups, setGroups] = useState<ChitGroup[]>([]);
@@ -77,7 +78,7 @@ export const ChitGroupListScreen: React.FC<{ navigation: any }> = ({ navigation 
   };
 
   const handleDeleteGroup = (group: ChitGroup) => {
-    Alert.alert(
+    showConfirmDialog(
       'Delete Chit Group',
       `Are you sure you want to permanently delete "${group.name}"? All associated member enrollments, payment requests, and ledger entries will also be permanently removed.`,
       [
@@ -89,9 +90,9 @@ export const ChitGroupListScreen: React.FC<{ navigation: any }> = ({ navigation 
             try {
               await DataSyncManager.deleteChitGroup({ id: group.id, name: group.name });
               setGroups((prev) => prev.filter((g) => g.id !== group.id));
-              Alert.alert('Deleted', `Chit group "${group.name}" was permanently removed.`);
+              showAlert('Deleted', `Chit group "${group.name}" was permanently removed.`);
             } catch (err: any) {
-              Alert.alert('Error', err?.message || 'Failed to delete chit group');
+              showAlert('Error', err?.message || 'Failed to delete chit group');
             }
           },
         },

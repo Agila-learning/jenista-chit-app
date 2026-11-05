@@ -18,6 +18,8 @@ import { buildCustomerChitSchedule, DueInstallmentRow } from '../../utils/custom
 import { formatCurrency } from '../../utils/format';
 import { DataSyncManager } from '../../services/dataSync';
 import { secureStorage } from '../../services/storage';
+import { showAlert } from '../../utils/alert';
+import { sanitizeUtr, isValidUtr } from '../../utils/validators';
 
 export const CustomerScheduleScreen: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
   const customer = route.params?.customer || {};
@@ -115,45 +117,50 @@ export const CustomerScheduleScreen: React.FC<{ route: any; navigation: any }> =
 
   const handleSubmitPayment = async () => {
     if (!payAmount || Number(payAmount) <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid installment amount.');
+      showAlert('Invalid Amount', 'Please enter a valid installment amount.');
       return;
     }
-    if (payMode !== 'Cash' && !payRef.trim()) {
-      Alert.alert('Reference Required', 'Please enter your UPI reference or bank UTR number.');
-      return;
+    if (payMode !== 'Cash') {
+      const cleanUtr = payRef.trim();
+      if (!cleanUtr) {
+        showAlert('Reference Required', 'Please enter your 12-digit UPI reference or bank UTR number.');
+        return;
+      }
+      if (!isValidUtr(cleanUtr)) {
+        showAlert('Invalid UTR', 'UPI / Transaction UTR number must be exactly 12 numeric digits.');
+        return;
+      }
     }
 
     try {
       setSubmitting(true);
-      const existingRaw = await secureStorage.getItem('payment_requests');
-      const existing = existingRaw ? JSON.parse(existingRaw) : [];
       const newReq = {
         id: `REQ-${Date.now().toString().slice(-6)}`,
         customerId: customer.id || 'CUST',
         customerName: customer.name || 'Member',
-        mobile: customer.mobile || customer.phone || '',
+        customerMobile: customer.mobile || customer.phone || '',
         groupId: chit.groupId,
         groupName: chit.groupName || chit.groupId,
         ticketNumber: chit.ticketNumber || '1',
         amount: Number(payAmount),
         paymentMode: payMode,
-        referenceNo: payRef.trim() || `CASH-${Date.now().toString().slice(-6)}`,
+        referenceNumber: payRef.trim() || `CASH-${Date.now().toString().slice(-6)}`,
         bankAccountId: companyBank?.id,
         bankName: companyBank?.bankName || 'Company Bank',
         submittedAt: new Date().toISOString(),
-        status: 'PENDING',
-        remarks: selectedMonth ? `Month ${selectedMonth.monthNumber} (${selectedMonth.monthName}) Installment` : 'Chit Installment',
+        status: 'PENDING' as const,
+        adminNotes: selectedMonth ? `Month ${selectedMonth.monthNumber} (${selectedMonth.monthName}) Installment` : 'Chit Installment',
       };
 
-      existing.unshift(newReq);
-      await secureStorage.setItem('payment_requests', JSON.stringify(existing));
+      await DataSyncManager.submitPaymentRequest(newReq);
       setPayModalVisible(false);
-      Alert.alert(
+      setPayRef('');
+      showAlert(
         'Payment Submitted!',
         `Your payment of ${formatCurrency(Number(payAmount))} has been submitted. Admin will verify and issue your receipt voucher.`
       );
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to submit payment.');
+      showAlert('Error', e?.message || 'Failed to submit payment.');
     } finally {
       setSubmitting(false);
     }
@@ -466,14 +473,15 @@ export const CustomerScheduleScreen: React.FC<{ route: any; navigation: any }> =
                 {payMode !== 'Cash' && (
                   <>
                     <Text style={[styles.inputLabel, { marginTop: 12 }]}>
-                      UTR / TRANSACTION REFERENCE <Text style={{ color: Colors.danger }}>*</Text>
+                      UTR / TRANSACTION REFERENCE (12 DIGITS) <Text style={{ color: Colors.danger }}>*</Text>
                     </Text>
                     <TextInput
                       style={styles.modalInput}
                       value={payRef}
-                      onChangeText={setPayRef}
-                      placeholder="e.g. 12-digit UTR 329048102948"
-                      autoCapitalize="characters"
+                      onChangeText={(text) => setPayRef(sanitizeUtr(text, 12))}
+                      placeholder="e.g. 12-digit numeric UTR 329048102948"
+                      keyboardType="numeric"
+                      maxLength={12}
                     />
                   </>
                 )}

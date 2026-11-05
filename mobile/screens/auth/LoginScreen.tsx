@@ -18,8 +18,7 @@ import { Button } from '../../components/common/Button';
 import { useAuth } from '../../store/AuthContext';
 
 export const LoginScreen: React.FC = () => {
-  const { loginAsCustomer, loginAsAdminOrStaff } = useAuth();
-  const [authMode, setAuthMode] = useState<'CUSTOMER' | 'STAFF_ADMIN'>('CUSTOMER');
+  const { login } = useAuth();
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -29,11 +28,11 @@ export const LoginScreen: React.FC = () => {
 
   const handleLogin = async () => {
     if (!identifier.trim()) {
-      setError(authMode === 'CUSTOMER' ? 'Please enter mobile number' : 'Please enter username');
+      setError('Please enter your mobile number, username, or staff ID');
       return;
     }
     if (!password.trim()) {
-      setError('Please enter your password / OTP');
+      setError('Please enter your password or PIN');
       return;
     }
 
@@ -41,16 +40,18 @@ export const LoginScreen: React.FC = () => {
     setError('');
 
     try {
-      if (authMode === 'CUSTOMER') {
-        await loginAsCustomer(identifier, password);
-      } else {
-        await loginAsAdminOrStaff(identifier, password);
-      }
+      await login(identifier, password);
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please verify credentials.');
+      setError(err?.message || 'Login failed. Please verify credentials.');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleQuickFill = (id: string, pass: string) => {
+    setIdentifier(id);
+    setPassword(pass);
+    setError('');
   };
 
   return (
@@ -64,12 +65,12 @@ export const LoginScreen: React.FC = () => {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Header Banner */}
+          {/* Header Banner with Project Logo */}
           <View style={styles.header}>
             <View style={styles.logoBadge}>
               <Image
                 source={require('../../assets/icon.png')}
-                style={{ width: 72, height: 72, borderRadius: 16 }}
+                style={styles.logoImg}
                 resizeMode="contain"
               />
             </View>
@@ -77,47 +78,17 @@ export const LoginScreen: React.FC = () => {
             <Text style={styles.appSubtitle}>Smart Chit Fund Management</Text>
           </View>
 
-          {/* Card Container */}
+          {/* Single Unified Role-Based Login Card */}
           <View style={styles.card}>
-            {/* Mode Switcher */}
-            <View style={styles.tabContainer}>
-              <TouchableOpacity
-                style={[styles.tab, authMode === 'CUSTOMER' && styles.tabActive]}
-                onPress={() => {
-                  setAuthMode('CUSTOMER');
-                  setError('');
-                }}
-              >
-                <Ionicons
-                  name="person"
-                  size={16}
-                  color={authMode === 'CUSTOMER' ? Colors.secondary[900] : Colors.neutral[500]}
-                />
-                <Text
-                  style={[styles.tabText, authMode === 'CUSTOMER' && styles.tabTextActive]}
-                >
-                  Customer
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.tab, authMode === 'STAFF_ADMIN' && styles.tabActive]}
-                onPress={() => {
-                  setAuthMode('STAFF_ADMIN');
-                  setError('');
-                }}
-              >
-                <Ionicons
-                  name="shield-checkmark"
-                  size={16}
-                  color={authMode === 'STAFF_ADMIN' ? Colors.secondary[900] : Colors.neutral[500]}
-                />
-                <Text
-                  style={[styles.tabText, authMode === 'STAFF_ADMIN' && styles.tabTextActive]}
-                >
-                  Admin / Staff
-                </Text>
-              </TouchableOpacity>
+            {/* Unified Role Badge */}
+            <View style={styles.roleBanner}>
+              <View style={styles.roleIconCircle}>
+                <Ionicons name="shield-checkmark" size={16} color="#1D4ED8" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.roleBannerTitle}>Universal Sign In</Text>
+                <Text style={styles.roleBannerSubtitle}>Customer • Staff • Administrator</Text>
+              </View>
             </View>
 
             {/* Error banner */}
@@ -128,33 +99,29 @@ export const LoginScreen: React.FC = () => {
               </View>
             )}
 
-            {/* Fields */}
-            {authMode === 'CUSTOMER' ? (
-              <Input
-                label="Registered Mobile Number"
-                placeholder="e.g. 9840123456"
-                keyboardType="phone-pad"
-                value={identifier}
-                onChangeText={setIdentifier}
-                leftIcon={<Ionicons name="call-outline" size={18} color={Colors.neutral[400]} />}
-              />
-            ) : (
-              <Input
-                label="Username / Staff ID"
-                placeholder="e.g. admin or staff"
-                autoCapitalize="none"
-                value={identifier}
-                onChangeText={setIdentifier}
-                leftIcon={<Ionicons name="person-outline" size={18} color={Colors.neutral[400]} />}
-              />
-            )}
+            {/* Unified Identifier Input */}
+            <Input
+              label="Mobile Number / Username / Staff ID"
+              placeholder="e.g. 9840123456, admin, staff"
+              autoCapitalize="none"
+              value={identifier}
+              onChangeText={(text) => {
+                setIdentifier(text);
+                if (error) setError('');
+              }}
+              leftIcon={<Ionicons name="person-circle-outline" size={20} color={Colors.neutral[400]} />}
+            />
 
+            {/* Password Input */}
             <Input
               label="Password / Security PIN"
               placeholder="••••••••"
               secureTextEntry={!showPassword}
               value={password}
-              onChangeText={setPassword}
+              onChangeText={(text) => {
+                setPassword(text);
+                if (error) setError('');
+              }}
               leftIcon={<Ionicons name="lock-closed-outline" size={18} color={Colors.neutral[400]} />}
               rightIcon={
                 <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
@@ -168,15 +135,48 @@ export const LoginScreen: React.FC = () => {
             />
 
             <Button
-              title={authMode === 'CUSTOMER' ? 'Sign In to Account' : 'Authenticate & Sign In'}
+              title="Sign In to Account"
               onPress={handleLogin}
               isLoading={isLoading}
               style={styles.submitBtn}
             />
+
+            {/* Quick Demo Credentials Access */}
+            <View style={styles.quickAccessSection}>
+              <Text style={styles.quickAccessLabel}>QUICK TEST LOGIN</Text>
+              <View style={styles.quickChipsRow}>
+                <TouchableOpacity
+                  style={styles.quickChip}
+                  onPress={() => handleQuickFill('admin', 'admin')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="shield" size={12} color="#1D4ED8" />
+                  <Text style={styles.quickChipText}>Admin</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.quickChip}
+                  onPress={() => handleQuickFill('staff', 'staff')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="briefcase" size={12} color="#059669" />
+                  <Text style={styles.quickChipText}>Staff</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.quickChip}
+                  onPress={() => handleQuickFill('customer', 'customer')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="person" size={12} color="#7C3AED" />
+                  <Text style={styles.quickChipText}>Customer</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
 
           <View style={styles.footer}>
-            <Text style={styles.footerText}>Secure Chit Fund Platform v1.0.6</Text>
+            <Text style={styles.footerText}>Jenista Chit Funds • ISO Certified • Secure 256-Bit</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -187,7 +187,7 @@ export const LoginScreen: React.FC = () => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: Colors.navy.primary,
+    backgroundColor: '#0F172A',
   },
   keyboardView: {
     flex: 1,
@@ -200,133 +200,154 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
     width: '100%',
     maxWidth: 440,
   },
   logoBadge: {
-    width: 76,
-    height: 76,
+    width: 80,
+    height: 80,
     borderRadius: 20,
-    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255, 191, 50, 0.4)',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
+    overflow: 'hidden',
+  },
+  logoImg: {
+    width: 76,
+    height: 76,
+    borderRadius: 18,
   },
   appTitle: {
     fontSize: 24,
     fontWeight: '800',
-    color: Colors.white,
+    color: '#FFFFFF',
     letterSpacing: 0.5,
   },
   appSubtitle: {
     fontSize: 13,
-    color: Colors.gold.primary,
-    marginTop: 4,
+    color: '#38BDF8',
+    marginTop: 3,
     fontWeight: '600',
   },
   card: {
-    backgroundColor: Colors.surface,
+    backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 24,
     maxWidth: 440,
     width: '100%',
     alignSelf: 'center',
-    shadowColor: Colors.navy.primary,
+    shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.18,
     shadowRadius: 16,
     elevation: 6,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: '#E2E8F0',
   },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: Colors.background,
-    borderRadius: 14,
-    padding: 4,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  tab: {
-    flex: 1,
+  roleBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+    gap: 10,
+  },
+  roleIconCircle: {
+    width: 34,
+    height: 34,
     borderRadius: 10,
-    gap: 6,
+    backgroundColor: '#DBEAFE',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  tabActive: {
-    backgroundColor: Colors.gold.primary,
-    shadowColor: Colors.gold.dark,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  tabText: {
+  roleBannerTitle: {
     fontSize: 13,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-  },
-  tabTextActive: {
-    color: '#0B1A30',
     fontWeight: '800',
+    color: '#1E3A8A',
+  },
+  roleBannerSubtitle: {
+    fontSize: 11,
+    color: '#3B82F6',
+    fontWeight: '600',
+    marginTop: 1,
   },
   errorBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.dangerLight,
+    backgroundColor: '#FEF2F2',
     borderWidth: 1,
-    borderColor: '#fed7aa',
-    borderRadius: 8,
+    borderColor: '#FECACA',
+    borderRadius: 10,
     padding: 12,
     marginBottom: 16,
     gap: 8,
   },
   errorMessage: {
     flex: 1,
-    color: Colors.danger,
+    color: '#DC2626',
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   submitBtn: {
     marginTop: 8,
   },
-  demoHelper: {
+  quickAccessSection: {
     marginTop: 20,
-    padding: 12,
-    backgroundColor: Colors.secondary[50],
-    borderRadius: 8,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderColor: '#F1F5F9',
+    alignItems: 'center',
+  },
+  quickAccessLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#94A3B8',
+    letterSpacing: 0.8,
+    marginBottom: 10,
+  },
+  quickChipsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    width: '100%',
+  },
+  quickChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: Colors.secondary[200],
+    borderColor: '#E2E8F0',
   },
-  demoHelperTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.secondary[600],
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  demoHelperRow: {
+  quickChipText: {
     fontSize: 12,
-    color: Colors.secondary[700],
-    marginVertical: 1,
-  },
-  boldText: {
     fontWeight: '700',
-    color: Colors.secondary[900],
+    color: '#334155',
   },
   footer: {
     marginTop: 24,
     alignItems: 'center',
   },
   footerText: {
-    fontSize: 12,
-    color: Colors.neutral[400],
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.45)',
+    fontWeight: '500',
   },
 });
