@@ -556,3 +556,4 @@ export const SupportChat: React.FC = () => {
     </div>
   );
 };
+
