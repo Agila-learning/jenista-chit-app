@@ -4,9 +4,13 @@ import { authenticate } from '../../middleware/authenticate';
 
 const router = Router();
 
-router.use(authenticate);
+// Announcements can be read without authentication or with
+router.get('/announcements', NotificationController.getAnnouncements);
+router.post('/announcements', NotificationController.createAnnouncement);
+router.delete('/announcements/:id', NotificationController.deleteAnnouncement);
 
-router.get('/customer/:customerId', NotificationController.getNotificationsByCustomer);
-router.post('/queue', NotificationController.manuallyQueueNotification);
+// Authenticated routes
+router.get('/customer/:customerId', authenticate, NotificationController.getNotificationsByCustomer);
+router.post('/queue', authenticate, NotificationController.manuallyQueueNotification);
 
 export default router;

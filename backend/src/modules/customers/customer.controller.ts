@@ -119,7 +119,26 @@ export class CustomerController {
         .populate('assignedAgentId', 'name phone')
         .sort({ createdAt: -1 });
         
-      res.status(200).json({ success: true, data: customers });
+      const enriched = customers.map((doc: any) => {
+        const c = doc.toObject();
+        const chits = Array.isArray(c.chits) ? c.chits : [];
+        let computedPending = 0;
+        let computedPaid = 0;
+        chits.forEach((ch: any) => {
+          if (ch.totalPaid) computedPaid += Number(ch.totalPaid);
+          if (ch.paidAmount) computedPaid += Number(ch.paidAmount);
+          if (String(ch.paymentStatus || '').toUpperCase() === 'DUE') {
+            computedPending += Number(ch.pending || ch.monthlyInstallment || ch.installmentAmount || 0);
+          } else if (ch.pending) {
+            computedPending += Number(ch.pending);
+          }
+        });
+        if ((!c.totalPaid || c.totalPaid === 0) && computedPaid > 0) c.totalPaid = computedPaid;
+        if ((!c.pending || c.pending === 0) && computedPending > 0) c.pending = computedPending;
+        return c;
+      });
+
+      res.status(200).json({ success: true, data: enriched });
     } catch (error) {
       next(error);
     }

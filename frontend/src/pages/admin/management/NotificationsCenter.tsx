@@ -99,12 +99,17 @@ export const NotificationsCenter: React.FC = () => {
     setTimeout(() => setSuccessToast(null), 4000);
   };
 
-  const handleDeleteAnnouncement = (id: string) => {
+  const handleDeleteAnnouncement = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this announcement?')) return;
     const updated = announcements.filter(a => a.id !== id);
     localStorage.setItem('companyAnnouncements', JSON.stringify(updated));
     setAnnouncements(updated);
     setSuccessToast('Announcement removed.');
     setTimeout(() => setSuccessToast(null), 3000);
+    try {
+      const { fetchClient } = await import('../../../api/client');
+      await fetchClient(`/notifications/announcements/${id}`, { method: 'DELETE' });
+    } catch {}
   };
 
   // Filtered Notifications
@@ -431,10 +436,10 @@ export const NotificationsCenter: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleDeleteAnnouncement(a.id)}
-                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-600 transition-opacity p-1"
+                        className="p-1.5 rounded-lg text-rose-500 hover:text-white hover:bg-rose-600 bg-rose-50 border border-rose-200 transition-all cursor-pointer shadow-2xs"
                         title="Delete announcement"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
 

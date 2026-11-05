@@ -88,7 +88,6 @@ export const buildCustomerChitSchedule = (params: {
     grossDue: number;
     revisedDue: number;
     eligiblePayout: number;
-  isCompanyMonth?: boolean;
     dividend: number;
     isCompanyMonth?: boolean;
   }[] = [];

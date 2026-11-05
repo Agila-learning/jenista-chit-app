@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, ActivityIndicator, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createDrawerNavigator } from '@react-navigation/drawer';
@@ -34,6 +34,33 @@ import { StaffProfileScreen } from '../screens/staff/StaffProfileScreen';
 import { CustomerDashboardScreen } from '../screens/customer/CustomerDashboardScreen';
 import { CustomerProfileScreen } from '../screens/customer/CustomerProfileScreen';
 import { CustomerPaymentsScreen } from '../screens/customer/CustomerPaymentsScreen';
+import { ChatScreen } from '../screens/chat/ChatScreen';
+import { ConversationsListScreen } from '../screens/chat/ConversationsListScreen';
+
+const APP_HEADER_STYLE = {
+  backgroundColor: '#FFFFFF',
+  borderBottomColor: 'rgba(215, 169, 40, 0.25)',
+  borderBottomWidth: 1.5,
+  elevation: 4,
+  shadowColor: '#102B63',
+  shadowOffset: { width: 0, height: 3 },
+  shadowOpacity: 0.10,
+  shadowRadius: 8,
+};
+
+const APP_TAB_BAR_STYLE = {
+  backgroundColor: '#FFFFFF',
+  borderTopColor: '#E2E8F0',
+  borderTopWidth: 1,
+  height: Platform.OS === 'ios' ? 84 : 72,
+  paddingBottom: Platform.OS === 'ios' ? 24 : 10,
+  paddingTop: 8,
+  shadowColor: '#102B63',
+  shadowOffset: { width: 0, height: -3 },
+  shadowOpacity: 0.05,
+  shadowRadius: 6,
+  elevation: 8,
+};
 
 const Stack = createNativeStackNavigator();
 const Drawer = createDrawerNavigator();
@@ -47,24 +74,11 @@ const AdminBottomTabs = ({ navigation }: any) => {
     <Tab.Navigator
       screenOptions={{
         headerShown: true,
-        headerStyle: {
-          backgroundColor: '#FFFFFF',
-          borderBottomColor: '#E2E8F0',
-          borderBottomWidth: 1,
-          elevation: 0,
-          shadowOpacity: 0,
-        },
+        headerStyle: APP_HEADER_STYLE,
         headerTintColor: '#0F172A',
         headerTitleStyle: { fontWeight: '800', fontSize: 17, color: '#0F172A' },
         headerRight: () => null,
-        tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopColor: '#E2E8F0',
-          borderTopWidth: 1,
-          height: 64,
-          paddingBottom: 8,
-          paddingTop: 6,
-        },
+        tabBarStyle: APP_TAB_BAR_STYLE,
         tabBarActiveTintColor: '#2563EB',
         tabBarInactiveTintColor: '#64748B',
         tabBarLabelStyle: {
@@ -140,13 +154,7 @@ const AdminDrawer = () => {
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={({ navigation, route }) => ({
         headerShown: true,
-        headerStyle: {
-          backgroundColor: '#FFFFFF',
-          borderBottomColor: '#E2E8F0',
-          borderBottomWidth: 1,
-          elevation: 0,
-          shadowOpacity: 0,
-        },
+        headerStyle: APP_HEADER_STYLE,
         headerTintColor: '#0F172A',
         headerTitleStyle: { fontWeight: '800', fontSize: 17, color: '#0F172A' },
         headerRight: () => null,
@@ -213,6 +221,11 @@ const AdminDrawer = () => {
         options={{ title: 'Payment & Prize Requests' }}
       />
       <Drawer.Screen
+        name="ConversationsList"
+        component={ConversationsListScreen}
+        options={{ title: 'Customer Support Chat' }}
+      />
+      <Drawer.Screen
         name="Notifications"
         component={NotificationsScreen}
         options={{ title: 'Notifications & Broadcasts' }}
@@ -254,24 +267,11 @@ const StaffBottomTabs = ({ navigation }: any) => {
     <Tab.Navigator
       screenOptions={{
         headerShown: true,
-        headerStyle: {
-          backgroundColor: '#FFFFFF',
-          borderBottomColor: '#E2E8F0',
-          borderBottomWidth: 1,
-          elevation: 0,
-          shadowOpacity: 0,
-        },
+        headerStyle: APP_HEADER_STYLE,
         headerTintColor: '#0F172A',
         headerTitleStyle: { fontWeight: '800', fontSize: 17, color: '#0F172A' },
         headerRight: () => null,
-        tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopColor: '#E2E8F0',
-          borderTopWidth: 1,
-          height: 64,
-          paddingBottom: 8,
-          paddingTop: 6,
-        },
+        tabBarStyle: APP_TAB_BAR_STYLE,
         tabBarActiveTintColor: '#2563EB',
         tabBarInactiveTintColor: '#64748B',
         tabBarLabelStyle: {
@@ -347,13 +347,7 @@ const StaffDrawer = () => {
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={({ navigation, route }) => ({
         headerShown: true,
-        headerStyle: {
-          backgroundColor: '#FFFFFF',
-          borderBottomColor: '#E2E8F0',
-          borderBottomWidth: 1,
-          elevation: 0,
-          shadowOpacity: 0,
-        },
+        headerStyle: APP_HEADER_STYLE,
         headerTintColor: '#0F172A',
         headerTitleStyle: { fontWeight: '800', fontSize: 17, color: '#0F172A' },
         headerRight: () => null,
@@ -405,6 +399,11 @@ const StaffDrawer = () => {
         options={{ title: 'Issue Receipt Voucher', headerShown: false }}
       />
       <Drawer.Screen
+        name="ConversationsList"
+        component={ConversationsListScreen}
+        options={{ title: 'Customer Support Chat' }}
+      />
+      <Drawer.Screen
         name="Reports"
         component={ReportsScreen}
         options={{ title: 'Overdue Dues Report' }}
@@ -421,24 +420,11 @@ const CustomerBottomTabs = () => {
     <Tab.Navigator
       screenOptions={{
         headerShown: true,
-        headerStyle: {
-          backgroundColor: '#FFFFFF',
-          borderBottomColor: '#E2E8F0',
-          borderBottomWidth: 1,
-          elevation: 0,
-          shadowOpacity: 0,
-        },
+        headerStyle: APP_HEADER_STYLE,
         headerTintColor: '#0F172A',
         headerTitleStyle: { fontWeight: '800', fontSize: 17, color: '#0F172A' },
         headerRight: () => null,
-        tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopColor: '#E2E8F0',
-          borderTopWidth: 1,
-          height: 64,
-          paddingBottom: 8,
-          paddingTop: 6,
-        },
+        tabBarStyle: APP_TAB_BAR_STYLE,
         tabBarActiveTintColor: '#2563EB',
         tabBarInactiveTintColor: '#64748B',
         tabBarLabelStyle: {
@@ -503,13 +489,7 @@ const CustomerStack = () => {
   return (
     <Stack.Navigator
       screenOptions={({ navigation, route }) => ({
-        headerStyle: {
-          backgroundColor: '#FFFFFF',
-          borderBottomColor: '#E2E8F0',
-          borderBottomWidth: 1,
-          elevation: 0,
-          shadowOpacity: 0,
-        },
+        headerStyle: APP_HEADER_STYLE,
         headerTintColor: '#0F172A',
         headerTitleStyle: { fontWeight: '800', color: '#0F172A' },
         headerRight: () => null,
@@ -535,6 +515,11 @@ const CustomerStack = () => {
         options={{ title: 'Chit Installment Schedule' }}
       />
       <Stack.Screen
+        name="ChatScreen"
+        component={ChatScreen}
+        options={{ title: 'Customer Support' }}
+      />
+      <Stack.Screen
         name="Notifications"
         component={NotificationsScreen}
         options={{ title: 'Notices & Announcements' }}
@@ -551,13 +536,7 @@ const CustomerStack = () => {
 const getLightStackHeaderOptions = (title: string) => ({ navigation }: any) => ({
   headerShown: true,
   title,
-  headerStyle: {
-    backgroundColor: '#FFFFFF',
-    borderBottomColor: '#E2E8F0',
-    borderBottomWidth: 1,
-    elevation: 0,
-    shadowOpacity: 0,
-  },
+  headerStyle: APP_HEADER_STYLE,
   headerTintColor: '#0F172A',
   headerTitleStyle: { fontWeight: '800' as const, fontSize: 17, color: '#0F172A' },
   headerRight: () => null,
@@ -667,6 +646,16 @@ export const RootNavigator = () => {
               component={ManageBanksScreen}
               options={getLightStackHeaderOptions('Company Bank Accounts')}
             />
+            <Stack.Screen
+              name="ChatScreen"
+              component={ChatScreen}
+              options={getLightStackHeaderOptions('Customer Support')}
+            />
+            <Stack.Screen
+              name="ConversationsList"
+              component={ConversationsListScreen}
+              options={getLightStackHeaderOptions('Support Inbox')}
+            />
           </>
         ) : (
           // Admin Flow with Full Sidebar
@@ -746,6 +735,16 @@ export const RootNavigator = () => {
               name="ManageBanks"
               component={ManageBanksScreen}
               options={getLightStackHeaderOptions('Company Bank Accounts')}
+            />
+            <Stack.Screen
+              name="ChatScreen"
+              component={ChatScreen}
+              options={getLightStackHeaderOptions('Customer Support')}
+            />
+            <Stack.Screen
+              name="ConversationsList"
+              component={ConversationsListScreen}
+              options={getLightStackHeaderOptions('Support Inbox')}
             />
           </>
         )}

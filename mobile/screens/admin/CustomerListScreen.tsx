@@ -117,13 +117,42 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
   };
 
   const renderItem = ({ item }: { item: Customer }) => {
-    const hasDues = Number(item.pending || 0) > 0;
+    const pendingAmount = Number(item.pending || 0);
+    const paidAmount = Number(item.totalPaid || 0);
+    const hasActiveChits = Array.isArray(item.chits) && item.chits.length > 0;
+    const hasDues = pendingAmount > 0;
     const initial = (item.name || 'M').charAt(0).toUpperCase();
 
     // Alternate avatar pastel background (matches Reference Screen 6)
     const avatarBgs = ['#FFECC2', '#FCE7F3', '#E0F2FE', '#EDE9FE', '#FEF3C7'];
     const charCode = initial.charCodeAt(0) || 0;
     const bg = avatarBgs[charCode % avatarBgs.length];
+
+    const displayAmount = hasDues
+      ? formatCurrency(pendingAmount)
+      : paidAmount > 0
+      ? formatCurrency(paidAmount)
+      : '₹0';
+
+    const statusText = hasDues
+      ? 'Pending'
+      : paidAmount > 0
+      ? 'Paid'
+      : hasActiveChits
+      ? 'Enrolled'
+      : 'No Chits';
+
+    const pillStyle = hasDues
+      ? styles.pillPending
+      : paidAmount > 0
+      ? styles.pillPaid
+      : styles.pillNeutral;
+
+    const pillTextStyle = hasDues
+      ? styles.textPending
+      : paidAmount > 0
+      ? styles.textPaid
+      : styles.textNeutral;
 
     return (
       <TouchableOpacity
@@ -148,22 +177,17 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
 
           {/* Financial Status Pill */}
           <View style={{ alignItems: 'flex-end' }}>
-            <Text style={styles.dueAmountText}>
-              {hasDues ? formatCurrency(item.pending) : '₹0'}
-            </Text>
-            <View
+            <Text
               style={[
-                styles.statusPill,
-                hasDues ? styles.pillPending : styles.pillPaid,
+                styles.dueAmountText,
+                hasDues ? { color: Colors.danger } : paidAmount > 0 ? { color: Colors.success } : { color: Colors.textSecondary },
               ]}
             >
-              <Text
-                style={[
-                  styles.statusPillText,
-                  hasDues ? styles.textPending : styles.textPaid,
-                ]}
-              >
-                {hasDues ? 'Pending' : 'Paid'}
+              {displayAmount}
+            </Text>
+            <View style={[styles.statusPill, pillStyle]}>
+              <Text style={[styles.statusPillText, pillTextStyle]}>
+                {statusText}
               </Text>
             </View>
           </View>
@@ -348,7 +372,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: 20,
-    paddingBottom: 32,
+    paddingBottom: 100,
     gap: 12,
   },
   card: {
@@ -413,6 +437,9 @@ const styles = StyleSheet.create({
   pillPending: {
     backgroundColor: Colors.warningLight,
   },
+  pillNeutral: {
+    backgroundColor: '#F1F5F9',
+  },
   statusPillText: {
     fontSize: 10,
     fontWeight: '700',
@@ -422,6 +449,9 @@ const styles = StyleSheet.create({
   },
   textPending: {
     color: Colors.warning,
+  },
+  textNeutral: {
+    color: '#64748B',
   },
   schemeActiveBanner: {
     flexDirection: 'row',

@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   Search, 
-  Bell, 
+  Bell,
+  MessageSquare, 
   ChevronDown, 
   Check, 
   Link as LinkIcon, 
@@ -332,6 +333,15 @@ export const Topbar = ({ onMenuClick }: TopbarProps = {}) => {
             <LinkIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
           )}
           <span>{copied ? 'Link Copied!' : 'Registration Link'}</span>
+        </button>
+
+        {/* Customer Support Chat Shortcut */}
+        <button
+          onClick={() => navigate(user?.role === 'STAFF' ? '/staff/chat' : '/admin/chat')}
+          className="p-2 text-slate-500 hover:text-[#102B63] rounded-xl hover:bg-blue-50 transition-colors relative"
+          title="Customer Support Chat"
+        >
+          <MessageSquare className="w-5 h-5" />
         </button>
 
         {/* Notifications Bell Dropdown */}

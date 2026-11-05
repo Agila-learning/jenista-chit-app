@@ -26,6 +26,7 @@ import { CustomerChitScheduleScreen } from './pages/admin/customers/CustomerChit
 import { ChitCalculator } from './pages/admin/ChitCalculator';
 import { LeadsManagement } from './pages/admin/customers/LeadsManagement';
 import { NotificationsCenter } from './pages/admin/management/NotificationsCenter';
+import { SupportChat } from './pages/admin/SupportChat';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { purgeMockData } from './utils/cleanMockData';
@@ -77,6 +78,8 @@ function App() {
               <Route path="/admin/reports/non-payers" element={<NonPayersReport />} />
               <Route path="/admin/leads" element={<LeadsManagement />} />
               <Route path="/admin/notifications" element={<NotificationsCenter />} />
+              <Route path="/admin/chat" element={<SupportChat />} />
+              <Route path="/staff/chat" element={<SupportChat />} />
             </Route>
           </Route>
         </Routes>

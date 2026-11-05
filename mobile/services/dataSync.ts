@@ -173,15 +173,26 @@ export const DataSyncManager = {
       const chits = c.chits && c.chits.length > 0 ? c.chits : existing?.chits || [];
 
       // Calculate total paid & pending from actual chits
-      const totalPaid =
-        c.totalPaid ??
-        existing?.totalPaid ??
-        chits.reduce((acc: number, ch: any) => acc + Number(ch.totalPaid || ch.paidAmount || 0), 0);
+      const chitPendingTotal = chits.reduce((acc: number, ch: any) => {
+        const p = Number(ch.pending || ch.dueAmount || 0);
+        if (p > 0) return acc + p;
+        if (String(ch.paymentStatus || '').toUpperCase() === 'DUE') {
+          return acc + Number(ch.monthlyInstallment || ch.installmentAmount || 0);
+        }
+        return acc;
+      }, 0);
 
-      const pending =
-        c.pending ??
-        existing?.pending ??
-        chits.reduce((acc: number, ch: any) => acc + Number(ch.pending || (ch.paymentStatus === 'DUE' ? ch.monthlyInstallment : 0) || 0), 0);
+      const chitPaidTotal = chits.reduce((acc: number, ch: any) => {
+        const p = Number(ch.totalPaid || ch.paidAmount || 0);
+        if (p > 0) return acc + p;
+        if (String(ch.paymentStatus || '').toUpperCase() === 'PAID') {
+          return acc + Number(ch.monthlyInstallment || 0);
+        }
+        return acc;
+      }, 0);
+
+      const totalPaid = Math.max(Number(c.totalPaid || 0), Number(existing?.totalPaid || 0), chitPaidTotal);
+      const pending = Math.max(Number(c.pending || 0), Number(existing?.pending || 0), chitPendingTotal);
 
       return {
         id: c.customerCode || c._id,

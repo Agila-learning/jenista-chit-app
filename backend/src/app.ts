@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import { errorHandler } from './middleware/errorHandler';
 
+// Route imports
 import authRoutes from './modules/auth/auth.routes';
 import userRoutes from './modules/users/user.routes';
 import roleRoutes from './modules/roles/role.routes';
@@ -24,6 +25,7 @@ import documentRoutes from './modules/documents/document.routes';
 import notificationRoutes from './modules/notifications/notification.routes';
 import analyticsRoutes from './modules/analytics/analytics.routes';
 import reportsRoutes from './modules/reports/reports.routes';
+import chatRoutes from './modules/chat/chat.routes';
 
 const app = express();
 
@@ -64,10 +66,13 @@ app.use('/api/v1/documents', documentRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/reports', reportsRoutes);
+app.use('/api/v1/chat', chatRoutes);
 
 // Fallback aliases for root paths
 app.use('/customers', customerRoutes);
 app.use('/auth', authRoutes);
+app.use('/chat', chatRoutes);
+app.use('/notifications', notificationRoutes);
 
 // Error Handler
 app.use(errorHandler);

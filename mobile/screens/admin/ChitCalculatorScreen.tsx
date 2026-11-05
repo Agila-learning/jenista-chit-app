@@ -527,43 +527,48 @@ export const ChitCalculatorScreen: React.FC<{ navigation?: any }> = ({ navigatio
         /* Mode 2: Month-by-Month Projection Schedule */
         <View style={styles.scheduleCard}>
           <View style={styles.scheduleHeaderRow}>
-            <Text style={styles.tableHeadCol1}>MONTH</Text>
-            <Text style={styles.tableHeadCol2}>DUE (₹)</Text>
+            <Text style={[styles.tableHeadCol1, { width: scheme === 'AUCTION' ? '15%' : '20%' }]}>MONTH</Text>
+            <Text style={[styles.tableHeadCol2, { width: scheme === 'AUCTION' ? '22%' : '26%' }]}>DUE (₹)</Text>
             {scheme === 'AUCTION' && <Text style={styles.tableHeadCol3}>DIV (₹)</Text>}
-            <Text style={styles.tableHeadCol4}>NET (₹)</Text>
-            <Text style={styles.tableHeadCol5}>PAYOUT (₹)</Text>
+            <Text style={[styles.tableHeadCol4, { width: scheme === 'AUCTION' ? '22%' : '26%' }]}>NET (₹)</Text>
+            <Text style={[styles.tableHeadCol5, { width: scheme === 'AUCTION' ? '21%' : '28%' }]}>PAYOUT (₹)</Text>
           </View>
 
-          {projectionSchedule.map((r) => (
-            <View key={r.month} style={[styles.scheduleDataRow, r.isCompany && { backgroundColor: '#fffbeb' }]}>
-              <View style={styles.tableCol1Container}>
-                <Text style={styles.tableCol1}>M{r.month}</Text>
-                {r.isCompany && (
-                  <View style={styles.companyBadgeSmall}>
-                    <Text style={styles.companyBadgeText}>Co.</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.tableCol2}>{formatCurrency(r.baseInstallment)}</Text>
-              {scheme === 'AUCTION' && (
-                <Text style={[styles.tableCol3, { color: '#15803d' }]}>
-                  +{formatCurrency(r.dividend)}
-                </Text>
-              )}
-              <Text style={[styles.tableCol4, { fontWeight: '800', color: '#0f172a' }]}>
-                {formatCurrency(r.netPayable)}
-              </Text>
-              {r.isCompany ? (
-                <View style={styles.companyPayoutBadge}>
-                  <Text style={styles.companyPayoutText}>COMPANY</Text>
+          {projectionSchedule.map((r) => {
+            const isAuc = scheme === 'AUCTION';
+            return (
+              <View key={r.month} style={[styles.scheduleDataRow, r.isCompany && { backgroundColor: '#fffbeb' }]}>
+                <View style={[styles.tableCol1Container, { width: isAuc ? '15%' : '20%' }]}>
+                  <Text style={styles.tableCol1}>M{r.month}</Text>
+                  {r.isCompany && (
+                    <View style={styles.companyBadgeSmall}>
+                      <Text style={styles.companyBadgeText}>Co.</Text>
+                    </View>
+                  )}
                 </View>
-              ) : (
-                <Text style={[styles.tableCol5, { color: '#2563eb', fontWeight: '700' }]}>
-                  {formatCurrency(r.winnerPayout)}
+                <Text style={[styles.tableCol2, { width: isAuc ? '22%' : '26%' }]}>{formatCurrency(r.baseInstallment)}</Text>
+                {isAuc && (
+                  <Text style={[styles.tableCol3, { color: '#15803d' }]}>
+                    +{formatCurrency(r.dividend)}
+                  </Text>
+                )}
+                <Text style={[styles.tableCol4, { width: isAuc ? '22%' : '26%', fontWeight: '800', color: '#0f172a' }]}>
+                  {formatCurrency(r.netPayable)}
                 </Text>
-              )}
-            </View>
-          ))}
+                <View style={{ width: isAuc ? '21%' : '28%', alignItems: 'flex-end', justifyContent: 'center' }}>
+                  {r.isCompany ? (
+                    <View style={styles.companyPayoutBadge}>
+                      <Text style={styles.companyPayoutText}>COMPANY</Text>
+                    </View>
+                  ) : (
+                    <Text style={[styles.tableCol5, { width: '100%', textAlign: 'right', color: '#2563eb', fontWeight: '700' }]}>
+                      {formatCurrency(r.winnerPayout)}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            );
+          })}
         </View>
       )}
 
@@ -585,6 +590,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
+    paddingBottom: 100,
     gap: 14,
   },
   schemeTabsRow: {

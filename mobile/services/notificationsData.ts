@@ -249,6 +249,18 @@ export const MobileNotificationsManager = {
   // Announcements
   async getAnnouncements(): Promise<Announcement[]> {
     try {
+      const baseUrl = await getActiveBaseUrl();
+      const res = await fetch(`${baseUrl}/notifications/announcements`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json && Array.isArray(json.data) && json.data.length > 0) {
+          await secureStorage.setItem('mobile_announcements', JSON.stringify(json.data));
+          return json.data;
+        }
+      }
+    } catch {}
+
+    try {
       const raw = await secureStorage.getItem('mobile_announcements');
       if (raw) {
         return JSON.parse(raw);
@@ -279,6 +291,17 @@ export const MobileNotificationsManager = {
     });
 
     return newAnn;
+  },
+
+  async deleteAnnouncement(id: string): Promise<void> {
+    const current = await this.getAnnouncements();
+    const updated = current.filter((a) => a.id !== id);
+    await secureStorage.setItem('mobile_announcements', JSON.stringify(updated));
+    notifyNotificationSubscribers();
+    try {
+      const baseUrl = await getActiveBaseUrl();
+      await fetch(`${baseUrl}/notifications/announcements/${id}`, { method: 'DELETE' });
+    } catch {}
   },
 
   // Website Leads CRM

@@ -73,17 +73,28 @@ export const StaffDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
       {/* Staff Header Hero Card */}
       <View style={styles.heroCard}>
         <View style={styles.heroTop}>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.roleTag}>FIELD COLLECTION EXECUTIVE</Text>
             <Text style={styles.staffName}>{user?.name || 'Staff User'}</Text>
           </View>
-          <TouchableOpacity
-            style={styles.newReceiptBtn}
-            onPress={() => navigation.navigate('ReceiptEntry')}
-          >
-            <Ionicons name="receipt" size={16} color="#0f172a" />
-            <Text style={styles.newReceiptText}>+ Issue Receipt</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <TouchableOpacity
+              style={styles.chatHeaderBtn}
+              onPress={() => navigation.navigate('ConversationsList')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="chatbubbles" size={15} color="#FFFFFF" />
+              <Text style={styles.chatHeaderBtnText}>Chat</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.newReceiptBtn}
+              onPress={() => navigation.navigate('ReceiptEntry')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="receipt" size={15} color="#0B1A30" />
+              <Text style={styles.newReceiptText}>+ Receipt</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.divider} />
@@ -151,9 +162,10 @@ export const StaffDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
                 <TouchableOpacity
                   style={styles.callBtn}
                   onPress={() => dialCustomer(item.phone || item.mobile)}
+                  activeOpacity={0.85}
                 >
-                  <Ionicons name="call" size={15} color={Colors.white} />
-                  <Text style={styles.btnTextWhite}>Call Member</Text>
+                  <Ionicons name="call" size={14} color={Colors.white} />
+                  <Text style={styles.btnTextWhite}>Call</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -161,8 +173,9 @@ export const StaffDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
                   onPress={() =>
                     openWhatsApp(item.phone || item.mobile, item.name, item.pending)
                   }
+                  activeOpacity={0.85}
                 >
-                  <Ionicons name="logo-whatsapp" size={15} color={Colors.white} />
+                  <Ionicons name="logo-whatsapp" size={14} color={Colors.white} />
                   <Text style={styles.btnTextWhite}>WhatsApp</Text>
                 </TouchableOpacity>
 
@@ -176,8 +189,9 @@ export const StaffDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
                       amount: item.pending,
                     })
                   }
+                  activeOpacity={0.85}
                 >
-                  <Ionicons name="cash" size={15} color="#0f172a" />
+                  <Ionicons name="cash" size={14} color="#0B1A30" />
                   <Text style={styles.btnTextDark}>Collect</Text>
                 </TouchableOpacity>
               </View>
@@ -333,6 +347,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: 16,
+    paddingBottom: 100,
     gap: 12,
   },
   dueCard: {
@@ -412,6 +427,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: '#0f172a',
+  },
+  chatHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  chatHeaderBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   receiptCard: {
     backgroundColor: Colors.white,

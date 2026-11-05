@@ -147,6 +147,14 @@ export const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props
           onPress={() => navigateTo('ReceiptEntry')}
         />
 
+        <DrawerItem
+          title="Customer Support Chat"
+          icon="chatbubbles"
+          iconOutline="chatbubbles-outline"
+          isActive={currentRoute === 'ConversationsList' || currentRoute === 'ChatScreen'}
+          onPress={() => navigateTo(isCustomer ? 'ChatScreen' : 'ConversationsList')}
+        />
+
         {!isCustomer && (
           <>
             <View style={styles.menuDivider} />

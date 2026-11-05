@@ -380,6 +380,17 @@ export const addAnnouncement = (ann: Omit<Announcement, 'id' | 'publishedAt'>): 
   return newAnn;
 };
 
+export const deleteAnnouncement = async (id: string): Promise<void> => {
+  const current = getStoredAnnouncements();
+  const updated = current.filter(a => a.id !== id);
+  localStorage.setItem('companyAnnouncements', JSON.stringify(updated));
+  window.dispatchEvent(new Event('storage'));
+  try {
+    const { fetchClient } = await import('../api/client');
+    await fetchClient(`/notifications/announcements/${id}`, { method: 'DELETE' });
+  } catch {}
+};
+
 // --- Website Leads Operations ---
 
 export const getStoredLeads = (): WebsiteLead[] => {

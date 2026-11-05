@@ -69,6 +69,29 @@ export const NotificationsScreen: React.FC<{ navigation: any }> = ({ navigation 
     Alert.alert('Success', 'All notifications marked as read.');
   };
 
+  const handleDeleteAnnouncement = (ann: Announcement) => {
+    Alert.alert(
+      'Delete Announcement',
+      `Are you sure you want to delete announcement "${ann.title}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Permanently',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await MobileNotificationsManager.deleteAnnouncement(ann.id);
+              setAnnouncements((prev) => prev.filter((a) => a.id !== ann.id));
+              Alert.alert('Deleted', 'Announcement was permanently removed.');
+            } catch (err: any) {
+              Alert.alert('Error', err?.message || 'Failed to delete announcement');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleCreateAnnouncement = async () => {
     if (!newTitle.trim() || !newContent.trim()) {
       Alert.alert('Required Fields', 'Please enter a title and message content.');
@@ -250,7 +273,18 @@ export const NotificationsScreen: React.FC<{ navigation: any }> = ({ navigation 
                   <Text style={styles.annCategoryBadge}>{item.category.replace('_', ' ')}</Text>
                   {item.pinned && <Text style={styles.pinnedBadge}>PINNED</Text>}
                 </View>
-                <Text style={styles.annDate}>{formatDate(item.publishedAt)}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Text style={styles.annDate}>{formatDate(item.publishedAt)}</Text>
+                  {isAdmin && (
+                    <TouchableOpacity
+                      onPress={() => handleDeleteAnnouncement(item)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      style={{ padding: 4 }}
+                    >
+                      <Ionicons name="trash-outline" size={17} color={Colors.danger} />
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
 
               <Text style={styles.annTitle}>{item.title}</Text>

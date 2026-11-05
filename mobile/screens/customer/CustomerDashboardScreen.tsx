@@ -360,67 +360,138 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
     >
       <StatusBar barStyle="light-content" />
 
-      {/* 1. Account Hero Card */}
-      <View style={styles.heroCard}>
-        <View style={styles.heroTop}>
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>
+      {/* 1. Account Hero Card (Screenshot 2 Match) */}
+      <View style={styles.heroCardScreenshot2}>
+        <View style={styles.heroTopScreenshot2}>
+          <View style={styles.avatarCircleScreenshot2}>
+            <Text style={styles.avatarTextScreenshot2}>
               {(customerRecord?.name || user?.name || 'C').charAt(0).toUpperCase()}
             </Text>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.clientName}>{customerRecord?.name || user?.name || 'Customer'}</Text>
-            <Text style={styles.clientMeta}>
-              ID: {customerRecord?.id || user?.id} • {customerRecord?.phone || user?.phone || 'Member'}
+
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.clientNameScreenshot2} numberOfLines={1}>
+              {customerRecord?.name || user?.name || 'Customer Dem'}
             </Text>
+            <View style={styles.clientMetaRow}>
+              <Ionicons name="card-outline" size={12} color="#102B63" />
+              <Text style={styles.clientMetaText}>ID: {customerRecord?.id || user?.id || '2 - 9840123'}</Text>
+            </View>
+            <View style={styles.clientMetaRow}>
+              <Ionicons name="call-outline" size={12} color="#102B63" />
+              <Text style={styles.clientMetaText}>{customerRecord?.phone || user?.phone || '456'}</Text>
+            </View>
           </View>
-          <TouchableOpacity
-            style={styles.notifIconBtn}
-            onPress={() => setShowNotifModal(true)}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="notifications-outline" size={18} color={Colors.white} />
-            {notifications.filter((n) => !n.isRead).length > 0 && (
-              <View style={styles.headerNotifBadge}>
-                <Text style={styles.headerNotifBadgeText}>
-                  {notifications.filter((n) => !n.isRead).length > 9 ? '9+' : notifications.filter((n) => !n.isRead).length}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.referralBtn}
-            onPress={() => copyToClipboard(`https://jenistachits.com/register?ref=${user?.id}`, 'ref-link')}
-          >
-            <Ionicons name="copy-outline" size={14} color={Colors.white} />
-            <Text style={styles.referralBtnText}>Refer</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.logoutPill} onPress={logout}>
-            <Ionicons name="log-out-outline" size={16} color={Colors.danger} />
-          </TouchableOpacity>
+
+          {/* Right Action Icons Row */}
+          <View style={styles.heroActionsRow}>
+            <TouchableOpacity
+              style={styles.heroIconBtn}
+              onPress={() => setShowNotifModal(true)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="notifications-outline" size={18} color="#102B63" />
+              {notifications.filter((n) => !n.isRead).length > 0 && (
+                <View style={styles.heroDotBadge} />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.heroReferBtn}
+              onPress={() => copyToClipboard(`https://jenistachits.com/register?ref=${user?.id}`, 'ref-link')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="document-text-outline" size={14} color="#102B63" />
+              <Text style={styles.heroReferText}>Refer</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.heroLogoutBtn} onPress={logout} activeOpacity={0.8}>
+              <Ionicons name="exit-outline" size={18} color="#EF4444" />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
-      {/* 4-Stat Metric Cards Grid (Same as Web App) */}
-      <View style={styles.metricsGrid}>
-        <View style={[styles.metricBox, isTabletOrWeb && styles.metricBoxWide]}>
-          <Text style={styles.metricLabel}>ACTIVE CHITS</Text>
-          <Text style={styles.metricVal}>{chits.length}</Text>
-        </View>
-        <View style={[styles.metricBox, isTabletOrWeb && styles.metricBoxWide]}>
-          <Text style={styles.metricLabel}>TOTAL INVESTED</Text>
-          <Text style={[styles.metricVal, styles.metricValInvested]}>{formatCurrency(totalInvested)}</Text>
-        </View>
-        <View style={[styles.metricBox, isTabletOrWeb && styles.metricBoxWide]}>
-          <Text style={styles.metricLabel}>TOTAL WITHDRAWN</Text>
-          <Text style={[styles.metricVal, styles.metricValGold]}>{formatCurrency(totalWithdrawnAmount)}</Text>
-        </View>
-        <View style={[styles.metricBox, isTabletOrWeb && styles.metricBoxWide]}>
-          <Text style={styles.metricLabel}>NEXT DUE</Text>
-          <Text style={[styles.metricVal, pendingDues > 0 ? { color: '#dc2626' } : { color: '#059669' }]}>
-            {formatCurrency(pendingDues > 0 ? pendingDues : chits[0]?.monthlyInstallment || 0)}
-          </Text>
-        </View>
+      {/* 4-Stat Metric Cards Grid (Screenshot 2 Match) */}
+      <View style={styles.metricsGridScreenshot2}>
+        {/* Card 1: Active Chits */}
+        <TouchableOpacity
+          style={styles.metricCardScreenshot2}
+          activeOpacity={0.85}
+          onPress={() => setActiveTab('myChits')}
+        >
+          <View style={[styles.metricIconCircle, { backgroundColor: '#DBEAFE' }]}>
+            <Ionicons name="people" size={18} color="#2563EB" />
+          </View>
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={styles.metricLabelScreenshot2}>ACTIVE CHITS</Text>
+            <Text style={[styles.metricValScreenshot2, { color: '#102B63' }]}>{chits.length}</Text>
+          </View>
+          <View style={[styles.chevronCircle, { backgroundColor: '#EFF6FF' }]}>
+            <Ionicons name="chevron-forward" size={14} color="#2563EB" />
+          </View>
+        </TouchableOpacity>
+
+        {/* Card 2: Total Invested */}
+        <TouchableOpacity
+          style={styles.metricCardScreenshot2}
+          activeOpacity={0.85}
+          onPress={() => setShowStatementsModal(true)}
+        >
+          <View style={[styles.metricIconCircle, { backgroundColor: '#D1FAE5' }]}>
+            <Ionicons name="cash" size={18} color="#059669" />
+          </View>
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={styles.metricLabelScreenshot2}>TOTAL INVESTED</Text>
+            <Text style={[styles.metricValScreenshot2, { color: '#059669' }]}>{formatCurrency(totalInvested)}</Text>
+          </View>
+          <View style={[styles.chevronCircle, { backgroundColor: '#ECFDF5' }]}>
+            <Ionicons name="chevron-forward" size={14} color="#059669" />
+          </View>
+        </TouchableOpacity>
+
+        {/* Card 3: Total Withdrawn */}
+        <TouchableOpacity
+          style={styles.metricCardScreenshot2}
+          activeOpacity={0.85}
+          onPress={() => setActiveTab('prizesRewards')}
+        >
+          <View style={[styles.metricIconCircle, { backgroundColor: '#EDE9FE' }]}>
+            <Ionicons name="wallet" size={18} color="#7C3AED" />
+          </View>
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={styles.metricLabelScreenshot2}>TOTAL WITHDRAWN</Text>
+            <Text style={[styles.metricValScreenshot2, { color: '#7C3AED' }]}>{formatCurrency(totalWithdrawnAmount)}</Text>
+          </View>
+          <View style={[styles.chevronCircle, { backgroundColor: '#F5F3FF' }]}>
+            <Ionicons name="chevron-forward" size={14} color="#7C3AED" />
+          </View>
+        </TouchableOpacity>
+
+        {/* Card 4: Next Due */}
+        <TouchableOpacity
+          style={styles.metricCardScreenshot2}
+          activeOpacity={0.85}
+          onPress={() => {
+            if (chits.length > 0) {
+              setPaymentModalChit(chits[0]);
+              setPayAmount(String(pendingDues > 0 ? pendingDues : (chits[0]?.monthlyInstallment || 5000)));
+            }
+          }}
+        >
+          <View style={[styles.metricIconCircle, { backgroundColor: '#FFEDD5' }]}>
+            <Ionicons name="calendar" size={18} color="#D97706" />
+          </View>
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={styles.metricLabelScreenshot2}>NEXT DUE</Text>
+            <Text style={[styles.metricValScreenshot2, { color: '#D97706' }]}>
+              {formatCurrency(pendingDues > 0 ? pendingDues : (chits[0]?.monthlyInstallment || 0))}
+            </Text>
+          </View>
+          <View style={[styles.chevronCircle, { backgroundColor: '#FFFBEB' }]}>
+            <Ionicons name="chevron-forward" size={14} color="#D97706" />
+          </View>
+        </TouchableOpacity>
       </View>
 
       {/* 2. Web-Style Segment Tabs Bar */}
@@ -431,16 +502,16 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
         style={styles.tabsScroll}
       >
         <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'myChits' && styles.tabButtonActive]}
+          style={[styles.tabButtonScreenshot2, activeTab === 'myChits' && styles.tabButtonActiveScreenshot2]}
           onPress={() => setActiveTab('myChits')}
           activeOpacity={0.8}
         >
           <Ionicons
-            name="layers"
+            name="pie-chart"
             size={15}
-            color={activeTab === 'myChits' ? Colors.gold.dark : Colors.textSecondary}
+            color={activeTab === 'myChits' ? '#FFFFFF' : '#102B63'}
           />
-          <Text style={[styles.tabButtonText, activeTab === 'myChits' && styles.tabButtonTextActive]}>
+          <Text style={[styles.tabButtonTextScreenshot2, activeTab === 'myChits' && styles.tabButtonTextActiveScreenshot2]}>
             My Portfolio
           </Text>
         </TouchableOpacity>
@@ -552,12 +623,46 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
 
           <View style={styles.chitsList}>
             {chits.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Ionicons name="folder-open-outline" size={40} color={Colors.textMuted} />
-                <Text style={styles.emptyTitle}>No Active Chit Enrollments</Text>
-                <Text style={styles.emptySub}>
+              <View style={styles.emptyCardScreenshot2}>
+                {/* Illustrated Clipboard Card */}
+                <View style={styles.clipboardGraphicBox}>
+                  <View style={styles.clipboardLeavesBg}>
+                    <Ionicons name="leaf" size={28} color="#93C5FD" style={{ transform: [{ rotate: '-25deg' }] }} />
+                    <Ionicons name="leaf" size={32} color="#60A5FA" style={{ transform: [{ rotate: '35deg' }], marginLeft: 14 }} />
+                  </View>
+                  <View style={styles.clipboardBody}>
+                    <View style={styles.clipboardTopClip} />
+                    <View style={styles.clipboardRowLine}>
+                      <Ionicons name="checkmark-circle" size={14} color="#2563EB" />
+                      <View style={styles.clipboardLine} />
+                    </View>
+                    <View style={styles.clipboardRowLine}>
+                      <Ionicons name="checkmark-circle" size={14} color="#2563EB" />
+                      <View style={styles.clipboardLine} />
+                    </View>
+                    <View style={styles.clipboardRowLine}>
+                      <Ionicons name="checkmark-circle" size={14} color="#2563EB" />
+                      <View style={styles.clipboardLine} />
+                    </View>
+                  </View>
+                  <View style={styles.clipboardPlusBadge}>
+                    <Ionicons name="add" size={18} color="#FFFFFF" />
+                  </View>
+                </View>
+
+                <Text style={styles.emptyTitleScreenshot2}>No Active Chit Enrollments</Text>
+                <Text style={styles.emptySubScreenshot2}>
                   You are not currently enrolled in any chit groups. Contact admin to join a savings scheme.
                 </Text>
+
+                <TouchableOpacity
+                  style={styles.chatSupportQuickBtn}
+                  onPress={() => navigation.navigate('ChatScreen')}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="chatbubbles" size={16} color="#FFFFFF" />
+                  <Text style={styles.chatSupportQuickBtnText}>Chat with Customer Desk</Text>
+                </TouchableOpacity>
               </View>
             ) : (
               chits.map((item, idx) => {
@@ -1646,7 +1751,281 @@ const styles = StyleSheet.create({
     maxWidth: 768,
     width: '100%',
     alignSelf: 'center',
-    paddingBottom: 40,
+    paddingBottom: 100,
+  },
+  heroCardScreenshot2: {
+    backgroundColor: '#F0F7FF',
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 14,
+    borderRadius: 22,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#DCEBFE',
+    elevation: 2,
+    shadowColor: '#102B63',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+  },
+  heroTopScreenshot2: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatarCircleScreenshot2: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#DCEBFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#BFDBFE',
+  },
+  avatarTextScreenshot2: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#102B63',
+  },
+  clientNameScreenshot2: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#102B63',
+  },
+  clientMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  clientMetaText: {
+    fontSize: 11,
+    color: '#475569',
+    fontWeight: '600',
+  },
+  heroActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  heroIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    position: 'relative',
+  },
+  heroDotBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#EF4444',
+  },
+  heroReferBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  heroReferText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#102B63',
+  },
+  heroLogoutBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
+  },
+  metricsGridScreenshot2: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    paddingHorizontal: 16,
+    marginBottom: 14,
+  },
+  metricCardScreenshot2: {
+    flexBasis: '48%',
+    flexGrow: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    elevation: 1,
+    shadowColor: '#102B63',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+  },
+  metricIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  metricLabelScreenshot2: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#64748B',
+    letterSpacing: 0.3,
+  },
+  metricValScreenshot2: {
+    fontSize: 16,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  chevronCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabButtonScreenshot2: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginRight: 8,
+  },
+  tabButtonActiveScreenshot2: {
+    backgroundColor: '#102B63',
+    borderColor: '#102B63',
+  },
+  tabButtonTextScreenshot2: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  tabButtonTextActiveScreenshot2: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  emptyCardScreenshot2: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    elevation: 1,
+  },
+  clipboardGraphicBox: {
+    width: 90,
+    height: 85,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    position: 'relative',
+  },
+  clipboardLeavesBg: {
+    position: 'absolute',
+    top: 0,
+    flexDirection: 'row',
+    zIndex: 1,
+  },
+  clipboardBody: {
+    width: 60,
+    height: 72,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#93C5FD',
+    alignItems: 'center',
+    paddingTop: 12,
+    gap: 6,
+    zIndex: 2,
+    elevation: 2,
+  },
+  clipboardTopClip: {
+    position: 'absolute',
+    top: -5,
+    width: 24,
+    height: 8,
+    backgroundColor: '#2563EB',
+    borderRadius: 3,
+  },
+  clipboardRowLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    width: '80%',
+  },
+  clipboardLine: {
+    flex: 1,
+    height: 3,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 2,
+  },
+  clipboardPlusBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: 6,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#102B63',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 3,
+    elevation: 3,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  emptyTitleScreenshot2: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#102B63',
+    textAlign: 'center',
+  },
+  emptySubScreenshot2: {
+    fontSize: 12,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 18,
+    maxWidth: 280,
+  },
+  chatSupportQuickBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#102B63',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 14,
+    marginTop: 16,
+  },
+  chatSupportQuickBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   heroCard: {
     backgroundColor: Colors.navy.primary,

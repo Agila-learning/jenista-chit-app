@@ -20,7 +20,8 @@ import {
   UserPlus,
   LogOut,
   Calculator,
-  Layers
+  Layers,
+  MessageSquare
 } from 'lucide-react';
 import { useAuth } from '../../store/AuthContext';
 
@@ -220,6 +221,7 @@ export const Sidebar = ({
   // 4. Management Section
   const adminManagementNav: NavItem[] = [
     { name: 'Receipt Desk', href: '/admin/receipts', icon: Receipt },
+    { name: 'Support Chat', href: '/admin/chat', icon: MessageSquare },
     { name: 'User Management', href: '/admin/customers/approvals', icon: UserCheck },
     { name: 'Settings', href: '/admin/settings', icon: Settings },
   ];
@@ -245,6 +247,7 @@ export const Sidebar = ({
 
   const staffFinanceNav: NavItem[] = [
     { name: 'Raise Receipt', href: '/admin/receipts', icon: Receipt },
+    { name: 'Support Chat', href: '/staff/chat', icon: MessageSquare },
     { 
       name: 'Reports', 
       href: '/admin/reports/non-payers', 
