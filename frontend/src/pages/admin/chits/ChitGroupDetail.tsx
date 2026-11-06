@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Button } from '../../../components/common/Button';
 import { formatCurrency } from '../../../utils/format';
 import { 
   Layers, 
@@ -10,7 +9,6 @@ import {
   Target, 
   AlertCircle, 
   Landmark, 
-  Plus, 
   Trash2, 
   CheckCircle2, 
   X, 
@@ -18,8 +16,7 @@ import {
   Search, 
   UserPlus, 
   Check,
-  Receipt,
-  Download
+  Receipt
 } from 'lucide-react';
 import { resolveBankForPayment } from '../../../utils/bankAccountsData';
 import { isMockGroup, isDeletedGroup, isMockCustomer } from '../../../utils/cleanMockData';
