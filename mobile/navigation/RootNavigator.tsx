@@ -36,6 +36,7 @@ import { CustomerProfileScreen } from '../screens/customer/CustomerProfileScreen
 import { CustomerPaymentsScreen } from '../screens/customer/CustomerPaymentsScreen';
 import { ChatScreen } from '../screens/chat/ChatScreen';
 import { ConversationsListScreen } from '../screens/chat/ConversationsListScreen';
+import { StaffManagementScreen } from '../screens/admin/StaffManagementScreen';
 
 const APP_HEADER_STYLE = {
   backgroundColor: '#FFFFFF',
@@ -224,6 +225,11 @@ const AdminDrawer = () => {
         name="ConversationsList"
         component={ConversationsListScreen}
         options={{ title: 'Customer Support Chat' }}
+      />
+      <Drawer.Screen
+        name="StaffManagement"
+        component={StaffManagementScreen}
+        options={{ title: 'Staff & Field Executives' }}
       />
       <Drawer.Screen
         name="Notifications"
@@ -443,12 +449,12 @@ const CustomerBottomTabs = () => {
         }}
       />
       <Tab.Screen
-        name="CustomerMyChitsTab"
-        component={CustomerDashboardScreen}
+        name="CustomerChatTab"
+        component={ChatScreen}
         options={{
-          title: 'My Enrolled Chits',
-          tabBarLabel: 'My Chits',
-          tabBarIcon: ({ color, size }) => <Ionicons name="wallet" size={size || 20} color={color} />,
+          title: 'Customer Support Desk',
+          tabBarLabel: 'Support Chat',
+          tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles" size={size || 20} color={color} />,
         }}
       />
       <Tab.Screen
@@ -656,6 +662,11 @@ export const RootNavigator = () => {
               component={ConversationsListScreen}
               options={getLightStackHeaderOptions('Support Inbox')}
             />
+            <Stack.Screen
+              name="StaffManagement"
+              component={StaffManagementScreen}
+              options={getLightStackHeaderOptions('Staff & Field Executives')}
+            />
           </>
         ) : (
           // Admin Flow with Full Sidebar
@@ -745,6 +756,11 @@ export const RootNavigator = () => {
               name="ConversationsList"
               component={ConversationsListScreen}
               options={getLightStackHeaderOptions('Support Inbox')}
+            />
+            <Stack.Screen
+              name="StaffManagement"
+              component={StaffManagementScreen}
+              options={getLightStackHeaderOptions('Staff & Field Executives')}
             />
           </>
         )}

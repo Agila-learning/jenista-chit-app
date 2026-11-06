@@ -189,15 +189,15 @@ export const LoginPage: React.FC = () => {
               <label className="block text-xs font-bold text-slate-700 mb-1.5">
                 Mobile Number, Customer ID, or Username
               </label>
-              <div className="relative">
+              <div className="relative flex items-center">
                 <Input
                   placeholder="e.g. 9840123456, TC-11075, staff, or admin"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   required
-                  className="h-11 text-xs sm:text-sm rounded-xl pl-9 bg-white border-slate-300 focus:border-blue-600 focus:ring-blue-600"
+                  className="h-12 text-sm rounded-xl !pl-12 pr-4 bg-white border-slate-300 focus:border-[#102B63] focus:ring-[#102B63]"
                 />
-                <User className="w-4 h-4 text-slate-400 absolute left-3 top-3.5 pointer-events-none" />
+                <User className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
             </div>
 
@@ -210,23 +210,23 @@ export const LoginPage: React.FC = () => {
                   Case-sensitive
                 </span>
               </div>
-              <div className="relative">
+              <div className="relative flex items-center">
                 <Input
                   type={showPassword ? 'text' : 'password'}
                   placeholder="Enter your account password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="h-11 text-xs sm:text-sm rounded-xl pl-9 pr-10 bg-white border-slate-300 focus:border-blue-600 focus:ring-blue-600"
+                  className="h-12 text-sm rounded-xl !pl-12 !pr-12 bg-white border-slate-300 focus:border-[#102B63] focus:ring-[#102B63]"
                 />
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3.5 pointer-events-none" />
+                <Lock className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3.5 text-slate-400 hover:text-slate-600 focus:outline-none"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none p-1"
                   aria-label={showPassword ? "Hide password" : "Show password"}
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
             </div>

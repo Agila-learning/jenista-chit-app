@@ -27,6 +27,7 @@ import {
   type SystemNotification, 
   type Announcement 
 } from '../../utils/notificationsData';
+import { CustomerChatWidget } from '../../components/customer/CustomerChatWidget';
 
 export const CustomerDashboard = () => {
   const navigate = useNavigate();
@@ -3250,6 +3251,8 @@ export const CustomerDashboard = () => {
           </div>
         </div>
       )}
+      {/* Real-time Customer Support Chat Widget */}
+      <CustomerChatWidget />
     </div>
   );
 };

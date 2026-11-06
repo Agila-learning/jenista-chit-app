@@ -33,7 +33,8 @@ import {
   AlertTriangle,
   Filter,
   Award,
-  ArrowRight
+  ArrowRight,
+  MessageSquare
 } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip as RechartsTooltip } from 'recharts';
 import { formatCurrency, formatDate } from '../../utils/format';
@@ -2372,7 +2373,7 @@ export const AdminDashboard = () => {
             </div>
 
             <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-              <table className="min-w-full divide-y divide-slate-100 text-xs">
+              <table className="min-w-full divide-y divide-slate-100 text-xs min-w-[700px]">
                 <thead className="bg-slate-100 sticky top-0 z-10 whitespace-nowrap">
                   <tr>
                     <th className="px-4 py-2.5 text-left font-bold text-slate-600 sticky left-0 bg-slate-100 z-20 border-r border-slate-200">
@@ -3729,10 +3730,10 @@ export const AdminDashboard = () => {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 sm:gap-2.5 w-full md:w-auto">
           {/* Last Updated Timestamp Badge */}
-          <div className="flex items-center gap-2 px-3.5 py-2 bg-white rounded-xl border border-slate-200/80 shadow-2xs text-xs text-slate-600 font-medium">
-            <Calendar className="w-4 h-4 text-slate-400" />
+          <div className="col-span-2 sm:col-auto flex items-center gap-2 px-3.5 py-2 bg-white rounded-xl border border-slate-200/80 shadow-2xs text-xs text-slate-600 font-medium">
+            <Calendar className="w-4 h-4 text-slate-400 shrink-0" />
             <div>
               <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold leading-none">Last updated</span>
               <span className="text-xs font-semibold text-slate-800 leading-tight">{nowFormatted}</span>
@@ -3742,11 +3743,11 @@ export const AdminDashboard = () => {
           {/* Quick Action: Chit Calculator */}
           <button
             onClick={() => navigate('/admin/calculator')}
-            className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold rounded-xl text-xs sm:text-sm shadow-xs transition-all flex items-center gap-1.5 active:scale-95"
+            className="col-span-1 sm:col-auto px-3 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl text-xs sm:text-sm shadow-xs transition-all flex items-center justify-center gap-1.5 active:scale-95"
             title="Open comprehensive Chit Calculator & financial modeler"
           >
             <Calculator className="w-4 h-4" />
-            <span>Chit Calculator</span>
+            <span>Calculator</span>
           </button>
 
           {/* Primary Action: + Add Group */}
@@ -3755,7 +3756,7 @@ export const AdminDashboard = () => {
               setNewGroupName('');
               setIsAddGroupModalOpen(true);
             }}
-            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-xl text-xs sm:text-sm shadow-xs transition-colors flex items-center gap-1.5 active:scale-95"
+            className="col-span-1 sm:col-auto px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs sm:text-sm shadow-xs transition-colors flex items-center justify-center gap-1.5 active:scale-95"
           >
             <Plus className="w-4 h-4" />
             <span>Add Group</span>
@@ -3767,7 +3768,7 @@ export const AdminDashboard = () => {
               setSelectedSchemeFilter('GROUPS');
               setGroupSearchQuery('');
             }}
-            className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 font-medium rounded-xl text-xs sm:text-sm border border-slate-200 shadow-2xs transition-colors flex items-center gap-1.5"
+            className="col-span-2 sm:col-auto px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-xs sm:text-sm border border-slate-200 shadow-2xs transition-colors flex items-center justify-center gap-1.5"
           >
             <span>View All Groups</span>
             <span className="text-xs">&rarr;</span>
@@ -4411,7 +4412,7 @@ export const AdminDashboard = () => {
               <span>Quick Actions</span>
             </h3>
 
-            <div className="grid grid-cols-3 gap-2.5 text-center">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-2.5 text-center">
               <button
                 onClick={() => {
                   setNewGroupName('');
@@ -4477,6 +4478,26 @@ export const AdminDashboard = () => {
                 </div>
                 <span className="text-xs font-semibold text-slate-700 leading-tight">View All Groups</span>
               </button>
+
+              <button
+                onClick={() => navigate('/admin/staff')}
+                className="p-3 bg-[#f0f4fd] hover:bg-[#e2eafb] border border-[#d8e4f9] rounded-xl transition-all group flex flex-col items-center justify-center gap-1.5 shadow-2xs"
+              >
+                <div className="w-9 h-9 rounded-full bg-[#dbeafe] text-[#1e40af] flex items-center justify-center group-hover:scale-105 transition-transform">
+                  <Users className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-semibold text-slate-700 leading-tight">Manage Staff</span>
+              </button>
+
+              <button
+                onClick={() => navigate('/admin/chat')}
+                className="p-3 bg-[#fdf2f8] hover:bg-[#fce7f3] border border-[#fbcfe8] rounded-xl transition-all group flex flex-col items-center justify-center gap-1.5 shadow-2xs"
+              >
+                <div className="w-9 h-9 rounded-full bg-[#fce7f3] text-[#be185d] flex items-center justify-center group-hover:scale-105 transition-transform">
+                  <MessageSquare className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-semibold text-slate-700 leading-tight">Support Chat</span>
+              </button>
             </div>
           </div>
 
@@ -4499,7 +4520,7 @@ export const AdminDashboard = () => {
               </button>
             </div>
 
-            <div className="flex items-center justify-between gap-2 pt-2">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
               {/* Donut Chart with Centered Total */}
               <div className="relative w-36 h-36 shrink-0">
                 <ResponsiveContainer width="100%" height="100%">

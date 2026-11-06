@@ -8,7 +8,7 @@ export class AuthService {
   static async login(identifier: string, password: string) {
     // identifier can be email or phone
     const user = await User.findOne({
-      $or: [{ email: identifier }, { phone: identifier }],
+      $or: [{ email: identifier }, { phone: identifier }, { userCode: identifier }],
     }).populate('roleIds');
 
     if (!user) {

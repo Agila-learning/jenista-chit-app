@@ -72,6 +72,7 @@ app.use('/api/v1/chat', chatRoutes);
 app.use('/customers', customerRoutes);
 app.use('/auth', authRoutes);
 app.use('/chat', chatRoutes);
+app.use('/staff', staffRoutes);
 app.use('/notifications', notificationRoutes);
 
 // Error Handler

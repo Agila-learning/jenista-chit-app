@@ -104,7 +104,7 @@ export const ReceiptEntry = () => {
       }
     }
 
-    setForm(f => ({ ...f, receiptNo: nextNo, executive: user?.name || 'Staff User' }));
+    setForm(f => ({ ...f, receiptNo: nextNo, executive: user?.name || 'Staff User', ...(paramGroup ? { chitGroup: paramGroup } : {}), ...(paramAmt ? { receiptAmt: paramAmt } : {}) }));
 
     fetchClient('/customers')
       .then((res: any) => {

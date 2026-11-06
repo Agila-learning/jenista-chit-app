@@ -352,7 +352,8 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
   }, [chits, pendingWithdrawals]);
 
   return (
-    <ScrollView
+    <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
+      <ScrollView
       style={styles.container}
       contentContainerStyle={styles.scrollContentContainer}
       showsVerticalScrollIndicator={false}
@@ -1739,6 +1740,17 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
 
       <View style={{ height: 40 }} />
     </ScrollView>
+
+    {/* Floating Customer Support Chat Button */}
+    <TouchableOpacity
+      style={styles.floatingChatFab}
+      onPress={() => navigation.navigate('ChatScreen')}
+      activeOpacity={0.88}
+    >
+      <Ionicons name="chatbubbles" size={20} color="#FFFFFF" />
+      <Text style={styles.floatingChatFabText}>Support Chat</Text>
+    </TouchableOpacity>
+  </View>
   );
 };
 
@@ -1752,6 +1764,31 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
     paddingBottom: 100,
+  },
+  floatingChatFab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#102B63',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 24,
+    shadowColor: '#102B63',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
+    borderWidth: 1.5,
+    borderColor: '#D7A928',
+    zIndex: 99,
+  },
+  floatingChatFabText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
   },
   heroCardScreenshot2: {
     backgroundColor: '#F0F7FF',

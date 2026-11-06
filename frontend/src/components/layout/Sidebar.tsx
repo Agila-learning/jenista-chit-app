@@ -222,6 +222,7 @@ export const Sidebar = ({
   const adminManagementNav: NavItem[] = [
     { name: 'Receipt Desk', href: '/admin/receipts', icon: Receipt },
     { name: 'Support Chat', href: '/admin/chat', icon: MessageSquare },
+    { name: 'Staff & Team', href: '/admin/staff', icon: Users },
     { name: 'User Management', href: '/admin/customers/approvals', icon: UserCheck },
     { name: 'Settings', href: '/admin/settings', icon: Settings },
   ];

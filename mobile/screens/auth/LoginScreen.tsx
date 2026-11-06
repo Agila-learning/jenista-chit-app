@@ -10,6 +10,7 @@ import {
   StatusBar,
   Image,
   Alert,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -125,18 +126,20 @@ export const LoginScreen: React.FC = () => {
             {/* Identifier Input */}
             <View style={styles.fieldWrapper}>
               <Text style={styles.fieldLabel}>Mobile Number / Username / Staff ID</Text>
-              <View style={styles.inputContainer}>
-                <Ionicons name="phone-portrait-outline" size={19} color="#102B63" style={styles.inputIcon} />
-                <Input
-                  label=""
+              <View style={styles.inputBoxWrapper}>
+                <View style={styles.leftIconWrapper} pointerEvents="none">
+                  <Ionicons name="person-outline" size={19} color="#102B63" />
+                </View>
+                <TextInput
                   placeholder="e.g. 9840123456, admin, staff"
+                  placeholderTextColor="#94A3B8"
                   autoCapitalize="none"
                   value={identifier}
                   onChangeText={(text) => {
                     setIdentifier(text);
                     if (error) setError('');
                   }}
-                  containerStyle={{ marginBottom: 0, flex: 1 }}
+                  style={styles.textInputField}
                 />
               </View>
             </View>
@@ -144,28 +147,34 @@ export const LoginScreen: React.FC = () => {
             {/* Password Input */}
             <View style={styles.fieldWrapper}>
               <Text style={styles.fieldLabel}>Password / Security PIN</Text>
-              <View style={styles.inputContainer}>
-                <Ionicons name="lock-closed-outline" size={19} color="#102B63" style={styles.inputIcon} />
-                <Input
-                  label=""
+              <View style={styles.inputBoxWrapper}>
+                <View style={styles.leftIconWrapper} pointerEvents="none">
+                  <Ionicons name="lock-closed-outline" size={19} color="#102B63" />
+                </View>
+                <TextInput
                   placeholder="Enter your password"
+                  placeholderTextColor="#94A3B8"
                   secureTextEntry={!showPassword}
                   value={password}
                   onChangeText={(text) => {
                     setPassword(text);
                     if (error) setError('');
                   }}
-                  containerStyle={{ marginBottom: 0, flex: 1 }}
-                  rightIcon={
-                    <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                      <Ionicons
-                        name={showPassword ? 'eye-outline' : 'eye-off-outline'}
-                        size={19}
-                        color="#64748B"
-                      />
-                    </TouchableOpacity>
-                  }
+                  style={[styles.textInputField, { paddingRight: 48 }]}
                 />
+                <TouchableOpacity
+                  style={styles.rightIconWrapper}
+                  onPress={() => setShowPassword(!showPassword)}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+                >
+                  <Ionicons
+                    name={showPassword ? 'eye-outline' : 'eye-off-outline'}
+                    size={20}
+                    color="#64748B"
+                  />
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -390,22 +399,50 @@ const styles = StyleSheet.create({
   },
   fieldWrapper: {
     width: '100%',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   fieldLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#334155',
-    marginBottom: 4,
+    marginBottom: 6,
   },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  inputBoxWrapper: {
+    position: 'relative',
+    width: '100%',
+    height: 52,
+    justifyContent: 'center',
   },
-  inputIcon: {
+  leftIconWrapper: {
     position: 'absolute',
-    left: 14,
-    zIndex: 10,
+    left: 16,
+    zIndex: 2,
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rightIconWrapper: {
+    position: 'absolute',
+    right: 16,
+    zIndex: 2,
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textInputField: {
+    width: '100%',
+    height: 52,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    borderRadius: 14,
+    paddingLeft: 48,
+    paddingRight: 16,
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#0F172A',
   },
   optionsRow: {
     flexDirection: 'row',

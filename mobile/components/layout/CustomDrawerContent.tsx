@@ -169,6 +169,14 @@ export const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props
             />
 
             <DrawerItem
+              title="Staff & Field Executives"
+              icon="people"
+              iconOutline="people-outline"
+              isActive={currentRoute === 'StaffManagement'}
+              onPress={() => navigateTo('StaffManagement')}
+            />
+
+            <DrawerItem
               title="Payment Verifications"
               icon="shield-checkmark"
               iconOutline="shield-checkmark-outline"

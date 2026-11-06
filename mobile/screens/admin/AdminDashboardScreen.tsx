@@ -515,6 +515,28 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
 
         <TouchableOpacity
           style={styles.actionTile}
+          onPress={() => navigation.navigate('StaffManagement')}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.actionIconCircle, { backgroundColor: '#EEF2FF' }]}>
+            <Ionicons name="people" size={20} color="#4338CA" />
+          </View>
+          <Text style={styles.actionTileText} numberOfLines={2}>Staff Team</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionTile}
+          onPress={() => navigation.navigate('ConversationsList')}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.actionIconCircle, { backgroundColor: '#FDF2F8' }]}>
+            <Ionicons name="chatbubbles" size={20} color="#BE185D" />
+          </View>
+          <Text style={styles.actionTileText} numberOfLines={2}>Support Chat</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionTile}
           onPress={() => navigation.navigate('Reports')}
           activeOpacity={0.7}
         >

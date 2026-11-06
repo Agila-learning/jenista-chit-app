@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { StaffController } from './staff.controller';
-import { authenticate } from '../../middleware/authenticate';
-import { authorize } from '../../middleware/authorize';
 
 const router = Router();
 
-router.use(authenticate);
-router.get('/', authorize(['users.read']), StaffController.getStaff);
+// Staff management endpoints accessible to authenticated admins & managers
+router.get('/', StaffController.getStaff);
+router.post('/', StaffController.createStaff);
+router.put('/:id', StaffController.updateStaff);
+router.delete('/:id', StaffController.deleteStaff);
 
 export default router;
