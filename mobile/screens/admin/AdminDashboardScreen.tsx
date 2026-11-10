@@ -19,6 +19,7 @@ import { useAuth } from '../../store/AuthContext';
 import { DataSyncManager } from '../../services/dataSync';
 import { formatCurrency } from '../../utils/format';
 import { MobileNotificationsManager, subscribeToNotifications } from '../../services/notificationsData';
+import { secureStorage } from '../../services/storage';
 
 export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { user } = useAuth();
@@ -91,28 +92,76 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
       setTotalCustomers(custs.length);
       setActiveGroups(groups.length);
 
-      const totalPaid = custs.reduce((acc, c) => acc + Number(c.totalPaid || 0), 0);
+      // Reconcile total collections across both customer totals and ledger entries
+      const custsTotalPaid = custs.reduce((acc, c) => acc + Number(c.totalPaid || 0), 0);
+      const ledgerTotalPaid = ledger
+        .filter((t: any) => t.type === 'CREDIT' || t.category === 'INSTALLMENT' || t.status === 'COMPLETED' || t.status === 'VERIFIED')
+        .reduce((acc: number, t: any) => acc + Number(t.amount || 0), 0);
+      const totalPaid = Math.max(custsTotalPaid, ledgerTotalPaid);
       const dues = custs.reduce((acc, c) => acc + Number(c.pending || 0), 0);
       setTotalCollections(totalPaid);
       setTotalDues(dues);
 
-      // Compute scheme counts across all customer chits
-      let fix = 0;
-      let reg = 0;
-      let auc = 0;
-      custs.forEach((c) => {
-        if (Array.isArray(c.chits)) {
-          c.chits.forEach((ch: any) => {
-            const sch = String(ch.scheme || ch.type || '').toUpperCase();
-            if (sch.includes('FIX')) fix += 1;
-            else if (sch.includes('AUC')) auc += 1;
-            else reg += 1;
+      // Compute scheme counts (Fixed, Regular, Auction) matching Web App logic
+      const fixedSet = new Set<string>();
+      const regularSet = new Set<string>();
+      const auctionSet = new Set<string>();
+
+      // 1. From customer chits & chosen registered schemes
+      custs.forEach((c: any) => {
+        const cId = String(c.id || c.customerCode || c.mongoId || c.phone || '');
+        if (Array.isArray(c.chits) && c.chits.length > 0) {
+          c.chits.forEach((ch: any, idx: number) => {
+            const sch = String(ch.scheme || ch.type || c.scheme || '').toUpperCase();
+            const key = `${cId}_${ch.groupId || ch.groupName || idx}`;
+            if (sch.includes('FIX')) fixedSet.add(key);
+            else if (sch.includes('AUC')) auctionSet.add(key);
+            else regularSet.add(key);
+          });
+        } else if (c.scheme || c.interestedPlan) {
+          const sch = String(c.scheme || c.interestedPlan || '').toUpperCase();
+          const key = `${cId}_opted`;
+          if (sch.includes('FIX')) fixedSet.add(key);
+          else if (sch.includes('AUC')) auctionSet.add(key);
+          else regularSet.add(key);
+        }
+      });
+
+      // 2. From chitGroupMemberships
+      try {
+        const rawM = await secureStorage.getItem('chitGroupMemberships');
+        if (rawM) {
+          const mems = JSON.parse(rawM);
+          if (Array.isArray(mems)) {
+            mems.forEach((m: any) => {
+              const cId = String(m.customerId || m.id || m.mobile || '');
+              const sch = String(m.scheme || m.type || '').toUpperCase();
+              const key = `${cId}_${m.groupId || m.groupName}`;
+              if (sch.includes('FIX')) fixedSet.add(key);
+              else if (sch.includes('AUC')) auctionSet.add(key);
+              else if (sch.includes('REG')) regularSet.add(key);
+            });
+          }
+        }
+      } catch {}
+
+      // 3. From groups.enrolledMembers
+      groups.forEach((g: any) => {
+        if (Array.isArray(g.enrolledMembers)) {
+          g.enrolledMembers.forEach((m: any) => {
+            const cId = String(m.customerId || m.id || m.mobile || '');
+            const sch = String(m.scheme || g.type || '').toUpperCase();
+            const key = `${cId}_${g.id || g.name}`;
+            if (sch.includes('FIX')) fixedSet.add(key);
+            else if (sch.includes('AUC')) auctionSet.add(key);
+            else regularSet.add(key);
           });
         }
       });
-      setFixedEnrollments(fix);
-      setRegularEnrollments(reg);
-      setAuctionEnrollments(auc);
+
+      setFixedEnrollments(fixedSet.size);
+      setRegularEnrollments(regularSet.size);
+      setAuctionEnrollments(auctionSet.size);
 
       setRecentCustomers(custs.slice(0, 4));
       setRecentLedger(ledger.slice(0, 4));
@@ -463,88 +512,126 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
         </View>
       </View>
 
-      {/* 4. Quick Actions Tiles Row (Add Group, Add Member, Record Payments, More) */}
+      {/* 4. Quick Actions Grid (Adjustable for all devices, spacious & clean) */}
       <View style={styles.quickActionsCard}>
-        <TouchableOpacity
-          style={styles.actionTile}
-          onPress={() => {
-            setNewGroupName('');
-            setNewGroupScheme('Auction');
-            setIsAddGroupModalOpen(true);
-          }}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.actionIconCircle, { backgroundColor: '#FFF8EB' }]}>
-            <Ionicons name="add" size={22} color={Colors.gold.dark} />
+        {/* Header with Title & Badge */}
+        <View style={styles.quickActionsHeader}>
+          <View style={styles.quickActionsHeaderLeft}>
+            <View style={styles.quickActionsIconBadge}>
+              <Ionicons name="flash" size={13} color="#D97706" />
+            </View>
+            <View>
+              <Text style={styles.quickActionsTitle}>Quick Actions</Text>
+              <Text style={styles.quickActionsSubtitle}>Shortcuts for daily operations</Text>
+            </View>
           </View>
-          <Text style={styles.actionTileText} numberOfLines={2}>Add Group</Text>
-        </TouchableOpacity>
+          <View style={styles.quickActionsCountPill}>
+            <Text style={styles.quickActionsCountText}>8 Shortcuts</Text>
+          </View>
+        </View>
 
-        <TouchableOpacity
-          style={styles.actionTile}
-          onPress={() => setIsEnrollModalOpen(true)}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.actionIconCircle, { backgroundColor: '#F0FDF4' }]}>
-            <Ionicons name="person-add" size={20} color="#16A34A" />
-          </View>
-          <Text style={styles.actionTileText} numberOfLines={2}>Add to Group</Text>
-        </TouchableOpacity>
+        {/* 4 × 2 Responsive Symmetrical Grid */}
+        <View style={styles.quickActionsGrid}>
+          {/* 1. Add Group */}
+          <TouchableOpacity
+            style={styles.actionTile}
+            onPress={() => {
+              setNewGroupName('');
+              setNewGroupScheme('Auction');
+              setIsAddGroupModalOpen(true);
+            }}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.actionIconCircle, { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }]}>
+              <Ionicons name="add-circle" size={24} color="#D97706" />
+            </View>
+            <Text style={styles.actionTileText} numberOfLines={2}>Add Group</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.actionTile}
-          onPress={() => navigation.navigate('AddCustomer')}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.actionIconCircle, { backgroundColor: Colors.blueSubtle }]}>
-            <Ionicons name="person-add-outline" size={20} color={Colors.blueAccent} />
-          </View>
-          <Text style={styles.actionTileText} numberOfLines={2}>Add Member</Text>
-        </TouchableOpacity>
+          {/* 2. Enroll Member */}
+          <TouchableOpacity
+            style={styles.actionTile}
+            onPress={() => setIsEnrollModalOpen(true)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.actionIconCircle, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}>
+              <Ionicons name="person-add" size={22} color="#16A34A" />
+            </View>
+            <Text style={styles.actionTileText} numberOfLines={2}>Enroll Member</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.actionTile}
-          onPress={() => navigation.navigate('ReceiptEntry')}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.actionIconCircle, { backgroundColor: Colors.successLight }]}>
-            <Ionicons name="card-outline" size={20} color={Colors.success} />
-          </View>
-          <Text style={styles.actionTileText} numberOfLines={2}>Record Payments</Text>
-        </TouchableOpacity>
+          {/* 3. Add Member (Register Customer) */}
+          <TouchableOpacity
+            style={styles.actionTile}
+            onPress={() => navigation.navigate('AddCustomer')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.actionIconCircle, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}>
+              <Ionicons name="person-add-outline" size={22} color="#2563EB" />
+            </View>
+            <Text style={styles.actionTileText} numberOfLines={2}>New Customer</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.actionTile}
-          onPress={() => navigation.navigate('StaffManagement')}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.actionIconCircle, { backgroundColor: '#EEF2FF' }]}>
-            <Ionicons name="people" size={20} color="#4338CA" />
-          </View>
-          <Text style={styles.actionTileText} numberOfLines={2}>Staff Team</Text>
-        </TouchableOpacity>
+          {/* 4. Record Payment */}
+          <TouchableOpacity
+            style={styles.actionTile}
+            onPress={() => navigation.navigate('ReceiptEntry')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.actionIconCircle, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}>
+              <Ionicons name="card" size={22} color="#059669" />
+            </View>
+            <Text style={styles.actionTileText} numberOfLines={2}>Record Payment</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.actionTile}
-          onPress={() => navigation.navigate('ConversationsList')}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.actionIconCircle, { backgroundColor: '#FDF2F8' }]}>
-            <Ionicons name="chatbubbles" size={20} color="#BE185D" />
-          </View>
-          <Text style={styles.actionTileText} numberOfLines={2}>Support Chat</Text>
-        </TouchableOpacity>
+          {/* 5. Staff Team */}
+          <TouchableOpacity
+            style={styles.actionTile}
+            onPress={() => navigation.navigate('StaffManagement')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.actionIconCircle, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}>
+              <Ionicons name="people" size={22} color="#4F46E5" />
+            </View>
+            <Text style={styles.actionTileText} numberOfLines={2}>Staff Team</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.actionTile}
-          onPress={() => navigation.navigate('Reports')}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.actionIconCircle, { backgroundColor: '#F1F5F9' }]}>
-            <Ionicons name="ellipsis-horizontal" size={20} color={Colors.navy.primary} />
-          </View>
-          <Text style={styles.actionTileText} numberOfLines={2}>More</Text>
-        </TouchableOpacity>
+          {/* 6. Support Chat */}
+          <TouchableOpacity
+            style={styles.actionTile}
+            onPress={() => navigation.navigate('ConversationsList')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.actionIconCircle, { backgroundColor: '#FDF2F8', borderColor: '#FBCFE8' }]}>
+              <Ionicons name="chatbubbles" size={22} color="#BE185D" />
+            </View>
+            <Text style={styles.actionTileText} numberOfLines={2}>Support Chat</Text>
+          </TouchableOpacity>
+
+          {/* 7. Chit Calculator */}
+          <TouchableOpacity
+            style={styles.actionTile}
+            onPress={() => navigation.navigate('ChitCalculator')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.actionIconCircle, { backgroundColor: '#FAF5FF', borderColor: '#E9D5FF' }]}>
+              <Ionicons name="calculator" size={22} color="#7C3AED" />
+            </View>
+            <Text style={styles.actionTileText} numberOfLines={2}>Calculator</Text>
+          </TouchableOpacity>
+
+          {/* 8. More Reports */}
+          <TouchableOpacity
+            style={styles.actionTile}
+            onPress={() => navigation.navigate('Reports')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.actionIconCircle, { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0' }]}>
+              <Ionicons name="bar-chart" size={22} color="#334155" />
+            </View>
+            <Text style={styles.actionTileText} numberOfLines={2}>Reports</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* 5. Enrolled Members Section */}
@@ -1511,46 +1598,101 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // 4. Quick Actions
+  // 4. Quick Actions (Spacious, modern & responsive grid)
   quickActionsCard: {
-    backgroundColor: Colors.surface,
+    backgroundColor: '#FFFFFF',
     marginHorizontal: 16,
-    marginTop: 6,
-    borderRadius: 20,
-    paddingVertical: 14,
-    paddingHorizontal: 6,
+    marginTop: 10,
+    borderRadius: 22,
+    paddingTop: 16,
+    paddingBottom: 14,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  quickActionsHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    marginBottom: 6,
+  },
+  quickActionsHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  quickActionsIconBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickActionsTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: -0.2,
+  },
+  quickActionsSubtitle: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#64748B',
+    marginTop: 0.5,
+  },
+  quickActionsCountPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    backgroundColor: '#F1F5F9',
+  },
+  quickActionsCountText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  quickActionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'flex-start',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
   },
   actionTile: {
+    width: '25%',
     alignItems: 'center',
-    flex: 1,
-    maxWidth: '20%',
-    paddingHorizontal: 2,
+    paddingHorizontal: 4,
+    marginVertical: 7,
   },
   actionIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
   actionTileText: {
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: '700',
-    color: Colors.text,
+    color: '#1E293B',
     textAlign: 'center',
-    lineHeight: 13,
-    minHeight: 26,
+    lineHeight: 13.5,
+    minHeight: 27,
   },
 
   // 5. Section Headers & Lists

@@ -438,6 +438,39 @@ export const DataSyncManager = {
       }
     }
 
+    // 3b. Add groups discovered from chitGroupMemberships
+    try {
+      const rawMem = await secureStorage.getItem('chitGroupMemberships');
+      if (rawMem) {
+        const mems = JSON.parse(rawMem);
+        if (Array.isArray(mems)) {
+          mems.forEach((m: any) => {
+            const gId = String(m.groupId || m.groupName || '').trim();
+            const gName = String(m.groupName || m.groupId || gId).trim();
+            if (gId && !isMockGroup({ id: gId, name: gName })) {
+              const low = gId.toLowerCase();
+              if (!groupMap.has(low)) {
+                groupMap.set(low, {
+                  id: gId,
+                  name: gName,
+                  type: m.scheme || (gName.toLowerCase().includes('fix') ? 'Fixed' : 'Auction'),
+                  value: Number(m.chitValue || 100000),
+                  duration: Number(m.duration || m.months || 20),
+                  currentMonth: 1,
+                  members: 20,
+                  filled: 1,
+                  status: 'ACTIVE',
+                });
+              } else {
+                const grp = groupMap.get(low);
+                if (grp) grp.filled = Math.max(grp.filled || 0, 1);
+              }
+            }
+          });
+        }
+      }
+    } catch {}
+
     // Filter all groups to ensure no mock groups exist and blacklisted groups are excluded
     const deletedGroupIds = await getDeletedGroupIds();
     const finalGroups = Array.from(groupMap.values()).filter((g) => {
