@@ -70,6 +70,7 @@ export interface IStoryViewer {
 }
 
 export interface IStory extends Document {
+  customId?: string;
   authorId: string;
   authorName: string;
   authorRole: 'ADMIN' | 'SUPER_ADMIN';
@@ -88,6 +89,7 @@ export interface IStory extends Document {
 
 const StorySchema: Schema = new Schema(
   {
+    customId: { type: String, index: true },
     authorId: { type: String, required: true },
     authorName: { type: String, required: true, default: 'Admin Desk' },
     authorRole: { type: String, default: 'ADMIN' },

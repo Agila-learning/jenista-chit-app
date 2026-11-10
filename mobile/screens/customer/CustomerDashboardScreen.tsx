@@ -388,7 +388,21 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.gold.primary} />}
     >
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
+
+      {/* Top Welcome Brand Greeting Bar */}
+      <View style={styles.topGreetingBar}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.topGreetingBrand}>JENISTA CHITS</Text>
+          <Text style={styles.topGreetingHeading}>
+            Welcome, <Text style={styles.topGreetingName}>{customerRecord?.name || user?.name || 'Valued Member'}</Text> 👋
+          </Text>
+        </View>
+        <View style={styles.activeSubscriberBadge}>
+          <Ionicons name="shield-checkmark" size={13} color="#059669" />
+          <Text style={styles.activeSubscriberBadgeText}>Verified</Text>
+        </View>
+      </View>
 
       {/* 1. Account Hero Card (Screenshot 2 Match) */}
       <View style={styles.heroCardScreenshot2}>
@@ -400,7 +414,9 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
           </View>
 
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={styles.welcomeSalutationText}>Welcome,</Text>
+            <View style={styles.welcomePillWrap}>
+              <Text style={styles.welcomeSalutationText}>WELCOME BACK</Text>
+            </View>
             <Text style={styles.clientNameScreenshot2} numberOfLines={1}>
               {customerRecord?.name || user?.name || 'Valued Member'}
             </Text>
@@ -3383,11 +3399,59 @@ const styles = StyleSheet.create({
   },
 
   // Customer Welcome & Stories Tray Styles
-  welcomeSalutationText: {
+  topGreetingBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 6,
+  },
+  topGreetingBrand: {
     fontSize: 11,
-    fontWeight: '700',
-    color: 'rgba(255, 255, 255, 0.75)',
-    letterSpacing: 0.5,
+    fontWeight: '800',
+    color: '#D7A928',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  topGreetingHeading: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: '#0F172A',
+    marginTop: 2,
+  },
+  topGreetingName: {
+    color: '#2563EB',
+  },
+  activeSubscriberBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  activeSubscriberBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#059669',
+  },
+  welcomePillWrap: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(37, 99, 235, 0.10)',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginBottom: 3,
+  },
+  welcomeSalutationText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#2563EB',
+    letterSpacing: 0.6,
   },
   storiesContainerSection: {
     backgroundColor: '#FFFFFF',
