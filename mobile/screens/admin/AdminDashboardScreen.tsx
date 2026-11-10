@@ -20,6 +20,7 @@ import { DataSyncManager, customerBelongsToScheme } from '../../services/dataSyn
 import { formatCurrency } from '../../utils/format';
 import { MobileNotificationsManager, subscribeToNotifications } from '../../services/notificationsData';
 import { secureStorage } from '../../services/storage';
+import { JenistaStoriesTray } from '../../components/chat/InstagramStoriesTray';
 
 export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { user } = useAuth();
@@ -458,6 +459,11 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
             <Text style={styles.metricSub}>Competitive Bidding</Text>
           </TouchableOpacity>
         </View>
+      </View>
+
+      {/* Jenista Chits Story Tray (Admin Broadcast & Realtime Viewers) */}
+      <View style={{ marginBottom: 14 }}>
+        <JenistaStoriesTray navigation={navigation} />
       </View>
 
       {/* 4. Quick Actions Grid (Adjustable for all devices, spacious & clean) */}

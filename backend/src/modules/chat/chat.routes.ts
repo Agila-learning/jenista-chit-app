@@ -9,10 +9,11 @@ router.get('/messages/:conversationId', ChatController.getMessages);
 router.post('/messages', ChatController.sendMessage);
 router.patch('/messages/:conversationId/read', ChatController.markAsRead);
 
-// Instagram-Style Stories Endpoints
+// Jenista Chits Stories Endpoints
 router.get('/stories', ChatController.getStories);
 router.post('/stories', ChatController.createStory);
 router.post('/stories/:id/view', ChatController.recordStoryView);
+router.get('/stories/:id/viewers', ChatController.getStoryViewers);
 router.delete('/stories/:id', ChatController.deleteStory);
 
 export default router;

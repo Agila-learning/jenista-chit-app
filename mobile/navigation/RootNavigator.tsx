@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, ActivityIndicator, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createDrawerNavigator } from '@react-navigation/drawer';
@@ -38,6 +39,10 @@ import { ChatScreen } from '../screens/chat/ChatScreen';
 import { ConversationsListScreen } from '../screens/chat/ConversationsListScreen';
 import { StaffManagementScreen } from '../screens/admin/StaffManagementScreen';
 
+const Stack = createNativeStackNavigator();
+const Drawer = createDrawerNavigator();
+const Tab = createBottomTabNavigator();
+
 const APP_HEADER_STYLE = {
   backgroundColor: '#FFFFFF',
   borderBottomColor: 'rgba(215, 169, 40, 0.25)',
@@ -49,28 +54,104 @@ const APP_HEADER_STYLE = {
   shadowRadius: 8,
 };
 
-const APP_TAB_BAR_STYLE = {
-  backgroundColor: '#FFFFFF',
-  borderTopColor: '#E2E8F0',
-  borderTopWidth: 1,
-  height: Platform.OS === 'ios' ? 88 : 70,
-  paddingTop: 6,
-  paddingBottom: Platform.OS === 'ios' ? 24 : 6,
-  shadowColor: '#102B63',
-  shadowOffset: { width: 0, height: -3 },
-  shadowOpacity: 0.05,
-  shadowRadius: 6,
-  elevation: 8,
-};
-
-const Stack = createNativeStackNavigator();
-const Drawer = createDrawerNavigator();
-const Tab = createBottomTabNavigator();
-
 // Hidden options for secondary screens inside Tab Navigators so they take ZERO width/space
 const HIDDEN_TAB_BAR_OPTIONS = {
   tabBarButton: () => null,
   tabBarItemStyle: { display: 'none' as const },
+};
+
+// ==========================================
+// CUSTOM CLEAN BOTTOM TAB BAR COMPONENT
+// Distributes only visible primary tabs evenly across screen width (100% / 5 = 20% each),
+// preventing secondary screens from squishing tabs or cutting off label text.
+// ==========================================
+const CustomCleanTabBar = ({ state, descriptors, navigation }: any) => {
+  const insets = useSafeAreaInsets();
+  
+  // Filter out any hidden screens
+  const visibleRoutes = state.routes.filter((route: any) => {
+    const { options } = descriptors[route.key];
+    return options.tabBarItemStyle?.display !== 'none';
+  });
+
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'ios' ? 24 : 8);
+  const barHeight = 62 + bottomInset;
+
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        backgroundColor: '#FFFFFF',
+        borderTopWidth: 1,
+        borderTopColor: '#E2E8F0',
+        height: barHeight,
+        paddingTop: 8,
+        paddingBottom: bottomInset,
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: -3 },
+        shadowOpacity: 0.08,
+        shadowRadius: 6,
+        elevation: 10,
+      }}
+    >
+      {visibleRoutes.map((route: any) => {
+        const isFocused = state.routes[state.index]?.name === route.name;
+        const { options } = descriptors[route.key];
+        const label =
+          options.tabBarLabel !== undefined
+            ? options.tabBarLabel
+            : options.title !== undefined
+            ? options.title
+            : route.name;
+
+        const color = isFocused ? '#2563EB' : '#64748B';
+
+        const onPress = () => {
+          const event = navigation.emit({
+            type: 'tabPress',
+            target: route.key,
+            canPreventDefault: true,
+          });
+
+          if (!isFocused && !event.defaultPrevented) {
+            navigation.navigate(route.name);
+          }
+        };
+
+        return (
+          <TouchableOpacity
+            key={route.key}
+            accessibilityRole="button"
+            accessibilityState={isFocused ? { selected: true } : {}}
+            onPress={onPress}
+            activeOpacity={0.7}
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingVertical: 2,
+            }}
+          >
+            {options.tabBarIcon ? (
+              options.tabBarIcon({ focused: isFocused, color, size: 22 })
+            ) : null}
+            <Text
+              numberOfLines={1}
+              style={{
+                fontSize: 11,
+                fontWeight: isFocused ? '800' : '600',
+                color,
+                marginTop: 3,
+                textAlign: 'center',
+              }}
+            >
+              {label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
 };
 
 // ==========================================
@@ -80,22 +161,13 @@ const HIDDEN_TAB_BAR_OPTIONS = {
 const AdminBottomTabs = ({ navigation }: any) => {
   return (
     <Tab.Navigator
+      tabBar={(props) => <CustomCleanTabBar {...props} />}
       screenOptions={{
         headerShown: true,
         headerStyle: APP_HEADER_STYLE,
         headerTintColor: '#0F172A',
         headerTitleStyle: { fontWeight: '800', fontSize: 17, color: '#0F172A' },
         headerRight: () => null,
-        tabBarStyle: APP_TAB_BAR_STYLE,
-        tabBarActiveTintColor: '#2563EB',
-        tabBarInactiveTintColor: '#64748B',
-        tabBarItemStyle: { paddingTop: 3, paddingBottom: 3, justifyContent: 'center', alignItems: 'center' },
-        tabBarLabelStyle: {
-          fontSize: 10.5,
-          fontWeight: '700',
-          marginTop: 2,
-          marginBottom: 0,
-        },
         headerLeft: () => (
           <TouchableOpacity
             style={{ paddingLeft: 16, paddingRight: 8 }}
@@ -339,22 +411,13 @@ const AdminDrawer = () => {
 const StaffBottomTabs = ({ navigation }: any) => {
   return (
     <Tab.Navigator
+      tabBar={(props) => <CustomCleanTabBar {...props} />}
       screenOptions={{
         headerShown: true,
         headerStyle: APP_HEADER_STYLE,
         headerTintColor: '#0F172A',
         headerTitleStyle: { fontWeight: '800', fontSize: 17, color: '#0F172A' },
         headerRight: () => null,
-        tabBarStyle: APP_TAB_BAR_STYLE,
-        tabBarActiveTintColor: '#2563EB',
-        tabBarInactiveTintColor: '#64748B',
-        tabBarItemStyle: { paddingTop: 3, paddingBottom: 3, justifyContent: 'center', alignItems: 'center' },
-        tabBarLabelStyle: {
-          fontSize: 10.5,
-          fontWeight: '700',
-          marginTop: 2,
-          marginBottom: 0,
-        },
         headerLeft: () => (
           <TouchableOpacity
             style={{ paddingLeft: 16, paddingRight: 8 }}
@@ -528,32 +591,33 @@ const StaffDrawer = () => {
 // ==========================================
 // 5. SUBSCRIBER / CUSTOMER BOTTOM TABS
 // ==========================================
-const CustomerBottomTabs = () => {
+const CustomerBottomTabs = ({ navigation }: any) => {
+  const renderCustomerBackBtn = () => (
+    <TouchableOpacity
+      style={{ paddingLeft: 16, paddingRight: 8, paddingVertical: 4 }}
+      onPress={() => navigation.navigate('CustomerHomeTab')}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+    >
+      <Ionicons name="arrow-back" size={24} color="#0F172A" />
+    </TouchableOpacity>
+  );
+
   return (
     <Tab.Navigator
+      tabBar={(props) => <CustomCleanTabBar {...props} />}
       screenOptions={{
         headerShown: true,
         headerStyle: APP_HEADER_STYLE,
         headerTintColor: '#0F172A',
         headerTitleStyle: { fontWeight: '800', fontSize: 17, color: '#0F172A' },
         headerRight: () => null,
-        tabBarStyle: APP_TAB_BAR_STYLE,
-        tabBarActiveTintColor: '#2563EB',
-        tabBarInactiveTintColor: '#64748B',
-        tabBarItemStyle: { paddingTop: 3, paddingBottom: 3, justifyContent: 'center', alignItems: 'center' },
-        tabBarLabelStyle: {
-          fontSize: 10.5,
-          fontWeight: '700',
-          marginTop: 2,
-          marginBottom: 0,
-        },
       }}
     >
       <Tab.Screen
         name="CustomerHomeTab"
         component={CustomerDashboardScreen}
         options={{
-          title: 'My Account',
+          title: 'Jenista Chits',
           tabBarLabel: 'Home',
           tabBarIcon: ({ color }) => <Ionicons name="home" size={21} color={color} />,
         }}
@@ -564,6 +628,7 @@ const CustomerBottomTabs = () => {
         options={{
           title: 'Customer Support Desk',
           tabBarLabel: 'Support Chat',
+          headerLeft: renderCustomerBackBtn,
           tabBarIcon: ({ color }) => <Ionicons name="chatbubbles" size={21} color={color} />,
         }}
       />
@@ -573,6 +638,7 @@ const CustomerBottomTabs = () => {
         options={{
           title: 'Digital Passbook',
           tabBarLabel: 'Passbook',
+          headerLeft: renderCustomerBackBtn,
           tabBarIcon: ({ color }) => <Ionicons name="book" size={21} color={color} />,
         }}
       />
@@ -582,6 +648,7 @@ const CustomerBottomTabs = () => {
         options={{
           title: 'Installment Pay Desk',
           tabBarLabel: 'Payments',
+          headerLeft: renderCustomerBackBtn,
           tabBarIcon: ({ color }) => <Ionicons name="cash" size={21} color={color} />,
         }}
       />
@@ -591,6 +658,7 @@ const CustomerBottomTabs = () => {
         options={{
           title: 'Subscriber Profile',
           tabBarLabel: 'Profile',
+          headerLeft: renderCustomerBackBtn,
           tabBarIcon: ({ color }) => <Ionicons name="person" size={21} color={color} />,
         }}
       />
@@ -601,6 +669,7 @@ const CustomerBottomTabs = () => {
         component={NotificationsScreen}
         options={{
           title: 'Notices & Announcements',
+          headerLeft: renderCustomerBackBtn,
           ...HIDDEN_TAB_BAR_OPTIONS,
         }}
       />
@@ -609,6 +678,7 @@ const CustomerBottomTabs = () => {
         component={ChitCalculatorScreen}
         options={{
           title: 'Chit Scheme Calculator',
+          headerLeft: renderCustomerBackBtn,
           ...HIDDEN_TAB_BAR_OPTIONS,
         }}
       />

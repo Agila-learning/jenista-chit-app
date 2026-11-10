@@ -60,7 +60,15 @@ ChatMessageSchema.index({ conversationId: 1, createdAt: 1 });
 
 export const ChatMessage = mongoose.model<IChatMessage>('ChatMessage', ChatMessageSchema);
 
-// --- Story Model for Instagram-style Stories ---
+// --- Story Model for Jenista Chits Stories ---
+export interface IStoryViewer {
+  viewerId: string;
+  viewerName: string;
+  viewerRole: string;
+  viewerPhone?: string;
+  viewedAt: Date;
+}
+
 export interface IStory extends Document {
   authorId: string;
   authorName: string;
@@ -70,7 +78,9 @@ export interface IStory extends Document {
   caption: string;
   mediaUrl?: string;
   viewers: string[];
+  viewersList: IStoryViewer[];
   viewCount: number;
+  gradient?: string[];
   expiresAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -90,7 +100,17 @@ const StorySchema: Schema = new Schema(
     caption: { type: String, default: '' },
     mediaUrl: { type: String, default: '' },
     viewers: [{ type: String }],
+    viewersList: [
+      {
+        viewerId: { type: String, required: true },
+        viewerName: { type: String, default: 'Member' },
+        viewerRole: { type: String, default: 'CUSTOMER' },
+        viewerPhone: { type: String, default: '' },
+        viewedAt: { type: Date, default: Date.now },
+      },
+    ],
     viewCount: { type: Number, default: 0 },
+    gradient: [{ type: String }],
     expiresAt: {
       type: Date,
       default: () => new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours

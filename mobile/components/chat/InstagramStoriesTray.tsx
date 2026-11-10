@@ -10,11 +10,12 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 import { useAuth } from '../../store/AuthContext';
-import { ChitStory, StoriesManager, subscribeToStories } from '../../services/storiesService';
+import { ChitStory, StoryViewer, StoriesManager, subscribeToStories } from '../../services/storiesService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -31,6 +32,12 @@ export const InstagramStoriesTray: React.FC<{ navigation?: any }> = ({ navigatio
   const [newCaption, setNewCaption] = useState('');
   const [newCategory, setNewCategory] = useState<ChitStory['category']>('AUCTION_RESULT');
   const [isPublishing, setIsPublishing] = useState(false);
+
+  // Realtime Viewers Modal State
+  const [isViewersModalOpen, setIsViewersModalOpen] = useState(false);
+  const [viewersList, setViewersList] = useState<StoryViewer[]>([]);
+  const [viewersLoading, setViewersLoading] = useState(false);
+  const [viewerSearch, setViewerSearch] = useState('');
 
   // Story Auto-Advance Timer
   const [progress, setProgress] = useState(0);
@@ -50,16 +57,20 @@ export const InstagramStoriesTray: React.FC<{ navigation?: any }> = ({ navigatio
     return () => unsub();
   }, []);
 
-  // Story progress timer
+  // Story progress timer (paused when viewers modal is open)
   useEffect(() => {
     if (selectedStoryIndex === null) {
       setProgress(0);
       return;
     }
 
+    if (isViewersModalOpen) {
+      return; // Pause progress when viewing realtime viewers
+    }
+
     const currentStory = stories[selectedStoryIndex];
     if (currentStory && user?.id) {
-      StoriesManager.markStoryViewed(currentStory.id, user.id);
+      StoriesManager.markStoryViewed(currentStory.id, user);
     }
 
     setProgress(0);
@@ -80,7 +91,23 @@ export const InstagramStoriesTray: React.FC<{ navigation?: any }> = ({ navigatio
     }, 200); // 5 seconds total
 
     return () => clearInterval(interval);
-  }, [selectedStoryIndex, stories.length, user?.id]);
+  }, [selectedStoryIndex, stories.length, user?.id, isViewersModalOpen]);
+
+  const handleOpenViewers = async () => {
+    if (selectedStoryIndex === null || !stories[selectedStoryIndex]) return;
+    const storyId = stories[selectedStoryIndex].id;
+    setIsViewersModalOpen(true);
+    setViewersLoading(true);
+    setViewerSearch('');
+    try {
+      const viewers = await StoriesManager.getViewedMembers(storyId);
+      setViewersList(viewers);
+    } catch {
+      setViewersList([]);
+    } finally {
+      setViewersLoading(false);
+    }
+  };
 
   const handleCreateStory = async () => {
     if (!newTitle.trim() || !newCaption.trim()) {
@@ -94,12 +121,13 @@ export const InstagramStoriesTray: React.FC<{ navigation?: any }> = ({ navigatio
         title: newTitle.trim(),
         caption: newCaption.trim(),
         category: newCategory,
-        authorName: user?.name || 'Administrator',
+        authorName: user?.name || 'Jenista Administrator',
+        authorRole: user?.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'ADMIN',
       });
       setIsAddModalOpen(false);
       setNewTitle('');
       setNewCaption('');
-      Alert.alert('Story Published', 'Your story is now live for all chit members and staff to view!');
+      Alert.alert('Story Published', 'Your Jenista Chits Story is now live for all chit members and staff to view!');
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Failed to publish story');
     } finally {
@@ -115,6 +143,7 @@ export const InstagramStoriesTray: React.FC<{ navigation?: any }> = ({ navigatio
         style: 'destructive',
         onPress: async () => {
           setSelectedStoryIndex(null);
+          setIsViewersModalOpen(false);
           await StoriesManager.deleteStory(storyId);
         },
       },
@@ -308,12 +337,17 @@ export const InstagramStoriesTray: React.FC<{ navigation?: any }> = ({ navigatio
 
                 {/* Viewers & Timestamp */}
                 <View style={styles.storyMetaRow}>
-                  <View style={styles.viewersPill}>
+                  <TouchableOpacity
+                    style={styles.viewersPill}
+                    onPress={handleOpenViewers}
+                    activeOpacity={0.8}
+                  >
                     <Ionicons name="eye" size={13} color="#FFFFFF" />
                     <Text style={styles.viewersPillText}>
                       {stories[selectedStoryIndex].viewCount || 1} Views
                     </Text>
-                  </View>
+                    <Ionicons name="chevron-forward" size={11} color="rgba(255,255,255,0.7)" style={{ marginLeft: 2 }} />
+                  </TouchableOpacity>
                   <Text style={styles.storyDateText}>
                     Posted: {new Date(stories[selectedStoryIndex].createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </Text>
@@ -375,7 +409,122 @@ export const InstagramStoriesTray: React.FC<{ navigation?: any }> = ({ navigatio
         </Modal>
       )}
 
-      {/* 4. Admin Post Story Modal */}
+      {/* 3.1. Realtime Viewed Members List Modal */}
+      <Modal
+        visible={isViewersModalOpen}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setIsViewersModalOpen(false)}
+      >
+        <View style={styles.viewersModalOverlay}>
+          <View style={styles.viewersModalCard}>
+            <View style={styles.viewersModalHeader}>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.viewersModalTitle}>Story Viewers</Text>
+                  <View style={styles.viewersCountBadge}>
+                    <Text style={styles.viewersCountText}>{viewersList.length}</Text>
+                  </View>
+                </View>
+                <Text style={styles.viewersModalSub}>
+                  Members and staff who viewed this announcement in real-time
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsViewersModalOpen(false)}
+                style={styles.closeViewersBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close" size={22} color="#0F172A" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Search Input for Viewers */}
+            <View style={styles.viewerSearchWrap}>
+              <Ionicons name="search" size={16} color="#94A3B8" />
+              <TextInput
+                style={styles.viewerSearchInput}
+                placeholder="Search viewed members by name or mobile..."
+                placeholderTextColor="#94A3B8"
+                value={viewerSearch}
+                onChangeText={setViewerSearch}
+              />
+              {viewerSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setViewerSearch('')} style={{ padding: 4 }}>
+                  <Ionicons name="close-circle" size={16} color="#94A3B8" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Viewers List */}
+            {viewersLoading ? (
+              <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                <ActivityIndicator size="small" color="#2563EB" />
+                <Text style={{ marginTop: 8, fontSize: 12, color: '#64748B' }}>Loading real-time viewers...</Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.viewersScrollView} showsVerticalScrollIndicator={false}>
+                {viewersList
+                  .filter((v) => {
+                    if (!viewerSearch.trim()) return true;
+                    const q = viewerSearch.toLowerCase().trim();
+                    return (
+                      (v.viewerName && v.viewerName.toLowerCase().includes(q)) ||
+                      (v.viewerPhone && v.viewerPhone.includes(q)) ||
+                      (v.viewerRole && v.viewerRole.toLowerCase().includes(q))
+                    );
+                  })
+                  .map((v, i) => {
+                    const initial = (v.viewerName || 'M').charAt(0).toUpperCase();
+                    const isStaffOrAdmin = v.viewerRole === 'ADMIN' || v.viewerRole === 'STAFF';
+                    return (
+                      <View key={`${v.viewerId}-${i}`} style={styles.viewerItemRow}>
+                        <View style={[styles.viewerAvatar, { backgroundColor: isStaffOrAdmin ? '#DBEAFE' : '#FEF3C7' }]}>
+                          <Text style={[styles.viewerAvatarText, { color: isStaffOrAdmin ? '#1E40AF' : '#92400E' }]}>
+                            {initial}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={styles.viewerNameText} numberOfLines={1}>{v.viewerName}</Text>
+                            <View style={[styles.viewerRoleTag, { backgroundColor: isStaffOrAdmin ? '#EFF6FF' : '#F0FDF4' }]}>
+                              <Text style={[styles.viewerRoleText, { color: isStaffOrAdmin ? '#2563EB' : '#16A34A' }]}>
+                                {v.viewerRole || 'CUSTOMER'}
+                              </Text>
+                            </View>
+                          </View>
+                          {v.viewerPhone ? (
+                            <Text style={styles.viewerPhoneText}>📞 {v.viewerPhone}</Text>
+                          ) : null}
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={styles.viewerTimeText}>
+                            {new Date(v.viewedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </Text>
+                          <Text style={styles.viewerDateText}>
+                            {new Date(v.viewedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+
+                {viewersList.length === 0 && (
+                  <View style={styles.emptyViewersBox}>
+                    <Ionicons name="eye-outline" size={32} color="#CBD5E1" />
+                    <Text style={styles.emptyViewersTitle}>No Members Viewed Yet</Text>
+                    <Text style={styles.emptyViewersSub}>
+                      Subscribers and staff who open this story announcement will be recorded here in real-time.
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* 4. Admin Post Jenista Chits Story Modal */}
       <Modal
         visible={isAddModalOpen}
         transparent={true}
@@ -386,7 +535,7 @@ export const InstagramStoriesTray: React.FC<{ navigation?: any }> = ({ navigatio
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>Post Instagram Story</Text>
+                <Text style={styles.modalTitle}>Post Jenista Chits Story</Text>
                 <Text style={styles.modalSubtitle}>
                   Publish announcements, auction results, or notices viewable by all members.
                 </Text>
@@ -857,5 +1006,150 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#FFFFFF',
   },
+
+  // Realtime Viewers Modal Styles
+  viewersModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    justifyContent: 'flex-end',
+  },
+  viewersModalCard: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    maxHeight: '75%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 20,
+  },
+  viewersModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  viewersModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  viewersCountBadge: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  viewersCountText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#2563EB',
+  },
+  viewersModalSub: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  closeViewersBtn: {
+    padding: 4,
+    marginLeft: 8,
+  },
+  viewerSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginVertical: 14,
+  },
+  viewerSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0F172A',
+    fontWeight: '600',
+  },
+  viewersScrollView: {
+    maxHeight: 340,
+  },
+  viewerItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F8FAFC',
+  },
+  viewerAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewerAvatarText: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  viewerNameText: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  viewerRoleTag: {
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+  },
+  viewerRoleText: {
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  viewerPhoneText: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  viewerTimeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  viewerDateText: {
+    fontSize: 10,
+    color: '#94A3B8',
+    marginTop: 1,
+  },
+  emptyViewersBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  emptyViewersTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#334155',
+    marginTop: 12,
+  },
+  emptyViewersSub: {
+    fontSize: 12,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 17,
+  },
 });
+
+export const JenistaStoriesTray = InstagramStoriesTray;
 

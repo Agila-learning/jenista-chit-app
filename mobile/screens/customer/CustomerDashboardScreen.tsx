@@ -14,6 +14,8 @@ import {
   Linking,
   Image,
   useWindowDimensions,
+  Share,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
@@ -39,6 +41,7 @@ import {
   SystemNotification,
   Announcement,
 } from '../../services/notificationsData';
+import { JenistaStoriesTray } from '../../components/chat/InstagramStoriesTray';
 
 export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { user, logout } = useAuth();
@@ -83,6 +86,32 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
 
   const [showQrModal, setShowQrModal] = useState<any | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [isReferModalOpen, setIsReferModalOpen] = useState(false);
+
+  // Compute accurate upcoming installment due for the current month
+  const upcomingDueThisMonth = useMemo(() => {
+    if (!chits || chits.length === 0) return 0;
+    const sumMonthly = chits.reduce((acc, c: any) => acc + Number(c.monthlyInstallment || 5000), 0);
+    if (pendingDues > 0) {
+      return Math.min(pendingDues, sumMonthly);
+    }
+    return 0;
+  }, [chits, pendingDues]);
+
+  const handleShareReferral = async () => {
+    const rawId = (user?.phone || user?.id || '8921').replace(/\D/g, '');
+    const refCode = `JC-${rawId.slice(-4) || '8921'}`;
+    const refLink = `https://jenistachits.com/register?ref=${refCode}`;
+    try {
+      await Share.share({
+        title: 'Join Jenista Chit Funds',
+        message: `Namaste! Join Jenista Chit Funds for safe, transparent savings with guaranteed milestone dividends. Use my referral code ${refCode} to register: ${refLink}`,
+        url: refLink,
+      });
+    } catch {
+      copyToClipboard(refLink, 'referral-link');
+    }
+  };
 
   const [selectedRegularCat, setSelectedRegularCat] = useState<number>(100000);
   const [selectedFixedCat, setSelectedFixedCat] = useState<number>(100000);
@@ -371,8 +400,9 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
           </View>
 
           <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.welcomeSalutationText}>Welcome,</Text>
             <Text style={styles.clientNameScreenshot2} numberOfLines={1}>
-              {customerRecord?.name || user?.name || 'Customer Dem'}
+              {customerRecord?.name || user?.name || 'Valued Member'}
             </Text>
             <View style={styles.clientMetaRow}>
               <Ionicons name="card-outline" size={12} color="#102B63" />
@@ -399,11 +429,11 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
 
             <TouchableOpacity
               style={styles.heroReferBtn}
-              onPress={() => copyToClipboard(`https://jenistachits.com/register?ref=${user?.id}`, 'ref-link')}
+              onPress={() => setIsReferModalOpen(true)}
               activeOpacity={0.8}
             >
-              <Ionicons name="document-text-outline" size={14} color="#102B63" />
-              <Text style={styles.heroReferText}>Refer</Text>
+              <Ionicons name="gift-outline" size={14} color="#102B63" />
+              <Text style={styles.heroReferText}>Refer & Earn</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.heroLogoutBtn} onPress={logout} activeOpacity={0.8}>
@@ -411,6 +441,21 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
             </TouchableOpacity>
           </View>
         </View>
+      </View>
+
+      {/* 1.1 Jenista Chits Stories Tray (Where customer sees admin posted stories) */}
+      <View style={styles.storiesContainerSection}>
+        <View style={styles.storiesSectionHeader}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Ionicons name="sparkles" size={14} color="#D7A928" />
+            <Text style={styles.storiesSectionTitle}>JENISTA CHITS STORIES</Text>
+          </View>
+          <View style={styles.storiesLiveBadge}>
+            <View style={styles.storiesLiveDot} />
+            <Text style={styles.storiesLiveText}>UPDATES</Text>
+          </View>
+        </View>
+        <JenistaStoriesTray navigation={navigation} />
       </View>
 
       {/* 4-Stat Metric Cards Grid (Screenshot 2 Match) */}
@@ -476,7 +521,7 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
           onPress={() => {
             if (chits.length > 0) {
               setPaymentModalChit(chits[0]);
-              setPayAmount(String(pendingDues > 0 ? pendingDues : (chits[0]?.monthlyInstallment || 5000)));
+              setPayAmount(String(upcomingDueThisMonth > 0 ? upcomingDueThisMonth : (chits[0]?.monthlyInstallment || 5000)));
             }
           }}
         >
@@ -486,7 +531,7 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
           <View style={{ flex: 1, marginLeft: 10 }}>
             <Text style={styles.metricLabelScreenshot2}>NEXT DUE</Text>
             <Text style={[styles.metricValScreenshot2, { color: '#D97706' }]}>
-              {formatCurrency(pendingDues > 0 ? pendingDues : (chits[0]?.monthlyInstallment || 0))}
+              {formatCurrency(upcomingDueThisMonth > 0 ? upcomingDueThisMonth : (chits[0]?.monthlyInstallment || 0))}
             </Text>
           </View>
           <View style={[styles.chevronCircle, { backgroundColor: '#FFFBEB' }]}>
@@ -597,17 +642,28 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
           )}
 
           {/* Quick Pay CTA Bar when due */}
-          {pendingDues > 0 && (
+          {upcomingDueThisMonth > 0 ? (
             <View style={styles.alertBanner}>
               <Ionicons name="information-circle" size={20} color="#c2410c" />
               <View style={{ flex: 1 }}>
                 <Text style={styles.alertTitle}>Installment Payment Due</Text>
                 <Text style={styles.alertText}>
-                  You have {formatCurrency(pendingDues)} pending for this month. Pay online via UPI or Bank Transfer.
+                  You have {formatCurrency(upcomingDueThisMonth)} due for this month (Upcoming Due: 15th). Pay online via UPI or Bank Transfer.
+                  {pendingDues > upcomingDueThisMonth && ` (Total balance: ${formatCurrency(pendingDues)})`}
                 </Text>
               </View>
             </View>
-          )}
+          ) : pendingDues > 0 ? (
+            <View style={styles.alertBanner}>
+              <Ionicons name="information-circle" size={20} color="#c2410c" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.alertTitle}>Installment Payment Due</Text>
+                <Text style={styles.alertText}>
+                  You have {formatCurrency(pendingDues)} outstanding dues. Pay online via UPI or Bank Transfer.
+                </Text>
+              </View>
+            </View>
+          ) : null}
 
           {/* Section: My Chit Groups */}
           <View style={styles.sectionHeader}>
@@ -1734,6 +1790,93 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
                 })
               )}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Refer & Earn Modal */}
+      <Modal
+        visible={isReferModalOpen}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setIsReferModalOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.referModalCard}>
+            <View style={styles.referModalHeader}>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="gift" size={20} color="#D7A928" />
+                  <Text style={styles.referModalTitle}>Refer & Earn Dividends</Text>
+                </View>
+                <Text style={styles.referModalSub}>
+                  Invite friends to join Jenista Chit Funds and receive bonus payouts!
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsReferModalOpen(false)}
+                style={{ padding: 4 }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close" size={22} color="#0F172A" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.referCardBody}>
+              {/* Gift Badge */}
+              <View style={styles.referGiftBadgeBox}>
+                <Ionicons name="sparkles" size={24} color="#D7A928" />
+                <Text style={styles.referRewardText}>Earn ₹500 Bonus Dividend</Text>
+                <Text style={styles.referRewardSub}>
+                  Credited directly to your active chit ledger when your referred member enrolls!
+                </Text>
+              </View>
+
+              {/* Unique Code Box */}
+              <Text style={styles.referCodeLabel}>YOUR EXCLUSIVE REFERRAL CODE</Text>
+              <View style={styles.referCodeBox}>
+                <Text style={styles.referCodeText}>
+                  {`JC-${((user?.phone || user?.id || '8921').replace(/\D/g, '')).slice(-4) || '8921'}`}
+                </Text>
+                <TouchableOpacity
+                  style={styles.copyCodeBtn}
+                  onPress={() => {
+                    const code = `JC-${((user?.phone || user?.id || '8921').replace(/\D/g, '')).slice(-4) || '8921'}`;
+                    copyToClipboard(code, 'ref-code');
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="copy-outline" size={16} color="#102B63" />
+                  <Text style={styles.copyCodeBtnText}>Copy</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Share via Native Apps Button */}
+              <TouchableOpacity
+                style={styles.shareReferralBtn}
+                onPress={handleShareReferral}
+                activeOpacity={0.88}
+              >
+                <Ionicons name="share-social" size={18} color="#FFFFFF" />
+                <Text style={styles.shareReferralBtnText}>Share via WhatsApp / Social</Text>
+              </TouchableOpacity>
+
+              {/* 3 Step Workflow */}
+              <View style={styles.referWorkflowBox}>
+                <View style={styles.referStepRow}>
+                  <View style={styles.stepNumBubble}><Text style={styles.stepNumText}>1</Text></View>
+                  <Text style={styles.stepDescText}>Share your link or referral code with relatives and friends.</Text>
+                </View>
+                <View style={styles.referStepRow}>
+                  <View style={styles.stepNumBubble}><Text style={styles.stepNumText}>2</Text></View>
+                  <Text style={styles.stepDescText}>They download the app or register via link on Web.</Text>
+                </View>
+                <View style={styles.referStepRow}>
+                  <View style={styles.stepNumBubble}><Text style={styles.stepNumText}>3</Text></View>
+                  <Text style={styles.stepDescText}>You both unlock dividend credits on their first installment.</Text>
+                </View>
+              </View>
+            </View>
           </View>
         </View>
       </Modal>
@@ -3237,6 +3380,215 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#FFFFFF',
     marginTop: 1,
+  },
+
+  // Customer Welcome & Stories Tray Styles
+  welcomeSalutationText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.75)',
+    letterSpacing: 0.5,
+  },
+  storiesContainerSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingVertical: 10,
+    marginBottom: 12,
+    shadowColor: '#102B63',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  storiesSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 6,
+  },
+  storiesSectionTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#102B63',
+    letterSpacing: 0.6,
+  },
+  storiesLiveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  storiesLiveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#D97706',
+  },
+  storiesLiveText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#92400E',
+  },
+
+  // Refer & Earn Modal Styles
+  referModalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 20,
+    width: '100%',
+    maxWidth: 420,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  referModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  referModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  referModalSub: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 3,
+    lineHeight: 16,
+  },
+  referCardBody: {
+    paddingTop: 16,
+  },
+  referGiftBadgeBox: {
+    backgroundColor: '#FEF9E7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 16,
+    padding: 14,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  referRewardText: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#92400E',
+    marginTop: 4,
+  },
+  referRewardSub: {
+    fontSize: 11,
+    color: '#A16207',
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 15,
+  },
+  referCodeLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#64748B',
+    letterSpacing: 0.6,
+    marginBottom: 6,
+  },
+  referCodeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    borderStyle: 'dashed',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginBottom: 14,
+  },
+  referCodeText: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#102B63',
+    letterSpacing: 2,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  copyCodeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  copyCodeBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#1D4ED8',
+  },
+  shareReferralBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#102B63',
+    paddingVertical: 13,
+    borderRadius: 14,
+    shadowColor: '#102B63',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+    marginBottom: 16,
+  },
+  shareReferralBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  referWorkflowBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 12,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  referStepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  stepNumBubble: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#DBEAFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepNumText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#1D4ED8',
+  },
+  stepDescText: {
+    flex: 1,
+    fontSize: 11,
+    color: '#475569',
+    lineHeight: 15,
   },
 });
 

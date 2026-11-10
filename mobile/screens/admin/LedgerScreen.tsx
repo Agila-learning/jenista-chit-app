@@ -425,29 +425,31 @@ export const LedgerScreen: React.FC<{ route?: any; navigation?: any }> = ({ rout
         })}
       </View>
 
-      {/* User-Friendly Multi-Criteria Filters (Structured Multi-Tier Layout) */}
+      {/* User-Friendly Multi-Criteria Filters (Structured 3-Tier Aligned Layout) */}
       <View style={styles.subFilterSection}>
-        {/* Row 1: Payment Mode Chips with Clear Reset Option */}
+        {/* Tier 1: Payment Mode Chips with Clear Reset Option */}
         <View style={styles.filterRowWrap}>
           <View style={styles.filterGroupHeader}>
             <Ionicons name="card-outline" size={14} color={Colors.primary[600]} />
             <Text style={styles.filterGroupLabel}>Mode:</Text>
           </View>
-          {(['ALL', 'Cash', 'UPI', 'Bank Transfer'] as const).map((mode) => {
-            const active = paymentModeFilter === mode;
-            return (
-              <TouchableOpacity
-                key={`mode-${mode}`}
-                style={[styles.subFilterPill, active && styles.subFilterPillActive]}
-                onPress={() => setPaymentModeFilter(mode)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.subFilterPillText, active && styles.subFilterPillTextActive]}>
-                  {mode === 'ALL' ? 'All' : mode}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {(['ALL', 'Cash', 'UPI', 'Bank Transfer'] as const).map((mode) => {
+              const active = paymentModeFilter === mode;
+              return (
+                <TouchableOpacity
+                  key={`mode-${mode}`}
+                  style={[styles.subFilterPill, active && styles.subFilterPillActive]}
+                  onPress={() => setPaymentModeFilter(mode)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.subFilterPillText, active && styles.subFilterPillTextActive]}>
+                    {mode === 'ALL' ? 'All' : mode}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
 
           {/* Quick Clear All Button if any filter is active */}
           {(activeTab !== 'ALL' || paymentModeFilter !== 'ALL' || planFilter !== 'ALL' || dateFilter !== 'ALL' || search.length > 0) && (
@@ -468,52 +470,59 @@ export const LedgerScreen: React.FC<{ route?: any; navigation?: any }> = ({ rout
           )}
         </View>
 
-        {/* Row 2: Scheme Plans & Date Range Chips */}
-        <View style={[styles.filterRowWrap, { marginTop: 6 }]}>
+        {/* Tier 2: Scheme Plans */}
+        <View style={[styles.filterRowWrap, { marginTop: 8 }]}>
           <View style={styles.filterGroupHeader}>
             <Ionicons name="layers-outline" size={14} color={Colors.primary[600]} />
             <Text style={styles.filterGroupLabel}>Plan:</Text>
           </View>
-          {(['ALL', 'Regular', 'Fixed', 'Auction'] as const).map((plan) => {
-            const active = planFilter === plan;
-            return (
-              <TouchableOpacity
-                key={`plan-${plan}`}
-                style={[styles.subFilterPill, active && styles.subFilterPillActive]}
-                onPress={() => setPlanFilter(plan)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.subFilterPillText, active && styles.subFilterPillTextActive]}>
-                  {plan}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {(['ALL', 'Regular', 'Fixed', 'Auction'] as const).map((plan) => {
+              const active = planFilter === plan;
+              return (
+                <TouchableOpacity
+                  key={`plan-${plan}`}
+                  style={[styles.subFilterPill, active && styles.subFilterPillActive]}
+                  onPress={() => setPlanFilter(plan)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.subFilterPillText, active && styles.subFilterPillTextActive]}>
+                    {plan === 'ALL' ? 'All Plans' : plan}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
 
-          <View style={[styles.filterGroupHeader, { marginLeft: 8 }]}>
+        {/* Tier 3: Date Range */}
+        <View style={[styles.filterRowWrap, { marginTop: 8 }]}>
+          <View style={styles.filterGroupHeader}>
             <Ionicons name="calendar-outline" size={14} color={Colors.primary[600]} />
             <Text style={styles.filterGroupLabel}>Date:</Text>
           </View>
-          {([
-            { id: 'ALL', label: 'All' },
-            { id: 'TODAY', label: 'Today' },
-            { id: 'WEEK', label: '7D' },
-            { id: 'MONTH', label: 'Month' },
-          ] as const).map((d) => {
-            const active = dateFilter === d.id;
-            return (
-              <TouchableOpacity
-                key={`date-${d.id}`}
-                style={[styles.subFilterPill, active && styles.subFilterPillActive]}
-                onPress={() => setDateFilter(d.id)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.subFilterPillText, active && styles.subFilterPillTextActive]}>
-                  {d.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {([
+              { id: 'ALL', label: 'All Dates' },
+              { id: 'TODAY', label: 'Today' },
+              { id: 'WEEK', label: 'Last 7 Days' },
+              { id: 'MONTH', label: 'This Month' },
+            ] as const).map((d) => {
+              const active = dateFilter === d.id;
+              return (
+                <TouchableOpacity
+                  key={`date-${d.id}`}
+                  style={[styles.subFilterPill, active && styles.subFilterPillActive]}
+                  onPress={() => setDateFilter(d.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.subFilterPillText, active && styles.subFilterPillTextActive]}>
+                    {d.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
       </View>
 

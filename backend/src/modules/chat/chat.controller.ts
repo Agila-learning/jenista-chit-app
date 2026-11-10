@@ -148,7 +148,7 @@ export class ChatController {
         .sort({ createdAt: -1 })
         .lean();
 
-      const mapped = stories.map((s) => ({
+      const mapped = stories.map((s: any) => ({
         id: s._id.toString(),
         authorId: s.authorId,
         authorName: s.authorName,
@@ -157,8 +157,10 @@ export class ChatController {
         title: s.title,
         caption: s.caption,
         mediaUrl: s.mediaUrl,
-        viewCount: s.viewCount || (s.viewers ? s.viewers.length : 0),
+        viewCount: s.viewCount || (s.viewersList ? s.viewersList.length : s.viewers ? s.viewers.length : 0),
         viewers: s.viewers || [],
+        viewersList: s.viewersList || [],
+        gradient: s.gradient && s.gradient.length > 0 ? s.gradient : ['#7952D6', '#2563EB'],
         createdAt: s.createdAt,
         expiresAt: s.expiresAt,
       }));
@@ -174,7 +176,7 @@ export class ChatController {
    */
   static async createStory(req: Request, res: Response, next: NextFunction) {
     try {
-      const { title, caption, category, mediaUrl, durationHours } = req.body;
+      const { title, caption, category, mediaUrl, durationHours, gradient } = req.body;
       const user = (req as any).user;
 
       if (!title || !title.trim()) {
@@ -185,16 +187,29 @@ export class ChatController {
       const hours = Number(durationHours) || 24;
       const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
 
+      const defaultGradients = [
+        ['#7952D6', '#2563EB'],
+        ['#D7A928', '#102B63'],
+        ['#18A875', '#059669'],
+        ['#EA580C', '#E11D48'],
+        ['#0284C7', '#0F172A'],
+      ];
+      const pickedGradient = gradient && Array.isArray(gradient) && gradient.length >= 2 
+        ? gradient 
+        : defaultGradients[Math.floor(Math.random() * defaultGradients.length)];
+
       const story = await StoryModel.create({
         authorId: user?.id || 'admin',
-        authorName: user?.name || 'Administrator',
+        authorName: user?.name || 'Jenista Administrator',
         authorRole: user?.role || 'ADMIN',
         category: category || 'NOTICE',
         title: title.trim(),
         caption: (caption || '').trim(),
         mediaUrl: mediaUrl || '',
         viewers: [],
+        viewersList: [],
         viewCount: 0,
+        gradient: pickedGradient,
         expiresAt,
       });
 
@@ -211,6 +226,8 @@ export class ChatController {
           mediaUrl: story.mediaUrl,
           viewCount: 0,
           viewers: [],
+          viewersList: [],
+          gradient: story.gradient,
           createdAt: story.createdAt,
           expiresAt: story.expiresAt,
         },
@@ -221,19 +238,69 @@ export class ChatController {
   }
 
   /**
-   * Record a view on a story
+   * Record a view on a story with full member identity
    */
   static async recordStoryView(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const viewerId = (req.body?.viewerId || (req as any).user?.id || `viewer-${Date.now()}`).toString();
+      const user = (req as any).user;
+      const viewerId = (req.body?.viewerId || user?.id || `viewer-${Date.now()}`).toString();
+      const viewerName = (req.body?.viewerName || user?.name || 'Subscribed Member').toString();
+      const viewerRole = (req.body?.viewerRole || user?.role || 'CUSTOMER').toString();
+      const viewerPhone = (req.body?.viewerPhone || user?.phone || user?.mobile || '').toString();
 
-      await StoryModel.findByIdAndUpdate(id, {
-        $addToSet: { viewers: viewerId },
-        $inc: { viewCount: 1 },
+      const story = await StoryModel.findById(id);
+      if (!story) {
+        res.status(404).json({ success: false, message: 'Story not found' });
+        return;
+      }
+
+      const alreadyViewed = story.viewers && story.viewers.includes(viewerId);
+      if (!alreadyViewed) {
+        await StoryModel.findByIdAndUpdate(id, {
+          $addToSet: { viewers: viewerId },
+          $push: {
+            viewersList: {
+              viewerId,
+              viewerName,
+              viewerRole,
+              viewerPhone,
+              viewedAt: new Date(),
+            },
+          },
+          $inc: { viewCount: 1 },
+        });
+      }
+
+      res.status(200).json({ success: true, message: 'View recorded', alreadyViewed });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get Real-time List of Members who viewed a Story
+   */
+  static async getStoryViewers(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const story = await StoryModel.findById(id).lean();
+      if (!story) {
+        res.status(404).json({ success: false, message: 'Story not found' });
+        return;
+      }
+
+      const viewersList = (story as any).viewersList || [];
+      // Sort most recent viewers first
+      viewersList.sort((a: any, b: any) => new Date(b.viewedAt).getTime() - new Date(a.viewedAt).getTime());
+
+      res.status(200).json({
+        success: true,
+        storyId: id,
+        storyTitle: (story as any).title,
+        totalViews: (story as any).viewCount || viewersList.length,
+        viewers: viewersList,
       });
-
-      res.status(200).json({ success: true, message: 'View recorded' });
     } catch (error) {
       next(error);
     }

@@ -2,6 +2,14 @@ import { secureStorage } from './storage';
 import { getActiveBaseUrl } from './dataSync';
 import { Platform } from 'react-native';
 
+export interface StoryViewer {
+  viewerId: string;
+  viewerName: string;
+  viewerRole: string;
+  viewerPhone?: string;
+  viewedAt: string;
+}
+
 export interface ChitStory {
   id: string;
   title: string;
@@ -14,6 +22,7 @@ export interface ChitStory {
   expiresAt: string;
   viewCount: number;
   viewedBy?: string[];
+  viewersList?: StoryViewer[];
   gradient: string[];
 }
 
@@ -93,8 +102,11 @@ export const StoriesManager = {
   async getStories(): Promise<ChitStory[]> {
     try {
       const baseUrl = await getActiveBaseUrl();
-      const res = await fetch(`${baseUrl}/stories`);
-      if (res.ok) {
+      let res = await fetch(`${baseUrl}/stories`).catch(() => null);
+      if (!res || !res.ok) {
+        res = await fetch(`${baseUrl}/chat/stories`).catch(() => null);
+      }
+      if (res && res.ok) {
         const json = await res.json();
         if (json && Array.isArray(json.data) && json.data.length > 0) {
           await secureStorage.setItem('chit_stories', JSON.stringify(json.data));
@@ -127,6 +139,7 @@ export const StoriesManager = {
     category?: ChitStory['category'];
     imageUrl?: string;
     authorName?: string;
+    authorRole?: 'ADMIN' | 'SUPER_ADMIN';
   }): Promise<ChitStory> {
     const current = await this.getStories();
     const gradients = [
@@ -144,26 +157,43 @@ export const StoriesManager = {
       caption: story.caption.trim(),
       category: story.category || 'NOTICE',
       imageUrl: story.imageUrl,
-      authorRole: 'ADMIN',
-      authorName: story.authorName || 'Super Admin',
+      authorRole: story.authorRole || 'ADMIN',
+      authorName: story.authorName || 'Jenista Administrator',
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 3600000 * 24).toISOString(), // 24 hours
-      viewCount: 1,
+      viewCount: 0,
       viewedBy: [],
+      viewersList: [],
       gradient: pickedGradient,
     };
 
     const updated = [newStory, ...current.filter((s) => s.id !== newStory.id)];
     await secureStorage.setItem('chit_stories', JSON.stringify(updated));
 
-    // Sync to backend if endpoint available
+    // Sync to backend
     try {
       const baseUrl = await getActiveBaseUrl();
-      await fetch(`${baseUrl}/stories`, {
+      const payload = {
+        title: newStory.title,
+        caption: newStory.caption,
+        category: newStory.category,
+        mediaUrl: newStory.imageUrl || '',
+        gradient: pickedGradient,
+        durationHours: 24,
+      };
+      let res = await fetch(`${baseUrl}/stories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newStory),
-      });
+        body: JSON.stringify(payload),
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        await fetch(`${baseUrl}/chat/stories`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }).catch(() => null);
+      }
     } catch {}
 
     notifyStorySubscribers();
@@ -171,22 +201,38 @@ export const StoriesManager = {
   },
 
   /**
-   * Mark a story as viewed by the current user
+   * Mark a story as viewed by the current user with full viewer profile
    */
-  async markStoryViewed(storyId: string, userId?: string): Promise<void> {
+  async markStoryViewed(storyId: string, user: { id: string; name?: string; role?: string; phone?: string } | string): Promise<void> {
+    const userId = typeof user === 'string' ? user : user?.id;
+    const userName = typeof user === 'string' ? 'Member' : user?.name || 'Member';
+    const userRole = typeof user === 'string' ? 'CUSTOMER' : user?.role || 'CUSTOMER';
+    const userPhone = typeof user === 'string' ? '' : user?.phone || '';
+
+    if (!userId) return;
+
     const current = await this.getStories();
     let updated = false;
 
     const newList = current.map((s) => {
       if (s.id === storyId) {
         const viewers = new Set(s.viewedBy || []);
-        if (userId && !viewers.has(userId)) {
+        if (!viewers.has(userId)) {
           viewers.add(userId);
+          const viewersList = s.viewersList ? [...s.viewersList] : [];
+          viewersList.unshift({
+            viewerId: userId,
+            viewerName: userName,
+            viewerRole: userRole,
+            viewerPhone: userPhone,
+            viewedAt: new Date().toISOString(),
+          });
           updated = true;
           return {
             ...s,
             viewCount: s.viewCount + 1,
             viewedBy: Array.from(viewers),
+            viewersList,
           };
         }
       }
@@ -197,6 +243,54 @@ export const StoriesManager = {
       await secureStorage.setItem('chit_stories', JSON.stringify(newList));
       notifyStorySubscribers();
     }
+
+    // Record on backend
+    try {
+      const baseUrl = await getActiveBaseUrl();
+      const viewPayload = {
+        viewerId: userId,
+        viewerName: userName,
+        viewerRole: userRole,
+        viewerPhone: userPhone,
+      };
+      let res = await fetch(`${baseUrl}/stories/${storyId}/view`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(viewPayload),
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        await fetch(`${baseUrl}/chat/stories/${storyId}/view`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(viewPayload),
+        }).catch(() => null);
+      }
+    } catch {}
+  },
+
+  /**
+   * Get Realtime List of Members who viewed a Story
+   */
+  async getViewedMembers(storyId: string): Promise<StoryViewer[]> {
+    try {
+      const baseUrl = await getActiveBaseUrl();
+      let res = await fetch(`${baseUrl}/stories/${storyId}/viewers`).catch(() => null);
+      if (!res || !res.ok) {
+        res = await fetch(`${baseUrl}/chat/stories/${storyId}/viewers`).catch(() => null);
+      }
+      if (res && res.ok) {
+        const json = await res.json();
+        if (json && Array.isArray(json.viewers)) {
+          return json.viewers;
+        }
+      }
+    } catch {}
+
+    // Fallback to locally cached viewers list
+    const current = await this.getStories();
+    const found = current.find((s) => s.id === storyId);
+    return found?.viewersList || [];
   },
 
   /**
@@ -209,7 +303,10 @@ export const StoriesManager = {
 
     try {
       const baseUrl = await getActiveBaseUrl();
-      await fetch(`${baseUrl}/stories/${storyId}`, { method: 'DELETE' });
+      let res = await fetch(`${baseUrl}/stories/${storyId}`, { method: 'DELETE' }).catch(() => null);
+      if (!res || !res.ok) {
+        await fetch(`${baseUrl}/chat/stories/${storyId}`, { method: 'DELETE' }).catch(() => null);
+      }
     } catch {}
 
     notifyStorySubscribers();

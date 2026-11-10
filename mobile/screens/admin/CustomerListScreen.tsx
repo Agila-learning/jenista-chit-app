@@ -10,10 +10,11 @@ import {
   RefreshControl,
   StatusBar,
   Alert,
+  TextInput,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
-import { Input } from '../../components/common/Input';
 import { DataSyncManager, customerBelongsToScheme } from '../../services/dataSync';
 import { formatCurrency } from '../../utils/format';
 import { Customer } from '../../types';
@@ -66,6 +67,8 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
   const regularCount = customers.filter((c) => customerBelongsToScheme(c, 'REGULAR')).length;
   const auctionCount = customers.filter((c) => customerBelongsToScheme(c, 'AUCTION')).length;
 
+  const totalOverdue = customers.reduce((sum, c) => sum + (Number(c.pending) || 0), 0);
+
   const filteredCustomers = customers.filter((c) => {
     const q = search.toLowerCase();
     const matchesSearch =
@@ -82,6 +85,23 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
 
     return matchesSearch && matchesStatus && matchesScheme;
   });
+
+  const handleCall = (phone?: string) => {
+    if (!phone) return;
+    const clean = phone.replace(/[^\d+]/g, '');
+    Linking.openURL(`tel:${clean}`).catch(() => {
+      showAlert('Notice', `Unable to make phone call to ${clean}`);
+    });
+  };
+
+  const handleWhatsApp = (phone?: string) => {
+    if (!phone) return;
+    const clean = phone.replace(/[^\d]/g, '');
+    const target = clean.length === 10 ? `91${clean}` : clean;
+    Linking.openURL(`https://wa.me/${target}?text=Hello%20from%20Jenista%20Chits`).catch(() => {
+      showAlert('Notice', 'Unable to open WhatsApp messenger');
+    });
+  };
 
   const handleDeleteCustomer = (cust: Customer) => {
     showConfirmDialog(
@@ -118,7 +138,7 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
     const hasDues = pendingAmount > 0;
     const initial = (item.name || 'M').charAt(0).toUpperCase();
 
-    // Alternate avatar pastel background (matches Reference Screen 6)
+    // Alternate avatar pastel background
     const avatarBgs = ['#FFECC2', '#FCE7F3', '#E0F2FE', '#EDE9FE', '#FEF3C7'];
     const charCode = initial.charCodeAt(0) || 0;
     const bg = avatarBgs[charCode % avatarBgs.length];
@@ -149,13 +169,22 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
       ? styles.textPaid
       : styles.textNeutral;
 
+    const groupName = item.chits?.[0]?.groupName || 'Unassigned Group';
+    const schemeUpper = String(item.chits?.[0]?.scheme || 'FIXED').toUpperCase();
+    const schemeIcon =
+      schemeUpper === 'FIXED'
+        ? 'shield-checkmark'
+        : schemeUpper === 'REGULAR'
+        ? 'trending-up'
+        : 'hammer';
+
     return (
       <TouchableOpacity
         style={styles.card}
-        activeOpacity={0.7}
+        activeOpacity={0.75}
         onPress={() => navigation.navigate('CustomerDetail', { customer: item })}
       >
-        <View style={styles.cardContentRow}>
+        <View style={styles.cardHeaderRow}>
           {/* Avatar Bubble */}
           <View style={[styles.avatarBubble, { backgroundColor: bg }]}>
             <Text style={styles.avatarBubbleText}>{initial}</Text>
@@ -163,19 +192,24 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
 
           {/* Member Details */}
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={styles.memberName}>{item.name}</Text>
-            <Text style={styles.memberGroupText}>
-              {item.chits?.[0]?.groupName || 'Group A'}
-            </Text>
-            <Text style={styles.memberPhoneText}>{item.phone || item.mobile || '+91 9988998899'}</Text>
+            <Text style={styles.memberName} numberOfLines={1}>{item.name}</Text>
+            <View style={styles.groupSchemeRow}>
+              <View style={styles.schemeTagPill}>
+                <Ionicons name={schemeIcon} size={11} color="#2563EB" />
+                <Text style={styles.schemeTagText} numberOfLines={1}>
+                  {groupName}
+                </Text>
+              </View>
+              <Text style={styles.memberIdText}>• {item.id}</Text>
+            </View>
           </View>
 
-          {/* Financial Status Pill */}
-          <View style={{ alignItems: 'flex-end' }}>
+          {/* Financial Status */}
+          <View style={{ alignItems: 'flex-end', marginLeft: 8 }}>
             <Text
               style={[
                 styles.dueAmountText,
-                hasDues ? { color: Colors.danger } : paidAmount > 0 ? { color: Colors.success } : { color: Colors.textSecondary },
+                hasDues ? { color: '#DC2626' } : paidAmount > 0 ? { color: '#059669' } : { color: '#64748B' },
               ]}
             >
               {displayAmount}
@@ -186,16 +220,47 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
               </Text>
             </View>
           </View>
+        </View>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        {/* Quick Contact & Action Footer on Card */}
+        <View style={styles.cardFooterDivider} />
+        <View style={styles.cardFooterRow}>
+          <TouchableOpacity
+            style={styles.quickContactBtn}
+            onPress={() => handleCall(item.phone || item.mobile)}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="call" size={13} color="#2563EB" />
+            <Text style={styles.quickContactText}>
+              {item.phone || item.mobile || 'No Mobile'}
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.cardActionsRight}>
+            {(item.phone || item.mobile) && (
+              <TouchableOpacity
+                style={styles.waBtn}
+                onPress={() => handleWhatsApp(item.phone || item.mobile)}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="logo-whatsapp" size={15} color="#16A34A" />
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
-              style={{ padding: 6, marginRight: 2 }}
+              style={styles.trashBtn}
               onPress={() => handleDeleteCustomer(item)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons name="trash-outline" size={17} color={Colors.danger} />
+              <Ionicons name="trash-outline" size={15} color="#EF4444" />
             </TouchableOpacity>
-            <Ionicons name="chevron-forward" size={18} color={Colors.border} style={{ marginLeft: 4 }} />
+
+            <View style={styles.chevronWrap}>
+              <Ionicons name="chevron-forward" size={16} color="#94A3B8" />
+            </View>
           </View>
         </View>
       </TouchableOpacity>
@@ -204,27 +269,37 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
 
-      {/* Search Bar */}
+      {/* Modern Search & Add Member Header */}
       <View style={styles.searchSection}>
-        <Input
-          placeholder="Search members by name or mobile..."
-          value={search}
-          onChangeText={setSearch}
-          leftIcon={<Ionicons name="search" size={18} color={Colors.textSecondary} />}
-          containerStyle={{ marginBottom: 0, flex: 1 }}
-        />
+        <View style={styles.searchBarContainer}>
+          <Ionicons name="search" size={18} color="#64748B" style={{ marginLeft: 12 }} />
+          <TextInput
+            placeholder="Search members by name or mobile..."
+            placeholderTextColor="#94A3B8"
+            value={search}
+            onChangeText={setSearch}
+            style={styles.searchInput}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')} style={{ padding: 6, marginRight: 6 }}>
+              <Ionicons name="close-circle" size={18} color="#94A3B8" />
+            </TouchableOpacity>
+          )}
+        </View>
+
         <TouchableOpacity
-          style={styles.addBtn}
+          style={styles.addMemberBtn}
           onPress={() => navigation.navigate('AddCustomer')}
           activeOpacity={0.8}
         >
-          <Ionicons name="person-add" size={18} color="#0B1A30" />
+          <Ionicons name="person-add" size={16} color="#FFFFFF" />
+          <Text style={styles.addMemberBtnText}>Add</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Scheme Plan Tabs with Dynamic Counts */}
+      {/* Tier 1: Scheme Selector Pills (Horizontally Scrollable) */}
       <View style={styles.schemeTabsContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.schemeTabsContent}>
           <TouchableOpacity
@@ -232,6 +307,7 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
             onPress={() => setSchemeFilter('ALL')}
             activeOpacity={0.8}
           >
+            <Ionicons name="apps" size={13} color={schemeFilter === 'ALL' ? '#FFFFFF' : '#64748B'} />
             <Text style={[styles.schemeTabText, schemeFilter === 'ALL' && styles.schemeTabTextActive]}>
               All Schemes ({customers.length})
             </Text>
@@ -272,42 +348,40 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
         </ScrollView>
       </View>
 
-      {/* Filter Tabs (All (7), Paid (2), Pending (5)) - Matching Reference Screen 6 */}
-      <View style={styles.filterRow}>
-        <TouchableOpacity
-          style={[styles.filterTab, filterTab === 'ALL' && styles.filterTabActive]}
-          onPress={() => setFilterTab('ALL')}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.filterText, filterTab === 'ALL' && styles.filterTextActive]}>
-            All ({customers.length})
-          </Text>
-        </TouchableOpacity>
+      {/* Tier 2: Payment Status Segmented Control */}
+      <View style={styles.statusSegmentRow}>
+        <View style={styles.segmentedControl}>
+          {(['ALL', 'PAID', 'PENDING'] as const).map((tab) => {
+            const active = filterTab === tab;
+            const count = tab === 'ALL' ? customers.length : tab === 'PAID' ? paidCount : pendingCount;
+            const label = tab === 'ALL' ? 'All' : tab === 'PAID' ? 'Paid' : 'Pending';
+            return (
+              <TouchableOpacity
+                key={tab}
+                style={[styles.segmentBtn, active && styles.segmentBtnActive]}
+                onPress={() => setFilterTab(tab)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.segmentBtnText, active && styles.segmentBtnTextActive]}>
+                  {label} ({count})
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
-        <TouchableOpacity
-          style={[styles.filterTab, filterTab === 'PAID' && styles.filterTabActive]}
-          onPress={() => setFilterTab('PAID')}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.filterText, filterTab === 'PAID' && styles.filterTextActive]}>
-            Paid ({paidCount})
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.filterTab, filterTab === 'PENDING' && styles.filterTabActive]}
-          onPress={() => setFilterTab('PENDING')}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.filterText, filterTab === 'PENDING' && styles.filterTextActive]}>
-            Pending ({pendingCount})
-          </Text>
-        </TouchableOpacity>
+        {pendingCount > 0 && (
+          <View style={styles.totalOverduePill}>
+            <Text style={styles.totalOverdueText}>
+              Overdue: {formatCurrency(totalOverdue)}
+            </Text>
+          </View>
+        )}
       </View>
 
       {loading ? (
         <View style={styles.loaderContainer}>
-          <ActivityIndicator size="large" color={Colors.gold.primary} />
+          <ActivityIndicator size="large" color="#2563EB" />
         </View>
       ) : (
         <FlatList
@@ -319,14 +393,24 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor={Colors.gold.primary}
+              tintColor="#2563EB"
             />
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Ionicons name="people-outline" size={48} color={Colors.textMuted} />
+              <Ionicons name="people-outline" size={48} color="#94A3B8" />
               <Text style={styles.emptyTitle}>No Members Found</Text>
-              <Text style={styles.emptySub}>Try searching with a different name or mobile.</Text>
+              <Text style={styles.emptySub}>
+                {search ? `No members matching "${search}"` : 'No customers enrolled under this scheme.'}
+              </Text>
+              {search.length > 0 && (
+                <TouchableOpacity
+                  style={styles.clearSearchBtn}
+                  onPress={() => setSearch('')}
+                >
+                  <Text style={styles.clearSearchBtnText}>Clear Search</Text>
+                </TouchableOpacity>
+              )}
             </View>
           }
         />
@@ -338,7 +422,7 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: '#F8FAFC',
     maxWidth: 800,
     width: '100%',
     alignSelf: 'center',
@@ -347,174 +431,50 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 4,
-  },
-  addBtn: {
-    width: 50,
-    height: 50,
-    borderRadius: 14,
-    backgroundColor: Colors.gold.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: Colors.gold.dark,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.16,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    gap: 10,
-  },
-  filterTab: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    paddingTop: 14,
+    paddingBottom: 10,
+    backgroundColor: '#FFFFFF',
   },
-  filterTabActive: {
-    backgroundColor: Colors.gold.primary,
-    borderColor: Colors.gold.primary,
-  },
-  filterText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.textSecondary,
-  },
-  filterTextActive: {
-    color: Colors.navy.primary,
-    fontWeight: '800',
-  },
-  loaderContainer: {
+  searchBarContainer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  listContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 100,
-    gap: 12,
-  },
-  card: {
-    backgroundColor: Colors.surface,
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    shadowColor: Colors.navy.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
-  },
-  cardContentRow: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  avatarBubble: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarBubbleText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: Colors.gold.text,
-  },
-  memberName: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: Colors.text,
-  },
-  memberGroupText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  memberPhoneText: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  dueAmountText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: Colors.text,
-  },
-  statusPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    marginTop: 4,
-  },
-  pillPaid: {
-    backgroundColor: Colors.successLight,
-  },
-  pillPending: {
-    backgroundColor: Colors.warningLight,
-  },
-  pillNeutral: {
     backgroundColor: '#F1F5F9',
-  },
-  statusPillText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  textPaid: {
-    color: Colors.success,
-  },
-  textPending: {
-    color: Colors.warning,
-  },
-  textNeutral: {
-    color: '#64748B',
-  },
-  schemeActiveBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#FFECC2',
-    marginHorizontal: 20,
-    marginTop: 8,
-    marginBottom: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255, 191, 50, 0.4)',
+    borderColor: '#E2E8F0',
+    height: 44,
   },
-  schemeActiveBannerText: {
-    fontSize: 12,
-    color: '#0B1A30',
-    fontWeight: '600',
+  searchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0F172A',
+    fontWeight: '500',
+    paddingHorizontal: 10,
   },
-  schemeClearBtn: {
+  addMemberBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    gap: 6,
+    backgroundColor: '#2563EB',
+    height: 44,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  schemeClearText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.navy.primary,
+  addMemberBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
   },
   schemeTabsContainer: {
-    paddingVertical: 6,
-    backgroundColor: '#F8FAFC',
+    paddingVertical: 8,
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
   },
@@ -526,17 +486,17 @@ const styles = StyleSheet.create({
   schemeTabPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 6,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
   schemeTabPillActive: {
-    backgroundColor: '#102B63',
-    borderColor: '#102B63',
+    backgroundColor: '#0F172A',
+    borderColor: '#0F172A',
   },
   schemeTabPillActiveFixed: {
     backgroundColor: '#D97706',
@@ -551,27 +511,236 @@ const styles = StyleSheet.create({
     borderColor: '#7C3AED',
   },
   schemeTabText: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '700',
-    color: '#475569',
+    color: '#64748B',
   },
   schemeTabTextActive: {
     color: '#FFFFFF',
   },
+  statusSegmentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#F8FAFC',
+    gap: 10,
+  },
+  segmentedControl: {
+    flexDirection: 'row',
+    backgroundColor: '#E2E8F0',
+    padding: 3,
+    borderRadius: 12,
+  },
+  segmentBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 9,
+  },
+  segmentBtnActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  segmentBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  segmentBtnTextActive: {
+    color: '#0F172A',
+  },
+  totalOverduePill: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  totalOverdueText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#DC2626',
+  },
+  loaderContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 80,
+  },
+  listContent: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 110,
+    gap: 12,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatarBubble: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarBubbleText: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#1E293B',
+  },
+  memberName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  groupSchemeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 3,
+  },
+  schemeTagPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    maxWidth: 160,
+  },
+  schemeTagText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#2563EB',
+  },
+  memberIdText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#94A3B8',
+  },
+  dueAmountText: {
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  statusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+    borderRadius: 6,
+    marginTop: 3,
+  },
+  pillPaid: {
+    backgroundColor: '#DCFCE7',
+  },
+  pillPending: {
+    backgroundColor: '#FEF3C7',
+  },
+  pillNeutral: {
+    backgroundColor: '#F1F5F9',
+  },
+  statusPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  textPaid: {
+    color: '#16A34A',
+  },
+  textPending: {
+    color: '#D97706',
+  },
+  textNeutral: {
+    color: '#64748B',
+  },
+  cardFooterDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  cardFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  quickContactBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 9,
+    paddingVertical: 4.5,
+    borderRadius: 8,
+  },
+  quickContactText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  cardActionsRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  waBtn: {
+    backgroundColor: '#DCFCE7',
+    padding: 6,
+    borderRadius: 8,
+  },
+  trashBtn: {
+    backgroundColor: '#FEE2E2',
+    padding: 6,
+    borderRadius: 8,
+  },
+  chevronWrap: {
+    paddingLeft: 2,
+  },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
+    paddingVertical: 70,
+    paddingHorizontal: 20,
   },
   emptyTitle: {
     fontSize: 16,
-    fontWeight: '700',
-    color: Colors.text,
-    marginTop: 12,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginTop: 14,
   },
   emptySub: {
-    fontSize: 12,
-    color: Colors.textSecondary,
+    fontSize: 12.5,
+    color: '#64748B',
     marginTop: 4,
+    textAlign: 'center',
+  },
+  clearSearchBtn: {
+    marginTop: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#2563EB',
+  },
+  clearSearchBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

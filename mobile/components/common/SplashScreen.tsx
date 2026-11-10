@@ -156,7 +156,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
               <Animated.View style={[styles.progressBar, { width: progressWidth }]} />
             </View>
             <View style={styles.loadingRow}>
-              <ActivityIndicator size="small" color="#38BDF8" />
+              <ActivityIndicator size="small" color="#D7A928" />
               <Text style={styles.loadingStepText}>{loadingStep}</Text>
             </View>
           </View>
@@ -164,9 +164,9 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
 
         {/* Footer */}
         <View style={styles.footer}>
-          <Text style={styles.footerLegal}>Jenista Chit Funds Pvt. Ltd. • ISO Certified</Text>
+          <Text style={styles.footerLegal}>Jenista Chit Funds Pvt. Ltd. • Govt. Act 1982</Text>
           <Text style={styles.footerSecurity}>
-            <Ionicons name="lock-closed" size={11} color="rgba(255,255,255,0.4)" /> 256-Bit Bank Grade Encryption
+            <Ionicons name="lock-closed" size={11} color="rgba(215, 169, 40, 0.7)" /> 256-Bit Bank Grade Secured
           </Text>
         </View>
       </SafeAreaView>
@@ -183,7 +183,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#070E1A',
+    backgroundColor: '#0B1B3D',
     zIndex: 99999,
     elevation: 99999,
   },
@@ -203,15 +203,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    backgroundColor: 'rgba(215, 169, 40, 0.15)',
     borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.35)',
+    borderColor: 'rgba(215, 169, 40, 0.45)',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 20,
   },
   govBadgeText: {
-    color: '#F59E0B',
+    color: '#E6B024',
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.6,
@@ -237,33 +237,33 @@ const styles = StyleSheet.create({
   },
   glowRing: {
     position: 'absolute',
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: 'rgba(37, 99, 235, 0.18)',
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    backgroundColor: 'rgba(215, 169, 40, 0.15)',
     borderWidth: 1.5,
-    borderColor: 'rgba(56, 189, 248, 0.35)',
+    borderColor: 'rgba(215, 169, 40, 0.35)',
   },
   logoCard: {
-    width: 108,
-    height: 108,
-    borderRadius: 28,
-    backgroundColor: '#0A1526',
+    width: 112,
+    height: 112,
+    borderRadius: 30,
+    backgroundColor: '#0F2450',
     borderWidth: 2,
-    borderColor: 'rgba(56, 189, 248, 0.5)',
+    borderColor: 'rgba(215, 169, 40, 0.65)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#38BDF8',
+    shadowColor: '#D7A928',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.35,
     shadowRadius: 18,
     elevation: 12,
     marginBottom: 24,
   },
   logoImage: {
-    width: 78,
-    height: 78,
-    borderRadius: 18,
+    width: 80,
+    height: 80,
+    borderRadius: 20,
   },
   brandTitle: {
     fontSize: 28,
@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
   brandTagline: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#94A3B8',
+    color: '#D7A928',
     marginTop: 6,
     textAlign: 'center',
     letterSpacing: 0.5,
@@ -289,13 +289,13 @@ const styles = StyleSheet.create({
   progressTrack: {
     width: '100%',
     height: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     borderRadius: 2,
     overflow: 'hidden',
   },
   progressBar: {
     height: '100%',
-    backgroundColor: '#38BDF8',
+    backgroundColor: '#D7A928',
     borderRadius: 2,
   },
   loadingRow: {
@@ -314,13 +314,13 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   footerLegal: {
-    color: 'rgba(255, 255, 255, 0.5)',
+    color: 'rgba(255, 255, 255, 0.6)',
     fontSize: 11,
     fontWeight: '500',
   },
   footerSecurity: {
-    color: 'rgba(255, 255, 255, 0.4)',
+    color: 'rgba(215, 169, 40, 0.8)',
     fontSize: 10,
-    fontWeight: '500',
+    fontWeight: '600',
   },
 });

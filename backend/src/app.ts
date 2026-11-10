@@ -67,11 +67,13 @@ app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/reports', reportsRoutes);
 app.use('/api/v1/chat', chatRoutes);
+app.use('/api/v1/stories', chatRoutes);
 
 // Fallback aliases for root paths
 app.use('/customers', customerRoutes);
 app.use('/auth', authRoutes);
 app.use('/chat', chatRoutes);
+app.use('/stories', chatRoutes);
 app.use('/staff', staffRoutes);
 app.use('/notifications', notificationRoutes);
 
