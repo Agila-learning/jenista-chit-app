@@ -53,9 +53,9 @@ const APP_TAB_BAR_STYLE = {
   backgroundColor: '#FFFFFF',
   borderTopColor: '#E2E8F0',
   borderTopWidth: 1,
-  height: Platform.OS === 'ios' ? 84 : 72,
-  paddingBottom: Platform.OS === 'ios' ? 24 : 10,
-  paddingTop: 8,
+  height: Platform.OS === 'ios' ? 84 : 68,
+  paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+  paddingTop: 6,
   shadowColor: '#102B63',
   shadowOffset: { width: 0, height: -3 },
   shadowOpacity: 0.05,
@@ -82,9 +82,11 @@ const AdminBottomTabs = ({ navigation }: any) => {
         tabBarStyle: APP_TAB_BAR_STYLE,
         tabBarActiveTintColor: '#2563EB',
         tabBarInactiveTintColor: '#64748B',
+        tabBarItemStyle: { paddingVertical: 2 },
         tabBarLabelStyle: {
           fontSize: 10,
           fontWeight: '700',
+          marginTop: 2,
         },
         headerLeft: () => (
           <TouchableOpacity
@@ -97,7 +99,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
       }}
     >
       <Tab.Screen
-        name="AdminDashboardTab"
+        name="AdminDashboard"
         component={AdminDashboardScreen}
         options={{
           title: 'Jenista Chit Funds',
@@ -106,7 +108,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
         }}
       />
       <Tab.Screen
-        name="AdminGroupsTab"
+        name="ChitGroupList"
         component={ChitGroupListScreen}
         options={{
           title: 'Chit Groups & Plans',
@@ -115,7 +117,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
         }}
       />
       <Tab.Screen
-        name="AdminCustomersTab"
+        name="CustomerList"
         component={CustomerListScreen}
         options={{
           title: 'Customer Directory',
@@ -124,7 +126,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
         }}
       />
       <Tab.Screen
-        name="AdminReceiptsTab"
+        name="ReceiptEntry"
         component={ReceiptEntryScreen}
         options={{
           title: 'Receipt Desk & Collections',
@@ -134,7 +136,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
         }}
       />
       <Tab.Screen
-        name="AdminPaymentsTab"
+        name="PaymentVerifications"
         component={PaymentVerificationsScreen}
         options={{
           title: 'Payment & Prize Requests',
@@ -187,39 +189,14 @@ const AdminDrawer = () => {
         options={{ headerShown: false, title: 'Jenista Chit Funds' }}
       />
       <Drawer.Screen
-        name="AdminDashboard"
-        component={AdminDashboardScreen}
-        options={{ title: 'Jenista Chit Funds' }}
-      />
-      <Drawer.Screen
-        name="CustomerList"
-        component={CustomerListScreen}
-        options={{ title: 'Customer Directory' }}
-      />
-      <Drawer.Screen
         name="AddCustomer"
         component={AddCustomerScreen}
         options={{ title: 'Register Customer' }}
       />
       <Drawer.Screen
-        name="ChitGroupList"
-        component={ChitGroupListScreen}
-        options={{ title: 'Chit Groups & Plans' }}
-      />
-      <Drawer.Screen
-        name="ReceiptEntry"
-        component={ReceiptEntryScreen}
-        options={{ title: 'Receipt Desk & Collections', headerShown: false }}
-      />
-      <Drawer.Screen
         name="Ledger"
         component={LedgerScreen}
         options={{ title: 'General Ledger' }}
-      />
-      <Drawer.Screen
-        name="PaymentVerifications"
-        component={PaymentVerificationsScreen}
-        options={{ title: 'Payment & Prize Requests' }}
       />
       <Drawer.Screen
         name="ConversationsList"
@@ -593,11 +570,6 @@ export const RootNavigator = () => {
               options={getLightStackHeaderOptions('Installment Breakdown')}
             />
             <Stack.Screen
-              name="ReceiptEntry"
-              component={ReceiptEntryScreen}
-              options={{ headerShown: false, title: 'Issue Receipt Voucher' }}
-            />
-            <Stack.Screen
               name="Ledger"
               component={LedgerScreen}
               options={getLightStackHeaderOptions('Payment History & Ledger')}
@@ -613,24 +585,9 @@ export const RootNavigator = () => {
               options={getLightStackHeaderOptions('System & Policy Settings')}
             />
             <Stack.Screen
-              name="PaymentVerifications"
-              component={PaymentVerificationsScreen}
-              options={getLightStackHeaderOptions('Payment & Prize Requests')}
-            />
-            <Stack.Screen
-              name="CustomerList"
-              component={CustomerListScreen}
-              options={getLightStackHeaderOptions('Customer Directory')}
-            />
-            <Stack.Screen
               name="AddCustomer"
               component={AddCustomerScreen}
               options={getLightStackHeaderOptions('Register Customer')}
-            />
-            <Stack.Screen
-              name="ChitGroupList"
-              component={ChitGroupListScreen}
-              options={getLightStackHeaderOptions('Chit Groups & Plans')}
             />
             <Stack.Screen
               name="Notifications"
@@ -688,11 +645,6 @@ export const RootNavigator = () => {
               options={getLightStackHeaderOptions('Installment Breakdown')}
             />
             <Stack.Screen
-              name="ReceiptEntry"
-              component={ReceiptEntryScreen}
-              options={{ headerShown: false, title: 'Issue Receipt Voucher' }}
-            />
-            <Stack.Screen
               name="Ledger"
               component={LedgerScreen}
               options={getLightStackHeaderOptions('Payment History & Ledger')}
@@ -708,24 +660,9 @@ export const RootNavigator = () => {
               options={getLightStackHeaderOptions('System & Policy Settings')}
             />
             <Stack.Screen
-              name="PaymentVerifications"
-              component={PaymentVerificationsScreen}
-              options={getLightStackHeaderOptions('Payment & Prize Requests')}
-            />
-            <Stack.Screen
-              name="CustomerList"
-              component={CustomerListScreen}
-              options={getLightStackHeaderOptions('Customer Directory')}
-            />
-            <Stack.Screen
               name="AddCustomer"
               component={AddCustomerScreen}
               options={getLightStackHeaderOptions('Register Customer')}
-            />
-            <Stack.Screen
-              name="ChitGroupList"
-              component={ChitGroupListScreen}
-              options={getLightStackHeaderOptions('Chit Groups & Plans')}
             />
             <Stack.Screen
               name="Notifications"

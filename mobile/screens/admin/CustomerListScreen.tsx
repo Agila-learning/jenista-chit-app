@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   FlatList,
+  ScrollView,
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
@@ -13,7 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 import { Input } from '../../components/common/Input';
-import { DataSyncManager } from '../../services/dataSync';
+import { DataSyncManager, customerBelongsToScheme } from '../../services/dataSync';
 import { formatCurrency } from '../../utils/format';
 import { Customer } from '../../types';
 import { showConfirmDialog, showAlert } from '../../utils/alert';
@@ -61,6 +62,10 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
   const paidCount = customers.filter((c) => Number(c.pending || 0) <= 0).length;
   const pendingCount = customers.filter((c) => Number(c.pending || 0) > 0).length;
 
+  const fixedCount = customers.filter((c) => customerBelongsToScheme(c, 'FIXED')).length;
+  const regularCount = customers.filter((c) => customerBelongsToScheme(c, 'REGULAR')).length;
+  const auctionCount = customers.filter((c) => customerBelongsToScheme(c, 'AUCTION')).length;
+
   const filteredCustomers = customers.filter((c) => {
     const q = search.toLowerCase();
     const matchesSearch =
@@ -72,18 +77,8 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
     const matchesStatus =
       filterTab === 'ALL' ? true : filterTab === 'PAID' ? !hasDues : hasDues;
 
-    // Filter by scheme
-    let matchesScheme = true;
-    if (schemeFilter !== 'ALL') {
-      const hasMatchingChit = Array.isArray(c.chits) && c.chits.some((ch: any) => {
-        const s = String(ch.scheme || ch.type || '').toUpperCase();
-        if (schemeFilter === 'FIXED') return s.includes('FIX');
-        if (schemeFilter === 'AUCTION') return s.includes('AUC');
-        if (schemeFilter === 'REGULAR') return !s.includes('FIX') && !s.includes('AUC');
-        return true;
-      });
-      matchesScheme = hasMatchingChit;
-    }
+    // Filter by scheme using unified function
+    const matchesScheme = customerBelongsToScheme(c, schemeFilter);
 
     return matchesSearch && matchesStatus && matchesScheme;
   });
@@ -229,22 +224,53 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
         </TouchableOpacity>
       </View>
 
-      {/* Scheme Filter Tag (when selected from Dashboard cards) */}
-      {schemeFilter !== 'ALL' && (
-        <View style={styles.schemeActiveBanner}>
-          <Text style={styles.schemeActiveBannerText}>
-            Showing <Text style={{ fontWeight: '800' }}>{schemeFilter}</Text> Scheme Members
-          </Text>
+      {/* Scheme Plan Tabs with Dynamic Counts */}
+      <View style={styles.schemeTabsContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.schemeTabsContent}>
           <TouchableOpacity
-            style={styles.schemeClearBtn}
+            style={[styles.schemeTabPill, schemeFilter === 'ALL' && styles.schemeTabPillActive]}
             onPress={() => setSchemeFilter('ALL')}
-            activeOpacity={0.7}
+            activeOpacity={0.8}
           >
-            <Ionicons name="close-circle" size={16} color={Colors.navy.primary} />
-            <Text style={styles.schemeClearText}>Clear Filter</Text>
+            <Text style={[styles.schemeTabText, schemeFilter === 'ALL' && styles.schemeTabTextActive]}>
+              All Schemes ({customers.length})
+            </Text>
           </TouchableOpacity>
-        </View>
-      )}
+
+          <TouchableOpacity
+            style={[styles.schemeTabPill, schemeFilter === 'FIXED' && styles.schemeTabPillActiveFixed]}
+            onPress={() => setSchemeFilter('FIXED')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="shield-checkmark" size={13} color={schemeFilter === 'FIXED' ? '#FFFFFF' : '#D97706'} />
+            <Text style={[styles.schemeTabText, schemeFilter === 'FIXED' && styles.schemeTabTextActive]}>
+              Fixed ({fixedCount})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.schemeTabPill, schemeFilter === 'REGULAR' && styles.schemeTabPillActiveRegular]}
+            onPress={() => setSchemeFilter('REGULAR')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="trending-up" size={13} color={schemeFilter === 'REGULAR' ? '#FFFFFF' : '#059669'} />
+            <Text style={[styles.schemeTabText, schemeFilter === 'REGULAR' && styles.schemeTabTextActive]}>
+              Regular ({regularCount})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.schemeTabPill, schemeFilter === 'AUCTION' && styles.schemeTabPillActiveAuction]}
+            onPress={() => setSchemeFilter('AUCTION')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="hammer" size={13} color={schemeFilter === 'AUCTION' ? '#FFFFFF' : '#7C3AED'} />
+            <Text style={[styles.schemeTabText, schemeFilter === 'AUCTION' && styles.schemeTabTextActive]}>
+              Auction ({auctionCount})
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
 
       {/* Filter Tabs (All (7), Paid (2), Pending (5)) - Matching Reference Screen 6 */}
       <View style={styles.filterRow}>
@@ -485,6 +511,52 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: Colors.navy.primary,
+  },
+  schemeTabsContainer: {
+    paddingVertical: 6,
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  schemeTabsContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+    flexDirection: 'row',
+  },
+  schemeTabPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  schemeTabPillActive: {
+    backgroundColor: '#102B63',
+    borderColor: '#102B63',
+  },
+  schemeTabPillActiveFixed: {
+    backgroundColor: '#D97706',
+    borderColor: '#D97706',
+  },
+  schemeTabPillActiveRegular: {
+    backgroundColor: '#059669',
+    borderColor: '#059669',
+  },
+  schemeTabPillActiveAuction: {
+    backgroundColor: '#7C3AED',
+    borderColor: '#7C3AED',
+  },
+  schemeTabText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  schemeTabTextActive: {
+    color: '#FFFFFF',
   },
   emptyContainer: {
     alignItems: 'center',

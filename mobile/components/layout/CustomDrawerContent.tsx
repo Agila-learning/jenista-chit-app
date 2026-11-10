@@ -20,12 +20,34 @@ export const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props
   const { user, logout } = useAuth();
   const currentRoute = props.state.routeNames[props.state.index];
 
-  const navigateTo = (screenName: string) => {
-    props.navigation.navigate(screenName);
-  };
-
   const isStaff = user?.role === 'STAFF' || user?.role === 'COLLECTION_AGENT';
   const isCustomer = user?.role === 'CUSTOMER';
+
+  const navigateTo = (screenName: string, params?: any) => {
+    if (!isCustomer && !isStaff) {
+      if (screenName === 'CustomerList') {
+        props.navigation.navigate('AdminTabs', { screen: 'CustomerList', params });
+        return;
+      }
+      if (screenName === 'ChitGroupList') {
+        props.navigation.navigate('AdminTabs', { screen: 'ChitGroupList', params });
+        return;
+      }
+      if (screenName === 'ReceiptEntry') {
+        props.navigation.navigate('AdminTabs', { screen: 'ReceiptEntry', params });
+        return;
+      }
+      if (screenName === 'PaymentVerifications') {
+        props.navigation.navigate('AdminTabs', { screen: 'PaymentVerifications', params });
+        return;
+      }
+      if (screenName === 'AdminDashboard' || screenName === 'AdminTabs') {
+        props.navigation.navigate('AdminTabs', { screen: 'AdminDashboard', params });
+        return;
+      }
+    }
+    props.navigation.navigate(screenName, params);
+  };
 
   const displayName = user?.name || (isCustomer ? 'Member' : 'Administrator');
   const roleLabel =

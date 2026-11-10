@@ -16,7 +16,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
-import { DataSyncManager } from '../../services/dataSync';
+import { DataSyncManager, normalizeGroupName } from '../../services/dataSync';
+import { secureStorage } from '../../services/storage';
 import { formatCurrency } from '../../utils/format';
 import { ChitGroup } from '../../types';
 import { showConfirmDialog, showAlert } from '../../utils/alert';
@@ -78,17 +79,24 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
       const customers = await DataSyncManager.getCustomers();
       const targetId = (group?.id || '').toLowerCase().trim();
       const targetName = (group?.name || '').toLowerCase().trim();
+      const normTargetName = normalizeGroupName(group?.name);
+      const normTargetId = normalizeGroupName(group?.id);
 
       const matched: any[] = [];
       const seenKey = new Set<string>();
 
+      // 1. From customer chits
       customers.forEach((c) => {
         if (Array.isArray(c.chits)) {
           c.chits.forEach((ch: any) => {
             const chGId = String(ch.groupId || '').toLowerCase().trim();
             const chGName = String(ch.groupName || '').toLowerCase().trim();
+            const normChName = normalizeGroupName(ch.groupName);
+            const normChId = normalizeGroupName(ch.groupId);
 
             const isMatch =
+              (normTargetName && (normChName === normTargetName || normChId === normTargetName)) ||
+              (normTargetId && (normChId === normTargetId || normChName === normTargetId)) ||
               (targetId && chGId === targetId) ||
               (targetName && chGName === targetName) ||
               (targetName && chGId === targetName) ||
@@ -126,6 +134,52 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
           });
         }
       });
+
+      // 2. From chitGroupMemberships in persistent storage
+      try {
+        const rawMem = await secureStorage.getItem('chitGroupMemberships');
+        if (rawMem) {
+          const mems = JSON.parse(rawMem);
+          if (Array.isArray(mems)) {
+            mems.forEach((m: any) => {
+              const normMName = normalizeGroupName(m.groupName);
+              const normMId = normalizeGroupName(m.groupId);
+              const isMatch =
+                (normTargetName && (normMName === normTargetName || normMId === normTargetName)) ||
+                (normTargetId && (normMId === normTargetId || normMName === normTargetId));
+
+              if (isMatch) {
+                const custId = m.customerId || m.id || m.mobile || 'CUST';
+                const ticket = String(m.ticketNumber || matched.length + 1);
+                const key = `${custId}-${ticket}`;
+
+                if (!seenKey.has(key)) {
+                  seenKey.add(key);
+                  const existingCust = customers.find((c) => c.id === custId || c.phone === m.mobile);
+                  matched.push({
+                    customerId: custId,
+                    mongoId: existingCust?.mongoId,
+                    customerName: m.customerName || m.name || existingCust?.name || 'Member',
+                    mobile: m.mobile || m.phone || existingCust?.phone || '—',
+                    ticketNumber: ticket,
+                    scheme: m.scheme || group?.type || 'Regular',
+                    duration: Number(m.duration || group?.duration || 20),
+                    chitValue: Number(m.chitValue || chitValue),
+                    monthlyInstallment: Number(m.monthlyInstallment || monthlyInstallment),
+                    paymentStatus: m.paymentStatus || (Number(existingCust?.pending || 0) > 0 ? 'DUE' : 'PAID'),
+                    totalPaid: Number(m.totalPaid ?? existingCust?.totalPaid ?? 0),
+                    pending: Number(m.pending ?? existingCust?.pending ?? 0),
+                    isWithdrawn: m.isWithdrawn || false,
+                    withdrawnAmount: m.withdrawnAmount,
+                    fullCustomer: existingCust,
+                    chitObject: m,
+                  });
+                }
+              }
+            });
+          }
+        }
+      } catch {}
 
       // Sort by ticket number
       matched.sort((a, b) => Number(a.ticketNumber) - Number(b.ticketNumber));

@@ -16,7 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 import { useAuth } from '../../store/AuthContext';
-import { DataSyncManager } from '../../services/dataSync';
+import { DataSyncManager, customerBelongsToScheme } from '../../services/dataSync';
 import { formatCurrency } from '../../utils/format';
 import { MobileNotificationsManager, subscribeToNotifications } from '../../services/notificationsData';
 import { secureStorage } from '../../services/storage';
@@ -102,66 +102,14 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
       setTotalCollections(totalPaid);
       setTotalDues(dues);
 
-      // Compute scheme counts (Fixed, Regular, Auction) matching Web App logic
-      const fixedSet = new Set<string>();
-      const regularSet = new Set<string>();
-      const auctionSet = new Set<string>();
+      // Compute scheme counts (Fixed, Regular, Auction) synchronized with Customer Directory
+      const fixedCount = custs.filter((c: any) => customerBelongsToScheme(c, 'FIXED')).length;
+      const regularCount = custs.filter((c: any) => customerBelongsToScheme(c, 'REGULAR')).length;
+      const auctionCount = custs.filter((c: any) => customerBelongsToScheme(c, 'AUCTION')).length;
 
-      // 1. From customer chits & chosen registered schemes
-      custs.forEach((c: any) => {
-        const cId = String(c.id || c.customerCode || c.mongoId || c.phone || '');
-        if (Array.isArray(c.chits) && c.chits.length > 0) {
-          c.chits.forEach((ch: any, idx: number) => {
-            const sch = String(ch.scheme || ch.type || c.scheme || '').toUpperCase();
-            const key = `${cId}_${ch.groupId || ch.groupName || idx}`;
-            if (sch.includes('FIX')) fixedSet.add(key);
-            else if (sch.includes('AUC')) auctionSet.add(key);
-            else regularSet.add(key);
-          });
-        } else if (c.scheme || c.interestedPlan) {
-          const sch = String(c.scheme || c.interestedPlan || '').toUpperCase();
-          const key = `${cId}_opted`;
-          if (sch.includes('FIX')) fixedSet.add(key);
-          else if (sch.includes('AUC')) auctionSet.add(key);
-          else regularSet.add(key);
-        }
-      });
-
-      // 2. From chitGroupMemberships
-      try {
-        const rawM = await secureStorage.getItem('chitGroupMemberships');
-        if (rawM) {
-          const mems = JSON.parse(rawM);
-          if (Array.isArray(mems)) {
-            mems.forEach((m: any) => {
-              const cId = String(m.customerId || m.id || m.mobile || '');
-              const sch = String(m.scheme || m.type || '').toUpperCase();
-              const key = `${cId}_${m.groupId || m.groupName}`;
-              if (sch.includes('FIX')) fixedSet.add(key);
-              else if (sch.includes('AUC')) auctionSet.add(key);
-              else if (sch.includes('REG')) regularSet.add(key);
-            });
-          }
-        }
-      } catch {}
-
-      // 3. From groups.enrolledMembers
-      groups.forEach((g: any) => {
-        if (Array.isArray(g.enrolledMembers)) {
-          g.enrolledMembers.forEach((m: any) => {
-            const cId = String(m.customerId || m.id || m.mobile || '');
-            const sch = String(m.scheme || g.type || '').toUpperCase();
-            const key = `${cId}_${g.id || g.name}`;
-            if (sch.includes('FIX')) fixedSet.add(key);
-            else if (sch.includes('AUC')) auctionSet.add(key);
-            else regularSet.add(key);
-          });
-        }
-      });
-
-      setFixedEnrollments(fixedSet.size);
-      setRegularEnrollments(regularSet.size);
-      setAuctionEnrollments(auctionSet.size);
+      setFixedEnrollments(fixedCount);
+      setRegularEnrollments(regularCount);
+      setAuctionEnrollments(auctionCount);
 
       setRecentCustomers(custs.slice(0, 4));
       setRecentLedger(ledger.slice(0, 4));
@@ -647,7 +595,7 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
         </View>
         <TouchableOpacity
           style={styles.sectionActionPill}
-          onPress={() => navigation.navigate('CustomerList')}
+          onPress={() => navigation.navigate('CustomerList', { schemeFilter: 'ALL' })}
           activeOpacity={0.7}
         >
           <Text style={styles.sectionActionPillText}>View All ({totalCustomers})</Text>

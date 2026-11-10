@@ -31,6 +31,82 @@ const LOCAL_DEV_IP = '192.168.1.35';
 
 let cachedBaseUrl: string | null = null;
 
+/**
+ * Normalizes group names (stripping punctuation, spaces, and hyphens)
+ * to safely merge identical groups like "JJ F 2 T" and "JJ-F-2-T".
+ */
+export const normalizeGroupName = (name?: string): string => {
+  if (!name) return '';
+  return String(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+};
+
+/**
+ * Accurately detects chit scheme type ('Fixed', 'Regular', 'Auction')
+ * from group/plan type and naming conventions.
+ */
+export const getGroupSchemeType = (group: any): 'Fixed' | 'Regular' | 'Auction' => {
+  const gType = String(group?.type || group?.planType || group?.scheme || '').toUpperCase();
+  const gName = String(group?.name || group?.groupName || group?.id || '').toUpperCase();
+
+  if (gType.includes('FIX') || gName.includes('FIX') || gName.includes(' F ') || gName.includes('-F-')) {
+    return 'Fixed';
+  }
+  if (gType.includes('AUC') || gName.includes('AUC') || gName.includes(' A ') || gName.includes('-A-')) {
+    return 'Auction';
+  }
+  return 'Regular';
+};
+
+/**
+ * Unified customer scheme matching function used across Dashboard KPI cards,
+ * Customer Directory, and Chit Groups to guarantee 100% synchronized counts.
+ */
+export const customerBelongsToScheme = (
+  c: any,
+  scheme: 'ALL' | 'FIXED' | 'REGULAR' | 'AUCTION'
+): boolean => {
+  if (scheme === 'ALL') return true;
+
+  // 1. Check in enrolled chits
+  if (Array.isArray(c.chits) && c.chits.length > 0) {
+    const hasMatch = c.chits.some((ch: any) => {
+      const sch = String(ch.scheme || ch.type || ch.groupType || ch.plan || '').toUpperCase();
+      const gName = String(ch.groupName || ch.groupId || '').toUpperCase();
+
+      if (scheme === 'FIXED') {
+        return sch.includes('FIX') || gName.includes('FIX') || gName.includes(' F ') || gName.includes('-F-');
+      }
+      if (scheme === 'AUCTION') {
+        return sch.includes('AUC') || gName.includes('AUC') || gName.includes(' A ') || gName.includes('-A-');
+      }
+      if (scheme === 'REGULAR') {
+        return (
+          sch.includes('REG') ||
+          gName.includes('REG') ||
+          gName.includes(' R ') ||
+          gName.includes('-R-') ||
+          (!sch.includes('FIX') && !sch.includes('AUC') && !gName.includes('FIX') && !gName.includes('AUC'))
+        );
+      }
+      return false;
+    });
+    if (hasMatch) return true;
+  }
+
+  // 2. Check direct scheme or interestedPlan on customer profile
+  const direct = String(c.scheme || c.interestedPlan || c.plan || '').toUpperCase();
+  if (direct) {
+    if (scheme === 'FIXED') return direct.includes('FIX');
+    if (scheme === 'AUCTION') return direct.includes('AUC');
+    if (scheme === 'REGULAR') return direct.includes('REG') || (!direct.includes('FIX') && !direct.includes('AUC'));
+  }
+
+  return false;
+};
+
 export const getActiveBaseUrl = async (): Promise<string> => {
   // 1. User manual override
   try {
@@ -208,6 +284,8 @@ export const DataSyncManager = {
         pending: Number(pending),
         totalPaid: Number(totalPaid),
         activeChits: chits.length,
+        scheme: c.scheme || existing?.scheme || c.interestedPlan || existing?.interestedPlan,
+        interestedPlan: c.interestedPlan || existing?.interestedPlan || c.scheme || existing?.scheme,
         chits,
         status: c.status || 'ACTIVE',
       };
@@ -291,7 +369,9 @@ export const DataSyncManager = {
       city: customerData.city || '',
       pending: 0,
       totalPaid: 0,
-      chits: [],
+      scheme: (customerData as any).scheme || (customerData as any).interestedPlan,
+      interestedPlan: (customerData as any).interestedPlan || (customerData as any).scheme,
+      chits: customerData.chits || [],
       status: 'ACTIVE',
     };
 
@@ -343,11 +423,47 @@ export const DataSyncManager = {
   },
 
   /**
-   * Sync and discover Chit Groups from all sources
+   * Sync and discover Chit Groups from all sources, merged cleanly by normalized name
    */
   async getChitGroups(): Promise<ChitGroup[]> {
     const customers = await this.getCustomers();
     const groupMap = new Map<string, ChitGroup>();
+
+    // Helper to register or merge into groupMap
+    const registerOrMergeGroup = (g: Partial<ChitGroup>) => {
+      const gId = String(g.id || g.name || '').trim();
+      const gName = String(g.name || g.id || gId).trim();
+      if (!gId && !gName) return;
+
+      const normKey = normalizeGroupName(gName) || normalizeGroupName(gId);
+      if (!normKey) return;
+
+      const pType = getGroupSchemeType({ type: g.type, name: gName, id: gId });
+      const val = Number(g.value || 100000);
+      const dur = Number(g.duration || 20);
+
+      const existing = groupMap.get(normKey);
+      if (!existing) {
+        groupMap.set(normKey, {
+          id: gId,
+          name: gName,
+          type: pType,
+          value: val,
+          duration: dur,
+          currentMonth: Number(g.currentMonth || 1),
+          members: Number(g.members || 20),
+          filled: 0,
+          status: g.status || 'ACTIVE',
+        });
+      } else {
+        // Upgrade type if previously Regular and now specific
+        if (existing.type === 'Regular' && pType !== 'Regular') {
+          existing.type = pType;
+        }
+        if (val > 0) existing.value = val;
+        if (dur > 0) existing.duration = dur;
+      }
+    };
 
     // 1. Discover all active groups populated by enrolled members
     customers.forEach((c) => {
@@ -355,28 +471,16 @@ export const DataSyncManager = {
         c.chits.forEach((ch: any) => {
           const gId = String(ch.groupId || ch.groupName || '').trim();
           const gName = String(ch.groupName || ch.groupId || gId).trim();
-          if (gId) {
-            const existing = groupMap.get(gId.toLowerCase());
-            const monthly = Number(ch.monthlyInstallment || 0);
-            const val = Number(ch.chitValue || (monthly > 0 ? monthly * 20 : 100000));
-            const dur = Number(ch.duration || 20);
-
-            if (!existing) {
-              groupMap.set(gId.toLowerCase(), {
-                id: gId,
-                name: gName,
-                type: ch.scheme || (gName.toLowerCase().includes('fix') ? 'Fixed' : 'Auction'),
-                value: val,
-                duration: dur,
-                currentMonth: Number(ch.ticketNumber || 1),
-                members: 20,
-                filled: 1,
-                status: 'ACTIVE',
-              });
-            } else {
-              existing.filled = (existing.filled || 0) + 1;
-            }
-          }
+          const monthly = Number(ch.monthlyInstallment || 0);
+          const val = Number(ch.chitValue || (monthly > 0 ? monthly * 20 : 100000));
+          const dur = Number(ch.duration || 20);
+          registerOrMergeGroup({
+            id: gId,
+            name: gName,
+            type: ch.scheme,
+            value: val,
+            duration: dur,
+          });
         });
       }
     });
@@ -392,20 +496,15 @@ export const DataSyncManager = {
             const gId = String(bg.groupCode || bg._id || '').trim();
             const gName = String(bg.groupName || gId).trim();
             if (gId && !isMockGroup({ id: gId, name: gName })) {
-              const existing = groupMap.get(gId.toLowerCase());
-              if (!existing) {
-                groupMap.set(gId.toLowerCase(), {
-                  id: gId,
-                  name: gName,
-                  type: bg.planType || 'Auction',
-                  value: Number(bg.value || 100000),
-                  duration: Number(bg.duration || 20),
-                  currentMonth: 1,
-                  members: Number(bg.members || 20),
-                  filled: 0,
-                  status: bg.status || 'ACTIVE',
-                });
-              }
+              registerOrMergeGroup({
+                id: gId,
+                name: gName,
+                type: bg.planType,
+                value: Number(bg.value || bg.chitValue || 100000),
+                duration: Number(bg.duration || bg.durationMonths || 20),
+                members: Number(bg.members || bg.memberCount || 20),
+                status: bg.status || 'ACTIVE',
+              });
             }
           });
         }
@@ -425,13 +524,7 @@ export const DataSyncManager = {
           const customGroups: ChitGroup[] = JSON.parse(src);
           if (Array.isArray(customGroups)) {
             customGroups.forEach((cg) => {
-              const gId = String(cg.id || cg.name || '').trim();
-              if (gId) {
-                const low = gId.toLowerCase();
-                if (!groupMap.has(low)) {
-                  groupMap.set(low, cg);
-                }
-              }
+              registerOrMergeGroup(cg);
             });
           }
         } catch {}
@@ -439,32 +532,24 @@ export const DataSyncManager = {
     }
 
     // 3b. Add groups discovered from chitGroupMemberships
+    let storedMemberships: any[] = [];
     try {
       const rawMem = await secureStorage.getItem('chitGroupMemberships');
       if (rawMem) {
         const mems = JSON.parse(rawMem);
         if (Array.isArray(mems)) {
+          storedMemberships = mems;
           mems.forEach((m: any) => {
             const gId = String(m.groupId || m.groupName || '').trim();
             const gName = String(m.groupName || m.groupId || gId).trim();
             if (gId && !isMockGroup({ id: gId, name: gName })) {
-              const low = gId.toLowerCase();
-              if (!groupMap.has(low)) {
-                groupMap.set(low, {
-                  id: gId,
-                  name: gName,
-                  type: m.scheme || (gName.toLowerCase().includes('fix') ? 'Fixed' : 'Auction'),
-                  value: Number(m.chitValue || 100000),
-                  duration: Number(m.duration || m.months || 20),
-                  currentMonth: 1,
-                  members: 20,
-                  filled: 1,
-                  status: 'ACTIVE',
-                });
-              } else {
-                const grp = groupMap.get(low);
-                if (grp) grp.filled = Math.max(grp.filled || 0, 1);
-              }
+              registerOrMergeGroup({
+                id: gId,
+                name: gName,
+                type: m.scheme,
+                value: Number(m.chitValue || 100000),
+                duration: Number(m.duration || m.months || 20),
+              });
             }
           });
         }
@@ -477,10 +562,52 @@ export const DataSyncManager = {
       if (isMockGroup(g)) return false;
       const gId = String(g.id || '').toLowerCase().trim();
       const gName = String(g.name || '').toLowerCase().trim();
+      const normKey = normalizeGroupName(g.name);
       if (gId && deletedGroupIds.has(gId)) return false;
       if (gName && deletedGroupIds.has(gName)) return false;
+      if (normKey && deletedGroupIds.has(normKey)) return false;
       return true;
     });
+
+    // Accurately compute filled count for each group by counting unique enrolled members
+    finalGroups.forEach((grp) => {
+      const normGName = normalizeGroupName(grp.name);
+      const normGId = normalizeGroupName(grp.id);
+      const enrolledSet = new Set<string>();
+
+      // From customer chits
+      customers.forEach((c) => {
+        const cId = c.id || c.mongoId || c.phone || 'CUST';
+        if (Array.isArray(c.chits)) {
+          c.chits.forEach((ch: any, idx: number) => {
+            const normChName = normalizeGroupName(ch.groupName);
+            const normChId = normalizeGroupName(ch.groupId);
+            if (
+              (normGName && (normChName === normGName || normChId === normGName)) ||
+              (normGId && (normChId === normGId || normChName === normGId))
+            ) {
+              enrolledSet.add(`${cId}_t_${ch.ticketNumber || idx}`);
+            }
+          });
+        }
+      });
+
+      // From storedMemberships
+      storedMemberships.forEach((m: any, idx: number) => {
+        const normMName = normalizeGroupName(m.groupName);
+        const normMId = normalizeGroupName(m.groupId);
+        if (
+          (normGName && (normMName === normGName || normMId === normGName)) ||
+          (normGId && (normMId === normGId || normMName === normGId))
+        ) {
+          const mCustId = m.customerId || m.id || m.mobile || 'MEM';
+          enrolledSet.add(`${mCustId}_t_${m.ticketNumber || idx}`);
+        }
+      });
+
+      grp.filled = enrolledSet.size;
+    });
+
     return finalGroups;
   },
 

@@ -65,6 +65,8 @@ export interface Customer {
   pending: number;
   totalPaid: number;
   activeChits?: number;
+  scheme?: string;
+  interestedPlan?: string;
   chits: CustomerChit[];
   status: 'ACTIVE' | 'PENDING_APPROVAL' | 'REJECTED' | 'INACTIVE' | 'DEACTIVATED';
   photoUrl?: string;
