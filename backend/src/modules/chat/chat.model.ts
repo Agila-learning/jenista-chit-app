@@ -1,5 +1,14 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
+export interface IChatAttachment {
+  uri: string;
+  type: 'IMAGE' | 'DOCUMENT' | 'RECEIPT';
+  name?: string;
+  size?: number;
+  mimeType?: string;
+  base64?: string;
+}
+
 export interface IChatMessage extends Document {
   conversationId: string;
   customerId: string;
@@ -9,6 +18,7 @@ export interface IChatMessage extends Document {
   senderName: string;
   senderRole: 'CUSTOMER' | 'ADMIN' | 'STAFF';
   text: string;
+  attachment?: IChatAttachment;
   status: 'SENT' | 'DELIVERED' | 'READ';
   createdAt: Date;
   updatedAt: Date;
@@ -28,7 +38,15 @@ const ChatMessageSchema: Schema = new Schema(
       required: true,
       default: 'CUSTOMER',
     },
-    text: { type: String, required: true },
+    text: { type: String, default: '' },
+    attachment: {
+      uri: { type: String },
+      type: { type: String, enum: ['IMAGE', 'DOCUMENT', 'RECEIPT'] },
+      name: { type: String },
+      size: { type: Number },
+      mimeType: { type: String },
+      base64: { type: String },
+    },
     status: {
       type: String,
       enum: ['SENT', 'DELIVERED', 'READ'],
@@ -41,4 +59,47 @@ const ChatMessageSchema: Schema = new Schema(
 ChatMessageSchema.index({ conversationId: 1, createdAt: 1 });
 
 export const ChatMessage = mongoose.model<IChatMessage>('ChatMessage', ChatMessageSchema);
+
+// --- Story Model for Instagram-style Stories ---
+export interface IStory extends Document {
+  authorId: string;
+  authorName: string;
+  authorRole: 'ADMIN' | 'SUPER_ADMIN';
+  category: 'AUCTION_RESULT' | 'NEW_SCHEME' | 'DIVIDEND' | 'NOTICE' | 'CELEBRATION';
+  title: string;
+  caption: string;
+  mediaUrl?: string;
+  viewers: string[];
+  viewCount: number;
+  expiresAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const StorySchema: Schema = new Schema(
+  {
+    authorId: { type: String, required: true },
+    authorName: { type: String, required: true, default: 'Admin Desk' },
+    authorRole: { type: String, default: 'ADMIN' },
+    category: {
+      type: String,
+      enum: ['AUCTION_RESULT', 'NEW_SCHEME', 'DIVIDEND', 'NOTICE', 'CELEBRATION'],
+      default: 'NOTICE',
+    },
+    title: { type: String, required: true },
+    caption: { type: String, default: '' },
+    mediaUrl: { type: String, default: '' },
+    viewers: [{ type: String }],
+    viewCount: { type: Number, default: 0 },
+    expiresAt: {
+      type: Date,
+      default: () => new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+      index: { expires: 0 },
+    },
+  },
+  { timestamps: true }
+);
+
+export const StoryModel = mongoose.model<IStory>('Story', StorySchema);
+
 

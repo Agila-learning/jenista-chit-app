@@ -526,49 +526,78 @@ export const ChitCalculatorScreen: React.FC<{ navigation?: any }> = ({ navigatio
       ) : (
         /* Mode 2: Month-by-Month Projection Schedule */
         <View style={styles.scheduleCard}>
-          <View style={styles.scheduleHeaderRow}>
-            <Text style={[styles.tableHeadCol1, { width: scheme === 'AUCTION' ? '15%' : '20%' }]}>MONTH</Text>
-            <Text style={[styles.tableHeadCol2, { width: scheme === 'AUCTION' ? '22%' : '26%' }]}>DUE (₹)</Text>
-            {scheme === 'AUCTION' && <Text style={styles.tableHeadCol3}>DIV (₹)</Text>}
-            <Text style={[styles.tableHeadCol4, { width: scheme === 'AUCTION' ? '22%' : '26%' }]}>NET (₹)</Text>
-            <Text style={[styles.tableHeadCol5, { width: scheme === 'AUCTION' ? '21%' : '28%' }]}>PAYOUT (₹)</Text>
+          <View style={styles.scheduleHeaderTop}>
+            <View>
+              <Text style={styles.scheduleHeaderTitle}>Monthly Installment Projection</Text>
+              <Text style={styles.scheduleHeaderSubtitle}>
+                {duration} Months • {scheme === 'AUCTION' ? 'Auction Model' : scheme === 'FIXED' ? 'Fixed Draw Model' : 'Regular Plan'}
+              </Text>
+            </View>
+            <View style={styles.swipeHintBadge}>
+              <Ionicons name="swap-horizontal" size={12} color="#64748B" />
+              <Text style={styles.swipeHintText}>Scroll</Text>
+            </View>
           </View>
 
-          {projectionSchedule.map((r) => {
-            const isAuc = scheme === 'AUCTION';
-            return (
-              <View key={r.month} style={[styles.scheduleDataRow, r.isCompany && { backgroundColor: '#fffbeb' }]}>
-                <View style={[styles.tableCol1Container, { width: isAuc ? '15%' : '20%' }]}>
-                  <Text style={styles.tableCol1}>M{r.month}</Text>
-                  {r.isCompany && (
-                    <View style={styles.companyBadgeSmall}>
-                      <Text style={styles.companyBadgeText}>Co.</Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={[styles.tableCol2, { width: isAuc ? '22%' : '26%' }]}>{formatCurrency(r.baseInstallment)}</Text>
-                {isAuc && (
-                  <Text style={[styles.tableCol3, { color: '#15803d' }]}>
-                    +{formatCurrency(r.dividend)}
-                  </Text>
-                )}
-                <Text style={[styles.tableCol4, { width: isAuc ? '22%' : '26%', fontWeight: '800', color: '#0f172a' }]}>
-                  {formatCurrency(r.netPayable)}
-                </Text>
-                <View style={{ width: isAuc ? '21%' : '28%', alignItems: 'flex-end', justifyContent: 'center' }}>
-                  {r.isCompany ? (
-                    <View style={styles.companyPayoutBadge}>
-                      <Text style={styles.companyPayoutText}>COMPANY</Text>
-                    </View>
-                  ) : (
-                    <Text style={[styles.tableCol5, { width: '100%', textAlign: 'right', color: '#2563eb', fontWeight: '700' }]}>
-                      {formatCurrency(r.winnerPayout)}
-                    </Text>
-                  )}
-                </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.tableInnerContainer}>
+              <View style={styles.scheduleHeaderRow}>
+                <Text style={styles.tableHeadCol1}>MONTH</Text>
+                <Text style={styles.tableHeadCol2}>DUE (₹)</Text>
+                {scheme === 'AUCTION' && <Text style={styles.tableHeadCol3}>DIV (₹)</Text>}
+                <Text style={styles.tableHeadCol4}>NET (₹)</Text>
+                <Text style={styles.tableHeadCol5}>PAYOUT (₹)</Text>
               </View>
-            );
-          })}
+
+              {projectionSchedule.map((r, idx) => {
+                const isAuc = scheme === 'AUCTION';
+                const isEven = idx % 2 === 1;
+                return (
+                  <View
+                    key={r.month}
+                    style={[
+                      styles.scheduleDataRow,
+                      isEven && styles.scheduleDataRowEven,
+                      r.isCompany && { backgroundColor: '#FFFBEB' },
+                    ]}
+                  >
+                    <View style={styles.tableCol1Container}>
+                      <Text style={styles.tableCol1Text}>M{r.month}</Text>
+                      {r.isCompany && (
+                        <View style={styles.companyBadgeSmall}>
+                          <Text style={styles.companyBadgeText}>Co.</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    <Text style={styles.tableCol2}>{formatCurrency(r.baseInstallment)}</Text>
+
+                    {isAuc && (
+                      <Text style={[styles.tableCol3, { color: '#15803D' }]}>
+                        +{formatCurrency(r.dividend)}
+                      </Text>
+                    )}
+
+                    <Text style={[styles.tableCol4, { fontWeight: '800', color: '#0F172A' }]}>
+                      {formatCurrency(r.netPayable)}
+                    </Text>
+
+                    <View style={styles.tableCol5Container}>
+                      {r.isCompany ? (
+                        <View style={styles.companyPayoutBadge}>
+                          <Text style={styles.companyPayoutText}>COMPANY</Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.tableCol5Text}>
+                          {formatCurrency(r.winnerPayout)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </ScrollView>
         </View>
       )}
 
@@ -646,12 +675,14 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   presetBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    width: '31.5%',
+    paddingVertical: 8,
     borderRadius: 8,
     backgroundColor: '#f1f5f9',
     borderWidth: 1,
     borderColor: '#e2e8f0',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   presetBtnActive: {
     backgroundColor: '#eff6ff',
@@ -666,6 +697,7 @@ const styles = StyleSheet.create({
     color: '#1d4ed8',
     fontWeight: '800',
   },
+
   stepperRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -868,38 +900,114 @@ const styles = StyleSheet.create({
   scheduleCard: {
     backgroundColor: Colors.white,
     borderRadius: 14,
-    padding: 12,
+    padding: 14,
     borderWidth: 1,
     borderColor: '#e2e8f0',
   },
-  scheduleHeaderRow: {
+  scheduleHeaderTop: {
     flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-    paddingBottom: 6,
-    marginBottom: 4,
-  },
-  tableHeadCol1: { width: '15%', fontSize: 9, fontWeight: '800', color: '#64748b' },
-  tableHeadCol2: { width: '22%', fontSize: 9, fontWeight: '800', color: '#64748b' },
-  tableHeadCol3: { width: '20%', fontSize: 9, fontWeight: '800', color: '#64748b' },
-  tableHeadCol4: { width: '22%', fontSize: 9, fontWeight: '800', color: '#64748b' },
-  tableHeadCol5: { width: '21%', fontSize: 9, fontWeight: '800', color: '#64748b' },
-  scheduleDataRow: {
-    flexDirection: 'row',
-    paddingVertical: 5,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
   },
-  tableCol1: { width: '15%', fontSize: 10, fontWeight: '700', color: '#334155' },
-  tableCol2: { width: '22%', fontSize: 10, color: '#475569' },
-  tableCol3: { width: '20%', fontSize: 10, fontWeight: '600' },
-  tableCol4: { width: '22%', fontSize: 10 },
-  tableCol5: { width: '21%', fontSize: 10 },
+  scheduleHeaderTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  scheduleHeaderSubtitle: {
+    fontSize: 10,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  swipeHintBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  swipeHintText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  tableInnerContainer: {
+    minWidth: 420,
+    paddingRight: 8,
+  },
+  scheduleHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1.5,
+    borderBottomColor: '#cbd5e1',
+    paddingBottom: 8,
+    marginBottom: 4,
+  },
+  tableHeadCol1: { width: 56, fontSize: 10, fontWeight: '800', color: '#64748b' },
+  tableHeadCol2: { width: 85, fontSize: 10, fontWeight: '800', color: '#64748b', textAlign: 'right' },
+  tableHeadCol3: { width: 80, fontSize: 10, fontWeight: '800', color: '#64748b', textAlign: 'right' },
+  tableHeadCol4: { width: 90, fontSize: 10, fontWeight: '800', color: '#64748b', textAlign: 'right' },
+  tableHeadCol5: { width: 105, fontSize: 10, fontWeight: '800', color: '#64748b', textAlign: 'right' },
+  scheduleDataRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  scheduleDataRowEven: {
+    backgroundColor: '#fafbfc',
+  },
+  tableCol1Container: {
+    width: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  tableCol1Text: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#1e293b',
+  },
+  tableCol2: {
+    width: 85,
+    fontSize: 11,
+    color: '#475569',
+    textAlign: 'right',
+  },
+  tableCol3: {
+    width: 80,
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  tableCol4: {
+    width: 90,
+    fontSize: 11,
+    textAlign: 'right',
+  },
+  tableCol5Container: {
+    width: 105,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  tableCol5Text: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#2563eb',
+    textAlign: 'right',
+  },
   complianceRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingVertical: 8,
+    paddingVertical: 10,
     justifyContent: 'center',
   },
   complianceText: {
@@ -907,15 +1015,9 @@ const styles = StyleSheet.create({
     color: '#64748b',
     textAlign: 'center',
   },
-  tableCol1Container: {
-    width: '15%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
   companyBadgeSmall: {
     backgroundColor: '#fef3c7',
-    paddingHorizontal: 2,
+    paddingHorizontal: 4,
     paddingVertical: 1,
     borderRadius: 3,
     borderWidth: 0.5,
@@ -927,9 +1029,8 @@ const styles = StyleSheet.create({
     color: '#92400e',
   },
   companyPayoutBadge: {
-    width: '21%',
     backgroundColor: '#fef3c7',
-    paddingHorizontal: 3,
+    paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
     borderWidth: 0.5,
@@ -940,4 +1041,5 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#92400e',
   },
+
 });

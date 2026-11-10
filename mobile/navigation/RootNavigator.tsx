@@ -53,9 +53,9 @@ const APP_TAB_BAR_STYLE = {
   backgroundColor: '#FFFFFF',
   borderTopColor: '#E2E8F0',
   borderTopWidth: 1,
-  height: Platform.OS === 'ios' ? 84 : 68,
-  paddingBottom: Platform.OS === 'ios' ? 24 : 8,
-  paddingTop: 6,
+  height: Platform.OS === 'ios' ? 88 : 74,
+  paddingBottom: Platform.OS === 'ios' ? 26 : 14,
+  paddingTop: 8,
   shadowColor: '#102B63',
   shadowOffset: { width: 0, height: -3 },
   shadowOpacity: 0.05,
@@ -82,11 +82,11 @@ const AdminBottomTabs = ({ navigation }: any) => {
         tabBarStyle: APP_TAB_BAR_STYLE,
         tabBarActiveTintColor: '#2563EB',
         tabBarInactiveTintColor: '#64748B',
-        tabBarItemStyle: { paddingVertical: 2 },
+        tabBarItemStyle: { paddingVertical: 2, justifyContent: 'center', alignItems: 'center' },
         tabBarLabelStyle: {
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: '700',
-          marginTop: 2,
+          marginBottom: 2,
         },
         headerLeft: () => (
           <TouchableOpacity
@@ -142,6 +142,88 @@ const AdminBottomTabs = ({ navigation }: any) => {
           title: 'Payment & Prize Requests',
           tabBarLabel: 'Payments',
           tabBarIcon: ({ color, size }) => <Ionicons name="shield-checkmark" size={size || 20} color={color} />,
+        }}
+      />
+
+      {/* Persistent Bottom Navbar Screens (Accessible from Sidebar / Shortcuts) */}
+      <Tab.Screen
+        name="Ledger"
+        component={LedgerScreen}
+        options={{
+          title: 'General Ledger',
+          tabBarButton: () => null,
+        }}
+      />
+      <Tab.Screen
+        name="ConversationsList"
+        component={ConversationsListScreen}
+        options={{
+          title: 'Customer Support Chat',
+          tabBarButton: () => null,
+        }}
+      />
+      <Tab.Screen
+        name="StaffManagement"
+        component={StaffManagementScreen}
+        options={{
+          title: 'Staff & Field Executives',
+          tabBarButton: () => null,
+        }}
+      />
+      <Tab.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{
+          title: 'Notifications & Broadcasts',
+          tabBarButton: () => null,
+        }}
+      />
+      <Tab.Screen
+        name="Leads"
+        component={LeadsScreen}
+        options={{
+          title: 'Website Enquiries & Leads',
+          tabBarButton: () => null,
+        }}
+      />
+      <Tab.Screen
+        name="ChitCalculator"
+        component={ChitCalculatorScreen}
+        options={{
+          title: 'Chit Scheme Calculator',
+          tabBarButton: () => null,
+        }}
+      />
+      <Tab.Screen
+        name="ManageBanks"
+        component={ManageBanksScreen}
+        options={{
+          title: 'Company Bank Accounts',
+          tabBarButton: () => null,
+        }}
+      />
+      <Tab.Screen
+        name="Reports"
+        component={ReportsScreen}
+        options={{
+          title: 'Non-Payers & Defaulters',
+          tabBarButton: () => null,
+        }}
+      />
+      <Tab.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{
+          title: 'System & Policy Settings',
+          tabBarButton: () => null,
+        }}
+      />
+      <Tab.Screen
+        name="AddCustomer"
+        component={AddCustomerScreen}
+        options={{
+          title: 'Register Customer',
+          tabBarButton: () => null,
         }}
       />
     </Tab.Navigator>
@@ -257,9 +339,11 @@ const StaffBottomTabs = ({ navigation }: any) => {
         tabBarStyle: APP_TAB_BAR_STYLE,
         tabBarActiveTintColor: '#2563EB',
         tabBarInactiveTintColor: '#64748B',
+        tabBarItemStyle: { paddingVertical: 2, justifyContent: 'center', alignItems: 'center' },
         tabBarLabelStyle: {
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: '700',
+          marginBottom: 2,
         },
         headerLeft: () => (
           <TouchableOpacity
@@ -317,7 +401,42 @@ const StaffBottomTabs = ({ navigation }: any) => {
           tabBarIcon: ({ color, size }) => <Ionicons name="person-circle" size={size || 20} color={color} />,
         }}
       />
+
+      {/* Secondary screens with persistent bottom navigation */}
+      <Tab.Screen
+        name="ConversationsList"
+        component={ConversationsListScreen}
+        options={{
+          title: 'Customer Support Chat',
+          tabBarButton: () => null,
+        }}
+      />
+      <Tab.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{
+          title: 'Notices & Broadcasts',
+          tabBarButton: () => null,
+        }}
+      />
+      <Tab.Screen
+        name="ChitCalculator"
+        component={ChitCalculatorScreen}
+        options={{
+          title: 'Chit Scheme Calculator',
+          tabBarButton: () => null,
+        }}
+      />
+      <Tab.Screen
+        name="AddCustomer"
+        component={AddCustomerScreen}
+        options={{
+          title: 'Register Member',
+          tabBarButton: () => null,
+        }}
+      />
     </Tab.Navigator>
+
   );
 };
 
@@ -410,9 +529,11 @@ const CustomerBottomTabs = () => {
         tabBarStyle: APP_TAB_BAR_STYLE,
         tabBarActiveTintColor: '#2563EB',
         tabBarInactiveTintColor: '#64748B',
+        tabBarItemStyle: { paddingVertical: 2, justifyContent: 'center', alignItems: 'center' },
         tabBarLabelStyle: {
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: '700',
+          marginBottom: 2,
         },
       }}
     >
@@ -461,7 +582,26 @@ const CustomerBottomTabs = () => {
           tabBarIcon: ({ color, size }) => <Ionicons name="person" size={size || 20} color={color} />,
         }}
       />
+
+      {/* Secondary screens with persistent bottom navigation */}
+      <Tab.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{
+          title: 'Notices & Announcements',
+          tabBarButton: () => null,
+        }}
+      />
+      <Tab.Screen
+        name="ChitCalculator"
+        component={ChitCalculatorScreen}
+        options={{
+          title: 'Chit Scheme Calculator',
+          tabBarButton: () => null,
+        }}
+      />
     </Tab.Navigator>
+
   );
 };
 

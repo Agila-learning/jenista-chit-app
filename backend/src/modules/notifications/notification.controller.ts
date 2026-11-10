@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { Notification } from './notification.model';
+import { Notification, SystemNotificationModel } from './notification.model';
 import { NotificationService } from './notification.service';
 import { AnnouncementModel } from './announcement.model';
 
@@ -110,4 +110,125 @@ export class NotificationController {
       next(error);
     }
   }
+
+  /**
+   * Get all system notifications (for real-time sync with mobile & web)
+   */
+  static async getAllNotifications(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { role, userId } = req.query;
+
+      let filter: any = {};
+      if (role || userId) {
+        const clauses: any[] = [{ targetRole: 'ALL' }];
+        if (role) clauses.push({ targetRole: String(role).toUpperCase() });
+        if (userId) clauses.push({ targetUserId: String(userId) }, { 'metadata.customerId': String(userId) });
+        filter = { $or: clauses };
+      }
+
+      const notifs = await SystemNotificationModel.find(filter)
+        .sort({ createdAt: -1 })
+        .limit(100)
+        .lean();
+
+      const mapped = notifs.map((n) => ({
+        id: n.id,
+        type: n.type,
+        title: n.title,
+        message: n.message,
+        timestamp: n.timestamp || (n as any).createdAt,
+        isRead: Boolean(n.isRead),
+        targetRole: n.targetRole,
+        targetUserId: n.targetUserId,
+        metadata: n.metadata || {},
+      }));
+
+      res.status(200).json({ success: true, data: mapped });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Create / Broadcast a system notification
+   */
+  static async createNotification(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id, type, title, message, targetRole, targetUserId, metadata } = req.body;
+      if (!title || !message) {
+        res.status(400).json({ success: false, message: 'Title and message are required' });
+        return;
+      }
+
+      const notifId = id || `NOTIF-${Date.now().toString().slice(-6)}`;
+
+      const created = await SystemNotificationModel.findOneAndUpdate(
+        { id: notifId },
+        {
+          id: notifId,
+          type: type || 'SYSTEM',
+          title: title.trim(),
+          message: message.trim(),
+          timestamp: new Date().toISOString(),
+          isRead: false,
+          targetRole: targetRole || 'ALL',
+          targetUserId: targetUserId || undefined,
+          metadata: metadata || {},
+        },
+        { upsert: true, new: true }
+      );
+
+      res.status(201).json({ success: true, data: created });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Mark a notification as read
+   */
+  static async markNotificationRead(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      await SystemNotificationModel.updateOne({ id }, { $set: { isRead: true } });
+      res.status(200).json({ success: true, message: 'Marked as read' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Mark all notifications as read
+   */
+  static async markAllNotificationsRead(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { role, userId } = req.body;
+      let filter: any = {};
+      if (role || userId) {
+        const clauses: any[] = [{ targetRole: 'ALL' }];
+        if (role) clauses.push({ targetRole: String(role).toUpperCase() });
+        if (userId) clauses.push({ targetUserId: String(userId) });
+        filter = { $or: clauses };
+      }
+
+      await SystemNotificationModel.updateMany(filter, { $set: { isRead: true } });
+      res.status(200).json({ success: true, message: 'All marked as read' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Delete a notification
+   */
+  static async deleteNotification(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      await SystemNotificationModel.deleteOne({ id });
+      res.status(200).json({ success: true, message: 'Notification deleted' });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
+

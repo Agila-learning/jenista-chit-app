@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../theme/colors';
 import { useAuth } from '../../store/AuthContext';
 import { getActiveBaseUrl, DataSyncManager } from '../../services/dataSync';
+import { InstagramStoriesTray } from '../../components/chat/InstagramStoriesTray';
 
 interface Conversation {
   conversationId: string;
@@ -25,11 +26,14 @@ interface Conversation {
   unreadCount: number;
 }
 
+type FilterTab = 'ALL' | 'UNREAD' | 'MEMBERS' | 'STAFF';
+
 export const ConversationsListScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
+  const [activeTab, setActiveTab] = useState<FilterTab>('ALL');
 
   const loadConversations = async () => {
     try {
@@ -47,7 +51,7 @@ export const ConversationsListScreen: React.FC<{ navigation: any }> = ({ navigat
     // Fallback: build list from known customers
     try {
       const customers = await DataSyncManager.getCustomers();
-      const fallbackList: Conversation[] = customers.slice(0, 10).map((c) => ({
+      const fallbackList: Conversation[] = customers.slice(0, 15).map((c) => ({
         conversationId: c.id,
         customerId: c.id,
         customerName: c.name,
@@ -63,7 +67,7 @@ export const ConversationsListScreen: React.FC<{ navigation: any }> = ({ navigat
 
   useEffect(() => {
     loadConversations();
-    const interval = setInterval(loadConversations, 6000);
+    const interval = setInterval(loadConversations, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -74,19 +78,26 @@ export const ConversationsListScreen: React.FC<{ navigation: any }> = ({ navigat
 
   const filtered = conversations.filter((c) => {
     const q = search.toLowerCase().trim();
-    if (!q) return true;
-    return (
+    const matchesSearch =
+      !q ||
       c.customerName.toLowerCase().includes(q) ||
       (c.customerPhone && c.customerPhone.includes(q)) ||
-      c.lastMessage.toLowerCase().includes(q)
-    );
+      c.lastMessage.toLowerCase().includes(q);
+
+    if (!matchesSearch) return false;
+
+    if (activeTab === 'UNREAD') return c.unreadCount > 0;
+    if (activeTab === 'STAFF') return c.lastSenderRole === 'STAFF';
+    return true;
   });
+
+  const unreadTotal = conversations.reduce((acc, c) => acc + (c.unreadCount > 0 ? 1 : 0), 0);
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      {/* Search Bar */}
+      {/* Top Search Bar */}
       <View style={styles.searchRow}>
         <Ionicons name="search" size={18} color="#94a3b8" />
         <TextInput
@@ -103,19 +114,69 @@ export const ConversationsListScreen: React.FC<{ navigation: any }> = ({ navigat
         )}
       </View>
 
+      {/* Filter Tabs */}
+      <View style={styles.filterTabsRow}>
+        <TouchableOpacity
+          style={[styles.tabChip, activeTab === 'ALL' && styles.tabChipActive]}
+          onPress={() => setActiveTab('ALL')}
+        >
+          <Text style={[styles.tabChipText, activeTab === 'ALL' && styles.tabChipTextActive]}>
+            All ({conversations.length})
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabChip, activeTab === 'UNREAD' && styles.tabChipActive]}
+          onPress={() => setActiveTab('UNREAD')}
+        >
+          <Text style={[styles.tabChipText, activeTab === 'UNREAD' && styles.tabChipTextActive]}>
+            Unread {unreadTotal > 0 ? `(${unreadTotal})` : ''}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabChip, activeTab === 'MEMBERS' && styles.tabChipActive]}
+          onPress={() => setActiveTab('MEMBERS')}
+        >
+          <Text style={[styles.tabChipText, activeTab === 'MEMBERS' && styles.tabChipTextActive]}>
+            Members
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabChip, activeTab === 'STAFF' && styles.tabChipActive]}
+          onPress={() => setActiveTab('STAFF')}
+        >
+          <Text style={[styles.tabChipText, activeTab === 'STAFF' && styles.tabChipTextActive]}>
+            Staff Desk
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.conversationId}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         contentContainerStyle={styles.listContent}
+        ListHeaderComponent={
+          <View style={styles.storiesContainer}>
+            <InstagramStoriesTray navigation={navigation} />
+            <View style={styles.sectionDivider}>
+              <Text style={styles.sectionTitle}>Direct Messages</Text>
+              <Text style={styles.sectionSubtitle}>{filtered.length} Active chats</Text>
+            </View>
+          </View>
+        }
         renderItem={({ item }) => {
           const initial = (item.customerName || 'M').charAt(0).toUpperCase();
-          const avatarBgs = ['#FFECC2', '#FCE7F3', '#E0F2FE', '#EDE9FE', '#FEF3C7'];
+          const avatarBgs = ['#FFECC2', '#FCE7F3', '#E0F2FE', '#EDE9FE', '#FEF3C7', '#DCFCE7'];
           const bg = avatarBgs[initial.charCodeAt(0) % avatarBgs.length];
+
+          const isUnread = item.unreadCount > 0;
 
           return (
             <TouchableOpacity
-              style={styles.convCard}
+              style={[styles.convCard, isUnread && styles.convCardUnread]}
               activeOpacity={0.75}
               onPress={() =>
                 navigation.navigate('ChatScreen', {
@@ -126,14 +187,20 @@ export const ConversationsListScreen: React.FC<{ navigation: any }> = ({ navigat
                 })
               }
             >
-              <View style={[styles.avatar, { backgroundColor: bg }]}>
-                <Text style={styles.avatarText}>{initial}</Text>
+              {/* Avatar with Online Dot */}
+              <View style={styles.avatarWrapper}>
+                <View style={[styles.avatar, { backgroundColor: bg }]}>
+                  <Text style={styles.avatarText}>{initial}</Text>
+                </View>
+                <View style={styles.onlineBadge} />
               </View>
 
               <View style={{ flex: 1 }}>
                 <View style={styles.cardHeader}>
-                  <Text style={styles.custName}>{item.customerName}</Text>
-                  <Text style={styles.timeText}>
+                  <Text style={[styles.custName, isUnread && styles.custNameUnread]}>
+                    {item.customerName}
+                  </Text>
+                  <Text style={[styles.timeText, isUnread && styles.timeTextUnread]}>
                     {new Date(item.lastMessageAt).toLocaleDateString([], {
                       month: 'short',
                       day: 'numeric',
@@ -141,13 +208,16 @@ export const ConversationsListScreen: React.FC<{ navigation: any }> = ({ navigat
                   </Text>
                 </View>
 
-                <Text style={styles.lastMsg} numberOfLines={1}>
+                <Text style={[styles.lastMsg, isUnread && styles.lastMsgUnread]} numberOfLines={1}>
                   {item.lastMessage}
                 </Text>
 
                 <View style={styles.cardFooter}>
-                  <Text style={styles.phoneText}>{item.customerPhone || `ID: ${item.customerId}`}</Text>
-                  {item.unreadCount > 0 && (
+                  <View style={styles.phoneBadge}>
+                    <Ionicons name="call-outline" size={10} color="#64748B" />
+                    <Text style={styles.phoneText}>{item.customerPhone || `ID: ${item.customerId}`}</Text>
+                  </View>
+                  {isUnread && (
                     <View style={styles.unreadBadge}>
                       <Text style={styles.unreadBadgeText}>{item.unreadCount}</Text>
                     </View>
@@ -159,6 +229,15 @@ export const ConversationsListScreen: React.FC<{ navigation: any }> = ({ navigat
             </TouchableOpacity>
           );
         }}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Ionicons name="chatbubbles-outline" size={48} color="#94A3B8" />
+            <Text style={styles.emptyTitle}>No conversations found</Text>
+            <Text style={styles.emptySubtitle}>
+              {search ? 'Try a different search query' : 'Messages with members will appear here'}
+            </Text>
+          </View>
+        }
       />
     </View>
   );
@@ -174,7 +253,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     marginHorizontal: 16,
-    marginVertical: 12,
+    marginTop: 12,
+    marginBottom: 8,
     paddingHorizontal: 14,
     borderRadius: 14,
     borderWidth: 1,
@@ -187,9 +267,58 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#0F172A',
   },
+  filterTabsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    gap: 8,
+  },
+  tabChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  tabChipActive: {
+    backgroundColor: Colors.navy.primary,
+    borderColor: Colors.navy.primary,
+  },
+  tabChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  tabChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  storiesContainer: {
+    marginBottom: 6,
+  },
+  sectionDivider: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    marginTop: 6,
+    marginBottom: 10,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#1E293B',
+    letterSpacing: 0.3,
+  },
+  sectionSubtitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#94A3B8',
+  },
   listContent: {
     paddingHorizontal: 16,
-    paddingBottom: 100,
+    paddingBottom: 110,
     gap: 10,
   },
   convCard: {
@@ -197,7 +326,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     padding: 14,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     gap: 12,
@@ -207,17 +336,35 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04,
     shadowRadius: 4,
   },
+  convCardUnread: {
+    borderColor: '#BFDBFE',
+    backgroundColor: '#F8FAFF',
+  },
+  avatarWrapper: {
+    position: 'relative',
+  },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 19,
+    fontWeight: '900',
     color: Colors.navy.primary,
+  },
+  onlineBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#10B981',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   cardHeader: {
     flexDirection: 'row',
@@ -226,39 +373,76 @@ const styles = StyleSheet.create({
   },
   custName: {
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '700',
     color: '#0F172A',
+  },
+  custNameUnread: {
+    fontWeight: '900',
+    color: '#1E3A8A',
   },
   timeText: {
     fontSize: 11,
     color: '#94A3B8',
   },
+  timeTextUnread: {
+    color: '#2563EB',
+    fontWeight: '700',
+  },
   lastMsg: {
     fontSize: 12,
     color: '#64748B',
-    marginTop: 2,
+    marginTop: 3,
     lineHeight: 16,
+  },
+  lastMsgUnread: {
+    color: '#1E293B',
+    fontWeight: '700',
   },
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 6,
+  },
+  phoneBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   phoneText: {
     fontSize: 11,
-    color: '#94A3B8',
+    color: '#64748B',
+    fontWeight: '500',
   },
   unreadBadge: {
-    backgroundColor: Colors.danger,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
     borderRadius: 10,
+    minWidth: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   unreadBadgeText: {
     color: '#FFFFFF',
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '900',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    gap: 8,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  emptySubtitle: {
+    fontSize: 12,
+    color: '#94A3B8',
   },
 });
+
 

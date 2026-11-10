@@ -24,6 +24,10 @@ export const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props
   const isCustomer = user?.role === 'CUSTOMER';
 
   const navigateTo = (screenName: string, params?: any) => {
+    try {
+      props.navigation.closeDrawer();
+    } catch {}
+
     if (!isCustomer && !isStaff) {
       if (screenName === 'CustomerList') {
         props.navigation.navigate('AdminTabs', { screen: 'CustomerList', params });
@@ -43,6 +47,23 @@ export const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props
       }
       if (screenName === 'AdminDashboard' || screenName === 'AdminTabs') {
         props.navigation.navigate('AdminTabs', { screen: 'AdminDashboard', params });
+        return;
+      }
+      // Route other admin modules through AdminTabs so the bottom navbar remains visible!
+      const tabsScreens = [
+        'Ledger',
+        'ConversationsList',
+        'StaffManagement',
+        'Notifications',
+        'Leads',
+        'ChitCalculator',
+        'ManageBanks',
+        'Reports',
+        'Settings',
+        'AddCustomer',
+      ];
+      if (tabsScreens.includes(screenName)) {
+        props.navigation.navigate('AdminTabs', { screen: screenName, params });
         return;
       }
     }

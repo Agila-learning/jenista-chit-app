@@ -131,6 +131,15 @@ export const addSystemNotification = (notif: Omit<SystemNotification, 'id' | 'ti
   localStorage.setItem('systemNotifications', JSON.stringify(updated));
   window.dispatchEvent(new Event('storage'));
   window.dispatchEvent(new CustomEvent('notificationSync', { detail: newNotif }));
+
+  // Asynchronously sync with backend
+  import('../api/client').then(({ fetchClient }) => {
+    fetchClient('/notifications', {
+      method: 'POST',
+      body: JSON.stringify(newNotif),
+    }).catch(() => {});
+  }).catch(() => {});
+
   return newNotif;
 };
 
@@ -140,6 +149,11 @@ export const markNotificationAsRead = (id: string): void => {
   localStorage.setItem('systemNotifications', JSON.stringify(updated));
   window.dispatchEvent(new Event('storage'));
   window.dispatchEvent(new CustomEvent('notificationSync', { detail: { id, isRead: true } }));
+
+  // Sync with backend
+  import('../api/client').then(({ fetchClient }) => {
+    fetchClient(`/notifications/${id}/read`, { method: 'PATCH' }).catch(() => {});
+  }).catch(() => {});
 };
 
 export const markAllNotificationsAsRead = (userId?: string, role?: string): void => {
@@ -162,7 +176,16 @@ export const markAllNotificationsAsRead = (userId?: string, role?: string): void
   localStorage.setItem('systemNotifications', JSON.stringify(updated));
   window.dispatchEvent(new Event('storage'));
   window.dispatchEvent(new CustomEvent('notificationSync', { detail: { markAll: true } }));
+
+  // Sync with backend
+  import('../api/client').then(({ fetchClient }) => {
+    fetchClient('/notifications/read-all', {
+      method: 'PATCH',
+      body: JSON.stringify({ userId, role }),
+    }).catch(() => {});
+  }).catch(() => {});
 };
+
 
 /**
  * Synchronizes pending prize disbursement requests and overdue installment alerts

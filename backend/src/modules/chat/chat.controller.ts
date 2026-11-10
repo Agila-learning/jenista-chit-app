@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { ChatMessage } from './chat.model';
+import { ChatMessage, StoryModel } from './chat.model';
 
 export class ChatController {
   /**
@@ -28,7 +28,7 @@ export class ChatController {
             customerId: lastMsg?.customerId || convId,
             customerName: lastMsg?.customerName || 'Customer',
             customerPhone: lastMsg?.customerPhone || '',
-            lastMessage: lastMsg?.text || '',
+            lastMessage: lastMsg?.text || (lastMsg?.attachment ? `[${lastMsg.attachment.type || 'Attachment'}]` : ''),
             lastMessageAt: lastMsg?.createdAt || new Date(),
             lastSenderRole: lastMsg?.senderRole || 'CUSTOMER',
             unreadCount,
@@ -68,7 +68,7 @@ export class ChatController {
   }
 
   /**
-   * Send a new message
+   * Send a new message (supports text and/or attachments)
    */
   static async sendMessage(req: Request, res: Response, next: NextFunction) {
     try {
@@ -81,10 +81,11 @@ export class ChatController {
         senderName,
         senderRole,
         text,
+        attachment,
       } = req.body;
 
-      if (!text || !text.trim()) {
-        res.status(400).json({ success: false, message: 'Message text is required' });
+      if ((!text || !text.trim()) && !attachment) {
+        res.status(400).json({ success: false, message: 'Message text or attachment is required' });
         return;
       }
 
@@ -99,7 +100,8 @@ export class ChatController {
         senderId: senderId || (req as any).user?.id || 'user',
         senderName: senderName || (req as any).user?.name || 'Support Staff',
         senderRole: senderRole || (req as any).user?.role || 'CUSTOMER',
-        text: text.trim(),
+        text: text ? text.trim() : (attachment?.name || 'Attachment'),
+        attachment: attachment || undefined,
         status: 'SENT',
       });
 
@@ -130,5 +132,125 @@ export class ChatController {
       next(error);
     }
   }
+
+  // ==========================================
+  // INSTAGRAM-STYLE STORIES ENDPOINTS
+  // ==========================================
+
+  /**
+   * Get all active (unexpired) stories
+   * All chit members and staff can view these stories!
+   */
+  static async getStories(req: Request, res: Response, next: NextFunction) {
+    try {
+      const now = new Date();
+      const stories = await StoryModel.find({ expiresAt: { $gt: now } })
+        .sort({ createdAt: -1 })
+        .lean();
+
+      const mapped = stories.map((s) => ({
+        id: s._id.toString(),
+        authorId: s.authorId,
+        authorName: s.authorName,
+        authorRole: s.authorRole,
+        category: s.category,
+        title: s.title,
+        caption: s.caption,
+        mediaUrl: s.mediaUrl,
+        viewCount: s.viewCount || (s.viewers ? s.viewers.length : 0),
+        viewers: s.viewers || [],
+        createdAt: s.createdAt,
+        expiresAt: s.expiresAt,
+      }));
+
+      res.status(200).json({ success: true, data: mapped });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Post a new story (Admin)
+   */
+  static async createStory(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { title, caption, category, mediaUrl, durationHours } = req.body;
+      const user = (req as any).user;
+
+      if (!title || !title.trim()) {
+        res.status(400).json({ success: false, message: 'Story title is required' });
+        return;
+      }
+
+      const hours = Number(durationHours) || 24;
+      const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
+
+      const story = await StoryModel.create({
+        authorId: user?.id || 'admin',
+        authorName: user?.name || 'Administrator',
+        authorRole: user?.role || 'ADMIN',
+        category: category || 'NOTICE',
+        title: title.trim(),
+        caption: (caption || '').trim(),
+        mediaUrl: mediaUrl || '',
+        viewers: [],
+        viewCount: 0,
+        expiresAt,
+      });
+
+      res.status(201).json({
+        success: true,
+        data: {
+          id: story._id.toString(),
+          authorId: story.authorId,
+          authorName: story.authorName,
+          authorRole: story.authorRole,
+          category: story.category,
+          title: story.title,
+          caption: story.caption,
+          mediaUrl: story.mediaUrl,
+          viewCount: 0,
+          viewers: [],
+          createdAt: story.createdAt,
+          expiresAt: story.expiresAt,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Record a view on a story
+   */
+  static async recordStoryView(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const viewerId = (req.body?.viewerId || (req as any).user?.id || `viewer-${Date.now()}`).toString();
+
+      await StoryModel.findByIdAndUpdate(id, {
+        $addToSet: { viewers: viewerId },
+        $inc: { viewCount: 1 },
+      });
+
+      res.status(200).json({ success: true, message: 'View recorded' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Delete a story
+   */
+  static async deleteStory(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      await StoryModel.findByIdAndDelete(id);
+      res.status(200).json({ success: true, message: 'Story deleted' });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
+
 

@@ -176,8 +176,51 @@ const DEFAULT_NOTIFICATIONS: SystemNotification[] = [
   }
 ];
 
+let lastKnownNotificationIds = new Set<string>();
+let isPollerActive = false;
+
 export const MobileNotificationsManager = {
-  async getNotifications(): Promise<SystemNotification[]> {
+  async syncNotificationsFromBackend(): Promise<SystemNotification[]> {
+    try {
+      const baseUrl = await getActiveBaseUrl();
+      const res = await fetch(`${baseUrl}/notifications`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json && Array.isArray(json.data)) {
+          const backendList: SystemNotification[] = json.data;
+          const local = await this.getLocalNotifications();
+
+          // Merge by ID keeping newest timestamp
+          const map = new Map<string, SystemNotification>();
+          local.forEach((n) => map.set(n.id, n));
+
+          let hasNewIncoming = false;
+          backendList.forEach((bn) => {
+            if (!lastKnownNotificationIds.has(bn.id) && !bn.isRead) {
+              hasNewIncoming = true;
+            }
+            lastKnownNotificationIds.add(bn.id);
+            map.set(bn.id, bn);
+          });
+
+          const merged = Array.from(map.values()).sort(
+            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
+
+          await secureStorage.setItem('mobile_system_notifications', JSON.stringify(merged));
+
+          if (hasNewIncoming) {
+            playNotificationChime();
+          }
+          notifyNotificationSubscribers();
+          return merged;
+        }
+      }
+    } catch {}
+    return this.getLocalNotifications();
+  },
+
+  async getLocalNotifications(): Promise<SystemNotification[]> {
     try {
       const raw = await secureStorage.getItem('mobile_system_notifications');
       if (raw) {
@@ -188,6 +231,28 @@ export const MobileNotificationsManager = {
     } catch {
       return DEFAULT_NOTIFICATIONS;
     }
+  },
+
+  async getNotifications(): Promise<SystemNotification[]> {
+    // Start background sync if not already running
+    if (!isPollerActive) {
+      this.startRealtimeSync();
+    }
+    // Return cached immediately, trigger background refresh
+    const cached = await this.getLocalNotifications();
+    this.syncNotificationsFromBackend().catch(() => {});
+    return cached;
+  },
+
+  startRealtimeSync() {
+    if (isPollerActive) return;
+    isPollerActive = true;
+    // Initial sync
+    this.syncNotificationsFromBackend().catch(() => {});
+    // Poll every 5 seconds for real-time alerts
+    setInterval(() => {
+      this.syncNotificationsFromBackend().catch(() => {});
+    }, 5000);
   },
 
   async getNotificationsForUser(userId?: string, role?: string): Promise<SystemNotification[]> {
@@ -206,7 +271,7 @@ export const MobileNotificationsManager = {
   },
 
   async addNotification(notif: Omit<SystemNotification, 'id' | 'timestamp' | 'isRead'>): Promise<SystemNotification> {
-    const current = await this.getNotifications();
+    const current = await this.getLocalNotifications();
     const newNotif: SystemNotification = {
       ...notif,
       id: `NOTIF-${Date.now().toString().slice(-6)}`,
@@ -215,6 +280,17 @@ export const MobileNotificationsManager = {
     };
     const updated = [newNotif, ...current];
     await secureStorage.setItem('mobile_system_notifications', JSON.stringify(updated));
+    lastKnownNotificationIds.add(newNotif.id);
+
+    // Sync to backend
+    try {
+      const baseUrl = await getActiveBaseUrl();
+      fetch(`${baseUrl}/notifications`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newNotif),
+      }).catch(() => {});
+    } catch {}
 
     // Real-time sound chime and subscriber update
     playNotificationChime();
@@ -227,14 +303,20 @@ export const MobileNotificationsManager = {
   },
 
   async markAsRead(id: string): Promise<void> {
-    const current = await this.getNotifications();
+    const current = await this.getLocalNotifications();
     const updated = current.map(n => n.id === id ? { ...n, isRead: true } : n);
     await secureStorage.setItem('mobile_system_notifications', JSON.stringify(updated));
+
+    try {
+      const baseUrl = await getActiveBaseUrl();
+      fetch(`${baseUrl}/notifications/${id}/read`, { method: 'PATCH' }).catch(() => {});
+    } catch {}
+
     notifyNotificationSubscribers();
   },
 
   async markAllAsRead(userId?: string, role?: string): Promise<void> {
-    const current = await this.getNotifications();
+    const current = await this.getLocalNotifications();
     const updated = current.map(n => {
       const isTarget = 
         n.targetRole === 'ALL' ||
@@ -243,8 +325,19 @@ export const MobileNotificationsManager = {
       return isTarget ? { ...n, isRead: true } : n;
     });
     await secureStorage.setItem('mobile_system_notifications', JSON.stringify(updated));
+
+    try {
+      const baseUrl = await getActiveBaseUrl();
+      fetch(`${baseUrl}/notifications/read-all`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, role }),
+      }).catch(() => {});
+    } catch {}
+
     notifyNotificationSubscribers();
   },
+
 
   // Announcements
   async getAnnouncements(): Promise<Announcement[]> {
