@@ -67,9 +67,16 @@ const Stack = createNativeStackNavigator();
 const Drawer = createDrawerNavigator();
 const Tab = createBottomTabNavigator();
 
+// Hidden options for secondary screens inside Tab Navigators so they take ZERO width/space
+const HIDDEN_TAB_BAR_OPTIONS = {
+  tabBarButton: () => null,
+  tabBarItemStyle: { display: 'none' as const },
+};
+
 // ==========================================
 // 1. ADMIN BOTTOM NAVIGATION TABS
 // ==========================================
+
 const AdminBottomTabs = ({ navigation }: any) => {
   return (
     <Tab.Navigator
@@ -151,7 +158,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
         component={LedgerScreen}
         options={{
           title: 'General Ledger',
-          tabBarButton: () => null,
+          ...HIDDEN_TAB_BAR_OPTIONS,
         }}
       />
       <Tab.Screen
@@ -159,7 +166,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
         component={ConversationsListScreen}
         options={{
           title: 'Customer Support Chat',
-          tabBarButton: () => null,
+          ...HIDDEN_TAB_BAR_OPTIONS,
         }}
       />
       <Tab.Screen
@@ -167,7 +174,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
         component={StaffManagementScreen}
         options={{
           title: 'Staff & Field Executives',
-          tabBarButton: () => null,
+          ...HIDDEN_TAB_BAR_OPTIONS,
         }}
       />
       <Tab.Screen
@@ -175,7 +182,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
         component={NotificationsScreen}
         options={{
           title: 'Notifications & Broadcasts',
-          tabBarButton: () => null,
+          ...HIDDEN_TAB_BAR_OPTIONS,
         }}
       />
       <Tab.Screen
@@ -183,7 +190,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
         component={LeadsScreen}
         options={{
           title: 'Website Enquiries & Leads',
-          tabBarButton: () => null,
+          ...HIDDEN_TAB_BAR_OPTIONS,
         }}
       />
       <Tab.Screen
@@ -191,7 +198,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
         component={ChitCalculatorScreen}
         options={{
           title: 'Chit Scheme Calculator',
-          tabBarButton: () => null,
+          ...HIDDEN_TAB_BAR_OPTIONS,
         }}
       />
       <Tab.Screen
@@ -199,7 +206,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
         component={ManageBanksScreen}
         options={{
           title: 'Company Bank Accounts',
-          tabBarButton: () => null,
+          ...HIDDEN_TAB_BAR_OPTIONS,
         }}
       />
       <Tab.Screen
@@ -207,7 +214,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
         component={ReportsScreen}
         options={{
           title: 'Non-Payers & Defaulters',
-          tabBarButton: () => null,
+          ...HIDDEN_TAB_BAR_OPTIONS,
         }}
       />
       <Tab.Screen
@@ -215,7 +222,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
         component={SettingsScreen}
         options={{
           title: 'System & Policy Settings',
-          tabBarButton: () => null,
+          ...HIDDEN_TAB_BAR_OPTIONS,
         }}
       />
       <Tab.Screen
@@ -223,10 +230,11 @@ const AdminBottomTabs = ({ navigation }: any) => {
         component={AddCustomerScreen}
         options={{
           title: 'Register Customer',
-          tabBarButton: () => null,
+          ...HIDDEN_TAB_BAR_OPTIONS,
         }}
       />
     </Tab.Navigator>
+
   );
 };
 
@@ -408,7 +416,7 @@ const StaffBottomTabs = ({ navigation }: any) => {
         component={ConversationsListScreen}
         options={{
           title: 'Customer Support Chat',
-          tabBarButton: () => null,
+          ...HIDDEN_TAB_BAR_OPTIONS,
         }}
       />
       <Tab.Screen
@@ -416,7 +424,7 @@ const StaffBottomTabs = ({ navigation }: any) => {
         component={NotificationsScreen}
         options={{
           title: 'Notices & Broadcasts',
-          tabBarButton: () => null,
+          ...HIDDEN_TAB_BAR_OPTIONS,
         }}
       />
       <Tab.Screen
@@ -424,7 +432,7 @@ const StaffBottomTabs = ({ navigation }: any) => {
         component={ChitCalculatorScreen}
         options={{
           title: 'Chit Scheme Calculator',
-          tabBarButton: () => null,
+          ...HIDDEN_TAB_BAR_OPTIONS,
         }}
       />
       <Tab.Screen
@@ -432,10 +440,11 @@ const StaffBottomTabs = ({ navigation }: any) => {
         component={AddCustomerScreen}
         options={{
           title: 'Register Member',
-          tabBarButton: () => null,
+          ...HIDDEN_TAB_BAR_OPTIONS,
         }}
       />
     </Tab.Navigator>
+
 
   );
 };
@@ -589,7 +598,7 @@ const CustomerBottomTabs = () => {
         component={NotificationsScreen}
         options={{
           title: 'Notices & Announcements',
-          tabBarButton: () => null,
+          ...HIDDEN_TAB_BAR_OPTIONS,
         }}
       />
       <Tab.Screen
@@ -597,10 +606,11 @@ const CustomerBottomTabs = () => {
         component={ChitCalculatorScreen}
         options={{
           title: 'Chit Scheme Calculator',
-          tabBarButton: () => null,
+          ...HIDDEN_TAB_BAR_OPTIONS,
         }}
       />
     </Tab.Navigator>
+
 
   );
 };

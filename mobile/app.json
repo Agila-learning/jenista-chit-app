@@ -58,8 +58,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "9551141c-5d6c-4f19-9796-22ebd0f9c9c2"
+        "projectId": "2991a034-1521-4a60-8e01-b2e84dfd791d"
       }
-    }
+    },
+    "owner": "agila-g"
   }
 }
