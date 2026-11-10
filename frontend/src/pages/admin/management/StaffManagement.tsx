@@ -3,22 +3,15 @@ import {
   Users, 
   UserPlus, 
   Search, 
-  ShieldCheck, 
   Phone, 
-  Mail, 
-  Lock, 
   Trash2, 
   Edit3, 
   CheckCircle2, 
-  XCircle, 
   RefreshCw, 
   KeyRound,
-  Filter,
-  BadgeCheck,
-  UserCheck
+  BadgeCheck
 } from 'lucide-react';
 import { fetchClient } from '../../../api/client';
-import { formatDate } from '../../../utils/format';
 
 interface StaffMember {
   id?: string;

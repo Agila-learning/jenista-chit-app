@@ -53,9 +53,9 @@ const APP_TAB_BAR_STYLE = {
   backgroundColor: '#FFFFFF',
   borderTopColor: '#E2E8F0',
   borderTopWidth: 1,
-  height: Platform.OS === 'ios' ? 88 : 74,
-  paddingBottom: Platform.OS === 'ios' ? 26 : 14,
-  paddingTop: 8,
+  height: Platform.OS === 'ios' ? 88 : 70,
+  paddingTop: 6,
+  paddingBottom: Platform.OS === 'ios' ? 24 : 6,
   shadowColor: '#102B63',
   shadowOffset: { width: 0, height: -3 },
   shadowOpacity: 0.05,
@@ -89,11 +89,12 @@ const AdminBottomTabs = ({ navigation }: any) => {
         tabBarStyle: APP_TAB_BAR_STYLE,
         tabBarActiveTintColor: '#2563EB',
         tabBarInactiveTintColor: '#64748B',
-        tabBarItemStyle: { paddingVertical: 2, justifyContent: 'center', alignItems: 'center' },
+        tabBarItemStyle: { paddingTop: 3, paddingBottom: 3, justifyContent: 'center', alignItems: 'center' },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10.5,
           fontWeight: '700',
-          marginBottom: 2,
+          marginTop: 2,
+          marginBottom: 0,
         },
         headerLeft: () => (
           <TouchableOpacity
@@ -111,7 +112,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
         options={{
           title: 'Jenista Chit Funds',
           tabBarLabel: 'Dashboard',
-          tabBarIcon: ({ color, size }) => <Ionicons name="grid" size={size || 20} color={color} />,
+          tabBarIcon: ({ color }) => <Ionicons name="grid" size={21} color={color} />,
         }}
       />
       <Tab.Screen
@@ -120,7 +121,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
         options={{
           title: 'Chit Groups & Plans',
           tabBarLabel: 'Chit Groups',
-          tabBarIcon: ({ color, size }) => <Ionicons name="layers" size={size || 20} color={color} />,
+          tabBarIcon: ({ color }) => <Ionicons name="layers" size={21} color={color} />,
         }}
       />
       <Tab.Screen
@@ -129,7 +130,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
         options={{
           title: 'Customer Directory',
           tabBarLabel: 'Customers',
-          tabBarIcon: ({ color, size }) => <Ionicons name="people" size={size || 20} color={color} />,
+          tabBarIcon: ({ color }) => <Ionicons name="people" size={21} color={color} />,
         }}
       />
       <Tab.Screen
@@ -139,7 +140,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
           title: 'Receipt Desk & Collections',
           tabBarLabel: 'Receipts',
           headerShown: false,
-          tabBarIcon: ({ color, size }) => <Ionicons name="receipt" size={size || 20} color={color} />,
+          tabBarIcon: ({ color }) => <Ionicons name="receipt" size={21} color={color} />,
         }}
       />
       <Tab.Screen
@@ -148,7 +149,7 @@ const AdminBottomTabs = ({ navigation }: any) => {
         options={{
           title: 'Payment & Prize Requests',
           tabBarLabel: 'Payments',
-          tabBarIcon: ({ color, size }) => <Ionicons name="shield-checkmark" size={size || 20} color={color} />,
+          tabBarIcon: ({ color }) => <Ionicons name="shield-checkmark" size={21} color={color} />,
         }}
       />
 
@@ -347,11 +348,12 @@ const StaffBottomTabs = ({ navigation }: any) => {
         tabBarStyle: APP_TAB_BAR_STYLE,
         tabBarActiveTintColor: '#2563EB',
         tabBarInactiveTintColor: '#64748B',
-        tabBarItemStyle: { paddingVertical: 2, justifyContent: 'center', alignItems: 'center' },
+        tabBarItemStyle: { paddingTop: 3, paddingBottom: 3, justifyContent: 'center', alignItems: 'center' },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10.5,
           fontWeight: '700',
-          marginBottom: 2,
+          marginTop: 2,
+          marginBottom: 0,
         },
         headerLeft: () => (
           <TouchableOpacity
@@ -369,7 +371,7 @@ const StaffBottomTabs = ({ navigation }: any) => {
         options={{
           title: 'Field Collections',
           tabBarLabel: 'Dashboard',
-          tabBarIcon: ({ color, size }) => <Ionicons name="speedometer" size={size || 20} color={color} />,
+          tabBarIcon: ({ color }) => <Ionicons name="speedometer" size={21} color={color} />,
         }}
       />
       <Tab.Screen
@@ -379,7 +381,7 @@ const StaffBottomTabs = ({ navigation }: any) => {
           title: 'Digital Collections',
           tabBarLabel: 'Collections',
           headerShown: false,
-          tabBarIcon: ({ color, size }) => <Ionicons name="receipt" size={size || 20} color={color} />,
+          tabBarIcon: ({ color }) => <Ionicons name="receipt" size={21} color={color} />,
         }}
       />
       <Tab.Screen
@@ -388,7 +390,7 @@ const StaffBottomTabs = ({ navigation }: any) => {
         options={{
           title: 'Members Directory',
           tabBarLabel: 'Customers',
-          tabBarIcon: ({ color, size }) => <Ionicons name="people" size={size || 20} color={color} />,
+          tabBarIcon: ({ color }) => <Ionicons name="people" size={21} color={color} />,
         }}
       />
       <Tab.Screen
@@ -397,7 +399,7 @@ const StaffBottomTabs = ({ navigation }: any) => {
         options={{
           title: 'Overdue Defaulters Queue',
           tabBarLabel: 'Defaulters',
-          tabBarIcon: ({ color, size }) => <Ionicons name="alert-circle" size={size || 20} color={color} />,
+          tabBarIcon: ({ color }) => <Ionicons name="alert-circle" size={21} color={color} />,
         }}
       />
       <Tab.Screen
@@ -406,7 +408,7 @@ const StaffBottomTabs = ({ navigation }: any) => {
         options={{
           title: 'Agent Profile',
           tabBarLabel: 'Profile',
-          tabBarIcon: ({ color, size }) => <Ionicons name="person-circle" size={size || 20} color={color} />,
+          tabBarIcon: ({ color }) => <Ionicons name="person-circle" size={21} color={color} />,
         }}
       />
 
@@ -538,11 +540,12 @@ const CustomerBottomTabs = () => {
         tabBarStyle: APP_TAB_BAR_STYLE,
         tabBarActiveTintColor: '#2563EB',
         tabBarInactiveTintColor: '#64748B',
-        tabBarItemStyle: { paddingVertical: 2, justifyContent: 'center', alignItems: 'center' },
+        tabBarItemStyle: { paddingTop: 3, paddingBottom: 3, justifyContent: 'center', alignItems: 'center' },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10.5,
           fontWeight: '700',
-          marginBottom: 2,
+          marginTop: 2,
+          marginBottom: 0,
         },
       }}
     >
@@ -552,7 +555,7 @@ const CustomerBottomTabs = () => {
         options={{
           title: 'My Account',
           tabBarLabel: 'Home',
-          tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size || 20} color={color} />,
+          tabBarIcon: ({ color }) => <Ionicons name="home" size={21} color={color} />,
         }}
       />
       <Tab.Screen
@@ -561,7 +564,7 @@ const CustomerBottomTabs = () => {
         options={{
           title: 'Customer Support Desk',
           tabBarLabel: 'Support Chat',
-          tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles" size={size || 20} color={color} />,
+          tabBarIcon: ({ color }) => <Ionicons name="chatbubbles" size={21} color={color} />,
         }}
       />
       <Tab.Screen
@@ -570,7 +573,7 @@ const CustomerBottomTabs = () => {
         options={{
           title: 'Digital Passbook',
           tabBarLabel: 'Passbook',
-          tabBarIcon: ({ color, size }) => <Ionicons name="book" size={size || 20} color={color} />,
+          tabBarIcon: ({ color }) => <Ionicons name="book" size={21} color={color} />,
         }}
       />
       <Tab.Screen
@@ -579,7 +582,7 @@ const CustomerBottomTabs = () => {
         options={{
           title: 'Installment Pay Desk',
           tabBarLabel: 'Payments',
-          tabBarIcon: ({ color, size }) => <Ionicons name="cash" size={size || 20} color={color} />,
+          tabBarIcon: ({ color }) => <Ionicons name="cash" size={21} color={color} />,
         }}
       />
       <Tab.Screen
@@ -588,7 +591,7 @@ const CustomerBottomTabs = () => {
         options={{
           title: 'Subscriber Profile',
           tabBarLabel: 'Profile',
-          tabBarIcon: ({ color, size }) => <Ionicons name="person" size={size || 20} color={color} />,
+          tabBarIcon: ({ color }) => <Ionicons name="person" size={21} color={color} />,
         }}
       />
 

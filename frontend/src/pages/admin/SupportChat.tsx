@@ -3,18 +3,12 @@ import {
   MessageSquare, 
   Send, 
   Search, 
-  User, 
-  Phone, 
-  Clock, 
-  CheckCheck, 
   Sparkles, 
   RefreshCw, 
   PhoneCall, 
   MessageCircle,
   Plus,
-  ShieldCheck,
-  ChevronRight,
-  Filter
+  ChevronRight
 } from 'lucide-react';
 import { fetchClient } from '../../api/client';
 import { useAuth } from '../../store/AuthContext';

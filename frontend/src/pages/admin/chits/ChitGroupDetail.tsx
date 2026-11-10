@@ -582,7 +582,7 @@ export const ChitGroupDetail = () => {
   }
 
   // Filtered customer list for enrollment dropdown
-  const filteredAvailableCustomers = customers.filter(c => {
+  const filteredAvailableCustomers = customers.filter((c: any) => {
     if (!memberSearchQuery.trim()) return true;
     const q = memberSearchQuery.toLowerCase();
     const name = (c.name || c.fullName || '').toLowerCase();
@@ -1118,7 +1118,7 @@ export const ChitGroupDetail = () => {
                       No matching customers found.
                     </div>
                   ) : (
-                    filteredAvailableCustomers.map((cust) => {
+                    filteredAvailableCustomers.map((cust: any) => {
                       const isSelected = selectedCustomer?.id === cust.id;
                       const isAlreadyEnrolled = groupMembers.some(m => m.customerId === cust.id);
 

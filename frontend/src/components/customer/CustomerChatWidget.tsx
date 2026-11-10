@@ -3,13 +3,8 @@ import {
   MessageSquare, 
   Send, 
   X, 
-  Minus, 
-  Sparkles, 
   Headphones, 
-  ShieldCheck, 
-  ChevronDown,
-  Clock,
-  CheckCheck
+  ShieldCheck 
 } from 'lucide-react';
 import { fetchClient } from '../../api/client';
 import { useAuth } from '../../store/AuthContext';
