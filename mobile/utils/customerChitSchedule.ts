@@ -109,13 +109,15 @@ export const buildCustomerChitSchedule = (params: {
   } else if (scheme === 'Regular') {
     const regDetails = calculateRegularPlanSchedule(chitValue, totalDurationMonths);
     calculatedRows = regDetails.schedule.map((r) => {
+      const isCompanyMonth = r.isCompany || r.month === 1;
       const revisedDue = isWithdrawn ? regDetails.grossDue : r.due;
       return {
         monthNumber: r.month,
         grossDue: regDetails.grossDue,
         revisedDue,
-        eligiblePayout: r.payment,
+        eligiblePayout: isCompanyMonth ? 0 : r.payment,
         dividend: r.dividend,
+        isCompanyMonth,
       };
     });
   } else {

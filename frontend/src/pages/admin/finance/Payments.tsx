@@ -278,7 +278,7 @@ export const Payments = () => {
         const fixedSchedule = calculateFixedPlanSchedule(chitVal, 20);
         const nextMonthRow = fixedSchedule.schedule.find(r => r.month === reqMonth + 1);
         const baseInstallment = nextMonthRow?.due || Math.round(chitVal / 20);
-        const postInstallment = baseInstallment + Math.round((chitVal * 0.01) / 20);
+        const postInstallment = baseInstallment + Math.round(chitVal * 0.01);
 
         addSystemNotification({
           type: 'PRIZE_DISBURSED',

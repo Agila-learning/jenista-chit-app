@@ -324,7 +324,8 @@ export const buildCustomerChitSchedule = (params: {
     } else if (scheme === 'Regular' && regularDetails) {
       const regRow = regularDetails.schedule[m - 1];
       grossDue = regularDetails.grossDue;
-      eligiblePayout = regRow?.payment || Math.round(chitValue * 0.95);
+      isCompanyMonth = !!regRow?.isCompany || m === 1;
+      eligiblePayout = isCompanyMonth ? 0 : (regRow?.payment || Math.round(chitValue * 0.95));
       dividend = regRow?.dividend || 0;
 
       // 1% of chit value is added to the due starting from the NEXT month after disbursal.

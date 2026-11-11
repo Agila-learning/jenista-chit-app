@@ -2890,13 +2890,13 @@ export const CustomerDashboard = () => {
                           <div className="flex justify-between items-center py-1.5 border-b border-amber-200/60 text-xs">
                             <span className="text-neutral-500">Fixed Scheme Policy</span>
                             <span className="text-neutral-800 font-semibold text-[11px]">
-                              Month 1 is Company • Payout: 70% to 95%
+                              Month 1 is Company • Payout: 95% to 113%
                             </span>
                           </div>
                           <div className="flex justify-between items-center pt-2">
-                            <span className="text-xs font-bold uppercase tracking-wider text-amber-900">Eligible Prize Payout (M2-M8 base)</span>
+                            <span className="text-xs font-bold uppercase tracking-wider text-amber-900">Eligible Prize Payout (Month 2 base)</span>
                             <span className="text-xl font-black text-amber-800">
-                              {formatCurrency(fixedDetails?.minPayout || chitVal * 0.70)}
+                              {formatCurrency(fixedDetails?.minPayout || chitVal * 0.95)}
                             </span>
                           </div>
                         </>

@@ -15,7 +15,7 @@ import {
   SlidersHorizontal
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/format';
-import { calculateFixedPlanSchedule } from '../../utils/chitCalculations';
+import { calculateFixedPlanSchedule, calculateRegularPlanSchedule } from '../../utils/chitCalculations';
 
 type SchemeType = 'AUCTION' | 'FIXED' | 'REGULAR';
 type ViewMode = 'SCHEDULE' | 'COMPARISON';
@@ -125,15 +125,17 @@ export const ChitCalculator: React.FC = () => {
     const auctionBorrowPayout = chitValue - grossBid;
     const auctionSaverPayout = chitValue - foremanFee;
 
-    // Fixed (Jenista matrix: Month 1 is Company, Months 2-8 3.75%, Months 9-20 step up)
+    // Fixed (Poster 1: Fixed Due each month, Month 1 Company, Month 2: 95% to Month 20: 113%)
     const fixedDetails = calculateFixedPlanSchedule(chitValue, duration);
     const fixedTotalPaid = fixedDetails.totalDue;
-    const fixedMinPayout = fixedDetails.minPayout; // Month 2: 70%
-    const fixedMaxPayout = fixedDetails.maxPayout; // Month 20: 95%
+    const fixedMinPayout = fixedDetails.minPayout;
+    const fixedMaxPayout = fixedDetails.maxPayout;
 
-    // Regular
-    const regularTotalPaid = gross * duration;
-    const regularPayout = chitValue - foremanFee;
+    // Regular (Poster 2: Low Dues from 3.75%, Month 1 Company, Total Due 84.35%, Payout 70% to 95%)
+    const regularDetails = calculateRegularPlanSchedule(chitValue, duration);
+    const regularTotalPaid = regularDetails.totalDue;
+    const regularMinPayout = regularDetails.minPayout;
+    const regularMaxPayout = regularDetails.maxPayout;
 
     return {
       auction: {
@@ -148,19 +150,20 @@ export const ChitCalculator: React.FC = () => {
         yieldRate: ((auctionTotalDiv / chitValue) * (12 / duration) * 100).toFixed(1)
       },
       fixed: {
-        grossInstallment: fixedDetails.month1Due,
-        netInstallment: fixedDetails.standardDue,
+        grossInstallment: fixedDetails.monthlyDue,
+        netInstallment: fixedDetails.monthlyDue,
         totalPaid: fixedTotalPaid,
         minPayout: fixedMinPayout,
         winnerPayout: fixedMaxPayout,
         netCost: fixedMaxPayout - fixedTotalPaid
       },
       regular: {
-        grossInstallment: gross,
-        netInstallment: gross,
+        grossInstallment: regularDetails.firstMonthDue,
+        netInstallment: regularDetails.minDue,
         totalPaid: regularTotalPaid,
-        winnerPayout: regularPayout,
-        netCost: regularPayout - regularTotalPaid
+        minPayout: regularMinPayout,
+        winnerPayout: regularMaxPayout,
+        netCost: regularMaxPayout - regularTotalPaid
       }
     };
   }, [chitValue, duration, foremanCommPercent, avgDiscountPercent]);
@@ -171,6 +174,7 @@ export const ChitCalculator: React.FC = () => {
     const baseInstallment = Math.round(chitValue / duration);
     const foremanFee = Math.round(chitValue * (foremanCommPercent / 100));
     const fixedDetails = calculateFixedPlanSchedule(chitValue, duration);
+    const regularDetails = calculateRegularPlanSchedule(chitValue, duration);
 
     let cumulativePaid = 0;
 
@@ -179,7 +183,7 @@ export const ChitCalculator: React.FC = () => {
       let dividend = 0;
       let installmentDue = baseInstallment;
       let payout = 0;
-      let isCompany = scheme === 'FIXED' && month === 1;
+      let isCompany = (scheme === 'FIXED' || scheme === 'REGULAR') && month === 1;
       let winnerPayoutDisplay = '';
 
       if (scheme === 'AUCTION') {
@@ -194,7 +198,7 @@ export const ChitCalculator: React.FC = () => {
         installmentDue = baseInstallment - dividend;
         winnerPayoutDisplay = formatCurrency(payout);
       } else if (scheme === 'FIXED') {
-        // Fixed Plan: Month 1 is Company Chit as per Jenista Matrix
+        // Fixed Plan: Month 1 is Company Chit as per Jenista Matrix (Poster 1)
         const rowData = fixedDetails.schedule.find(r => r.month === month);
         installmentDue = rowData ? rowData.due : baseInstallment;
         dividend = 0;
@@ -205,17 +209,24 @@ export const ChitCalculator: React.FC = () => {
           winnerPayoutDisplay = 'COMPANY';
         } else {
           isCompany = false;
-          payout = rowData ? rowData.payout : Math.round(chitValue * (0.70 + ((month - 1) / duration) * 0.25));
+          payout = rowData ? rowData.payout : Math.round(chitValue * (0.95 + ((month - 2) * 0.01)));
           winnerPayoutDisplay = formatCurrency(payout);
         }
       } else {
-        // Regular Scheme: Standard member lucky draw turns from Month 1
-        isCompany = false;
-        bidPercent = 0;
-        dividend = 0;
-        installmentDue = baseInstallment;
-        payout = chitValue - foremanFee;
-        winnerPayoutDisplay = formatCurrency(payout);
+        // Regular Scheme: Standard member brochure turns from Month 1 (Poster 2)
+        const rowData = regularDetails.schedule.find(r => r.month === month);
+        installmentDue = rowData ? rowData.due : baseInstallment;
+        dividend = rowData ? rowData.dividend : 0;
+        bidPercent = rowData ? rowData.bidDiscountPct : 0;
+        if (month === 1 || rowData?.isCompany) {
+          isCompany = true;
+          payout = 0;
+          winnerPayoutDisplay = 'COMPANY';
+        } else {
+          isCompany = false;
+          payout = rowData ? rowData.payment : (chitValue - foremanFee);
+          winnerPayoutDisplay = formatCurrency(payout);
+        }
       }
 
       cumulativePaid += installmentDue;

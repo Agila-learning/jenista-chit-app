@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, ShieldCheck, ArrowLeft, Phone, Building } from 'lucide-react';
+import { Calendar, ShieldCheck, ArrowLeft, Phone, Building, Eye } from 'lucide-react';
 import { formatCurrency } from '../../utils/format';
 import { calculateRegularPlanSchedule, defaultRegularCategories, regularPlanTerms } from '../../utils/chitCalculations';
 
@@ -19,6 +19,7 @@ export const RegularPlanSchedule = () => {
 
   const [selectedPlan, setSelectedPlan] = useState<string>('all');
   const [mobileSelectedPlan, setMobileSelectedPlan] = useState<string | null>(null);
+  const [showPosterModal, setShowPosterModal] = useState(false);
 
   useEffect(() => {
     if (mobileSelectedPlan) {
@@ -265,8 +266,17 @@ export const RegularPlanSchedule = () => {
             ))}
           </div>
 
-          <div className="text-xs text-amber-900 font-bold px-3 py-1 bg-amber-50 rounded-lg border border-amber-200">
-            20 Months • 20 Members Standard Schedule
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowPosterModal(true)}
+              className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 px-3 py-1.5 rounded-lg font-bold text-xs transition-colors shrink-0"
+            >
+              <Eye className="w-3.5 h-3.5 text-amber-700" />
+              <span>View Original Poster</span>
+            </button>
+            <div className="text-xs text-amber-900 font-bold px-3 py-1.5 bg-amber-50 rounded-lg border border-amber-200">
+              20M • 20 Members
+            </div>
           </div>
         </div>
 
@@ -391,6 +401,47 @@ export const RegularPlanSchedule = () => {
           <span>Thoothukudi HO | Hosur Branch | Mob: 70942 95556, 70940 45556</span>
         </div>
       </div>
+
+      {/* Official Poster Modal */}
+      {showPosterModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+            <div className="p-4 border-b border-neutral-200 flex justify-between items-center bg-neutral-50">
+              <h3 className="font-bold text-neutral-900 text-base">
+                Official Regular Scheme Pamphlet Poster
+              </h3>
+              <button
+                onClick={() => setShowPosterModal(false)}
+                className="w-8 h-8 rounded-full bg-neutral-200 hover:bg-neutral-300 flex items-center justify-center text-neutral-700 font-bold transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex justify-center bg-neutral-900">
+              <img
+                src="/assets/regular-plan-schedule.jpg"
+                alt="Jenista Chits Regular Scheme Schedule"
+                className="max-w-full h-auto rounded-lg shadow-lg object-contain"
+              />
+            </div>
+            <div className="p-3 bg-neutral-100 flex justify-end gap-3">
+              <a
+                href="/assets/regular-plan-schedule.jpg"
+                download="jenista-regular-scheme-schedule.jpg"
+                className="px-4 py-2 bg-amber-900 hover:bg-amber-800 text-white rounded-lg text-xs font-bold transition-colors"
+              >
+                Download Poster
+              </a>
+              <button
+                onClick={() => setShowPosterModal(false)}
+                className="px-4 py-2 bg-neutral-200 hover:bg-neutral-300 text-neutral-800 rounded-lg text-xs font-semibold transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -186,18 +186,24 @@ export const ChitCalculatorScreen: React.FC<{ navigation?: any }> = ({ navigatio
           winnerPayoutDisplay = 'COMPANY';
         } else {
           isCompany = false;
-          payout = rowData ? rowData.payout : Math.round(chitValue * (0.70 + ((month - 1) / duration) * 0.25));
+          payout = rowData ? rowData.payout : Math.round(chitValue * (0.95 + ((month - 2) * 0.01)));
           winnerPayoutDisplay = formatCurrency(payout);
         }
       } else {
-        // Regular scheme: lucky draw rotation turn
+        // Regular scheme: lucky draw rotation turn (Poster 2)
         const rowData = regDetails.schedule.find((r) => r.month === month);
         installmentDue = rowData ? rowData.due : baseInstallment;
         dividend = rowData ? rowData.dividend : 0;
         bidPercent = rowData ? rowData.bidDiscountPct : 0;
-        isCompany = false;
-        payout = rowData ? rowData.payment : (chitValue - foremanFee);
-        winnerPayoutDisplay = formatCurrency(payout);
+        if (month === 1 || rowData?.isCompany) {
+          isCompany = true;
+          payout = 0;
+          winnerPayoutDisplay = 'COMPANY';
+        } else {
+          isCompany = false;
+          payout = rowData ? rowData.payment : (chitValue - foremanFee);
+          winnerPayoutDisplay = formatCurrency(payout);
+        }
       }
 
       cumulativePaid += installmentDue;

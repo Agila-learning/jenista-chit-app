@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Eye, ShieldCheck, Award, ArrowLeft } from 'lucide-react';
 import { formatCurrency } from '../../utils/format';
-import { calculateFixedPlanSchedule } from '../../utils/chitCalculations';
+import { calculateFixedPlanSchedule, fixedPlanTerms } from '../../utils/chitCalculations';
 
 const defaultFixedCategories = [
   { id: 1, value: 100000 },
@@ -19,24 +19,7 @@ const colorSchemes = [
   { border: 'border-rose-500', bg: 'bg-rose-50', text: 'text-rose-950', badge: 'bg-rose-600 text-white', th: 'bg-rose-600', subDue: 'bg-rose-500/95', subPay: 'bg-rose-500/80', cellBg: 'bg-rose-50/50', cellPay: 'text-rose-900' },
 ];
 
-const rules = [
-  {
-    tamil: '1. தொடர்ந்து 3 மாதங்கள் சீட்டுத்தொகை கட்டத் தவறினால் சீட்டிலிருந்து நீக்கப்படுவோர், சீட்டு முடிந்தவுடன் கட்டிய பணம் வழங்கப்படும்.',
-    english: 'Members failing to pay chit installments for 3 consecutive months will be removed from the chit; the paid amount will be refunded upon chit completion.',
-  },
-  {
-    tamil: '2. சீட்டுத்தொகை எடுத்தவருக்கு ஜாமீன்தாரரும் Co.Applicant-ம் முழுப் பொறுப்பு.',
-    english: 'The Guarantor and Co-Applicant bear full responsibility for the member receiving the prize money.',
-  },
-  {
-    tamil: '3. தினசரி மற்றும் மாதந்தோறும் சீட்டுத்தொகை வசூலிக்கப்படும்.',
-    english: 'Chit installments are collected on a daily and monthly basis.',
-  },
-  {
-    tamil: '4. சீட்டு எடுத்த நாள் ஜாமீன்தாரருடன் சேர்ந்து Co.Applicant உடன் வந்து, நகல் வங்கி காசோலை (Cheque) இவைகளை சமர்ப்பித்து 10 நாட்களுக்குள் பணம் பெற்றுக் கொள்ளலாம்.',
-    english: 'Prize winners must visit with Guarantor and Co-Applicant, submit copy of Bank Cheque and documents, and receive payment within 10 days.',
-  },
-];
+const rules = fixedPlanTerms;
 
 export const FixedPlanSchedule = () => {
   const [categories, setCategories] = useState<{ id: number; value: number }[]>(() => {

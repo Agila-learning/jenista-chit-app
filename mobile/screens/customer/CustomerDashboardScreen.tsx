@@ -1047,6 +1047,16 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
                 </Text>
               </View>
             ))}
+            {/* TOTAL Row */}
+            <View style={[styles.scheduleTableRow, { backgroundColor: '#fef3c7', borderTopWidth: 2, borderTopColor: '#f59e0b' }]}>
+              <Text style={[styles.scheduleTdText, { width: 50, fontWeight: '900', color: Colors.navy.primary }]}>TOTAL</Text>
+              <Text style={[styles.scheduleTdText, { flex: 1, textAlign: 'center', color: Colors.navy.primary, fontWeight: '900' }]}>
+                {formatCurrency(regularPlan.totalDue)}
+              </Text>
+              <Text style={[styles.scheduleTdText, { flex: 1, textAlign: 'right', color: Colors.gold.dark, fontWeight: '900' }]}>
+                {formatCurrency(regularPlan.maxPayout)}
+              </Text>
+            </View>
           </View>
         </View>
       )}
