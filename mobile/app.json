@@ -63,8 +63,7 @@
             "usesCleartextTraffic": true
           }
         }
-      ],
-      "./plugins/withAndroidCleartextTraffic"
+      ]
     ],
     "extra": {
       "eas": {
