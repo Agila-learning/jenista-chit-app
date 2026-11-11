@@ -3750,6 +3750,16 @@ export const AdminDashboard = () => {
             <span>Calculator</span>
           </button>
 
+          {/* Quick Action: Staff Team */}
+          <button
+            onClick={() => navigate('/admin/staff')}
+            className="col-span-1 sm:col-auto px-3 py-2 bg-white hover:bg-slate-50 text-slate-800 font-bold rounded-xl text-xs sm:text-sm border border-slate-200 shadow-2xs transition-colors flex items-center justify-center gap-1.5 active:scale-95"
+            title="Manage field collection executives and staff members"
+          >
+            <Users className="w-4 h-4 text-blue-600" />
+            <span>Staff Team</span>
+          </button>
+
           {/* Primary Action: + Add Group */}
           <button
             onClick={() => {

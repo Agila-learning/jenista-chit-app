@@ -35,8 +35,12 @@ export const ChitGroupDetail = () => {
 
   // Modals state
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
+  const [manageMembersModalTab, setManageMembersModalTab] = useState<'enrolled' | 'enroll'>('enrolled');
   const [isCollectModalOpen, setIsCollectModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // MongoDB customers state
+  const [mongoCustomers, setMongoCustomers] = useState<any[]>([]);
 
   // Add Member Form state
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
@@ -180,13 +184,53 @@ export const ChitGroupDetail = () => {
     }
   }, [groupRefreshTrigger]);
 
+  // Fetch Mongo customers in background to keep data live
+  useEffect(() => {
+    let isMounted = true;
+    const fetchMongo = async () => {
+      try {
+        const res = await fetchClient('/customers');
+        if (isMounted && res && res.data && Array.isArray(res.data)) {
+          setMongoCustomers(res.data);
+        }
+      } catch {}
+    };
+    fetchMongo();
+    return () => { isMounted = false; };
+  }, [groupRefreshTrigger]);
+
   const customers = useMemo(() => {
     try {
-      return (JSON.parse(localStorage.getItem('mockCustomers') || '[]')).filter((c: any) => !isMockCustomer(c));
+      const local = (JSON.parse(localStorage.getItem('mockCustomers') || '[]')).filter((c: any) => !isMockCustomer(c));
+      const combined = [...local];
+      mongoCustomers.forEach((mc: any) => {
+        if (!isMockCustomer(mc)) {
+          const matchIdx = combined.findIndex(c => 
+            c.id === (mc.customerCode || mc._id) || 
+            c.mongoId === mc._id || 
+            (c.mobile && (c.mobile === mc.phone || c.mobile === mc.mobile))
+          );
+          const mapped = {
+            id: mc.customerCode || mc._id,
+            mongoId: mc._id,
+            name: mc.fullName || mc.name,
+            phone: mc.phone || mc.mobile,
+            mobile: mc.phone || mc.mobile,
+            chits: mc.chits || [],
+            ...mc
+          };
+          if (matchIdx === -1) {
+            combined.push(mapped);
+          } else {
+            combined[matchIdx] = { ...combined[matchIdx], ...mapped };
+          }
+        }
+      });
+      return combined;
     } catch {
       return [];
     }
-  }, [groupRefreshTrigger]);
+  }, [mongoCustomers, groupRefreshTrigger]);
 
   // Build resolved list of enrolled members for this group
   const groupMembers = useMemo(() => {
@@ -282,13 +326,15 @@ export const ChitGroupDetail = () => {
     return String(groupMembers.length + 1);
   }, [groupMembers, members]);
 
-  // Open Manage Members flow
-  const handleOpenManageMembers = () => {
+  // Open Manage Members flow (can specify 'enrolled' list or 'enroll' form)
+  const handleOpenManageMembers = (tab?: 'enrolled' | 'enroll' | React.MouseEvent) => {
+    const targetTab: 'enrolled' | 'enroll' = (tab === 'enroll' || tab === 'enrolled') ? tab : (groupMembers.length === 0 ? 'enroll' : 'enrolled');
     setActiveTab('members');
     setTicketNumberInput(nextTicketNumber);
     setSchemeInput(isAuction ? 'Auction' : group?.type?.includes('FIX') ? 'Fixed' : 'Regular');
     setSelectedCustomer(null);
     setMemberSearchQuery('');
+    setManageMembersModalTab(targetTab);
     setIsAddMemberModalOpen(true);
   };
 
@@ -630,22 +676,24 @@ export const ChitGroupDetail = () => {
         </div>
 
         {/* Action Buttons: Manage Members & Collect Installment */}
-        <div className="relative z-10 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto shrink-0">
+        <div className="relative z-20 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto shrink-0">
           <button
             type="button"
-            onClick={handleOpenManageMembers}
-            className="px-4 py-2.5 bg-white/15 hover:bg-white/25 border border-white/30 text-white font-bold rounded-xl text-xs sm:text-sm transition-all flex items-center justify-center gap-2 active:scale-95 shadow-xs cursor-pointer"
+            onClick={() => handleOpenManageMembers('enrolled')}
+            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold rounded-xl text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg active:scale-95 cursor-pointer border border-blue-500/40"
+            title="View, unenroll or add members to this chit group"
           >
-            <UserPlus className="w-4 h-4 text-amber-400" />
+            <Users className="w-4 h-4 text-white" />
             <span>Manage Members</span>
           </button>
 
           <button
             type="button"
             onClick={() => handleOpenCollect()}
-            className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black rounded-xl text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-xs active:scale-95 cursor-pointer"
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold rounded-xl text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg active:scale-95 cursor-pointer border border-emerald-500/40"
+            title="Record installment collection for members"
           >
-            <Target className="w-4 h-4 text-slate-950" />
+            <Target className="w-4 h-4 text-white" />
             <span>Collect Installment</span>
           </button>
         </div>
@@ -1068,198 +1116,322 @@ export const ChitGroupDetail = () => {
       </div>
 
       {/* ========================================================= */}
-      {/* MODAL 1: ADD / ENROLL MEMBER TO CHIT GROUP */}
+      {/* MODAL 1: MANAGE MEMBERS DIRECTORY & ENROLLMENT MODAL       */}
       {/* ========================================================= */}
       {isAddMemberModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-3xl max-w-xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
             {/* Modal Header */}
             <div className="px-6 py-4.5 bg-[#102B63] text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-white/10 rounded-xl border border-white/20">
-                  <UserPlus className="w-5 h-5 text-amber-400" />
+                <div className="p-2 bg-blue-600/40 rounded-xl border border-white/20">
+                  <Users className="w-5 h-5 text-amber-300" />
                 </div>
                 <div>
-                  <h3 className="font-black text-base">Enroll Member to Group</h3>
-                  <p className="text-xs text-blue-200">{group.name} ({group.id || group.code})</p>
+                  <h3 className="font-black text-base">Manage Group Members</h3>
+                  <p className="text-xs text-blue-200">{group.name} • {groupMembers.length} Enrolled</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsAddMemberModalOpen(false)}
-                className="p-1.5 text-blue-200 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
+                className="p-1.5 text-blue-200 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Modal Form */}
-            <form onSubmit={handleEnrollMemberSubmit} className="p-6 overflow-y-auto space-y-4 flex-1 text-xs sm:text-sm">
-              {/* Customer Selector */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Select Customer *
-                </label>
-                <div className="relative mb-2">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    type="text"
-                    value={memberSearchQuery}
-                    onChange={(e) => setMemberSearchQuery(e.target.value)}
-                    placeholder="Search customer by name, mobile, or ID..."
-                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-600"
-                  />
-                </div>
+            {/* Modal Navigation Tabs */}
+            <div className="flex border-b border-slate-200 bg-slate-50/80 px-6 pt-2.5 gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setManageMembersModalTab('enrolled')}
+                className={`pb-2.5 px-3 text-xs font-bold transition-all border-b-2 flex items-center gap-1.5 cursor-pointer ${
+                  manageMembersModalTab === 'enrolled'
+                    ? 'border-blue-600 text-blue-700'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Enrolled Members ({groupMembers.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setManageMembersModalTab('enroll')}
+                className={`pb-2.5 px-3 text-xs font-bold transition-all border-b-2 flex items-center gap-1.5 cursor-pointer ${
+                  manageMembersModalTab === 'enroll'
+                    ? 'border-blue-600 text-blue-700'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>+ Enroll New Member</span>
+              </button>
+            </div>
 
-                {/* Filtered suggestions list */}
-                <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100 bg-slate-50/50">
-                  {filteredAvailableCustomers.length === 0 ? (
-                    <div className="p-3 text-center text-xs text-slate-400">
-                      No matching customers found.
+            {/* TAB 1: VIEW & MANAGE ENROLLED MEMBERS */}
+            {manageMembersModalTab === 'enrolled' && (
+              <div className="p-6 overflow-y-auto space-y-4 flex-1 text-xs">
+                {groupMembers.length === 0 ? (
+                  <div className="text-center py-10">
+                    <Users className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+                    <p className="font-bold text-slate-700">No members enrolled in {group.name} yet</p>
+                    <p className="text-slate-400 text-xs mt-1">Enroll your first customer to assign chit tickets and start collecting installments.</p>
+                    <button
+                      type="button"
+                      onClick={() => setManageMembersModalTab('enroll')}
+                      className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-xs transition cursor-pointer"
+                    >
+                      + Enroll First Member
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between text-xs text-slate-500 pb-1">
+                      <span>Showing {groupMembers.length} enrolled subscribers</span>
+                      <button
+                        type="button"
+                        onClick={() => setManageMembersModalTab('enroll')}
+                        className="text-blue-700 font-bold hover:underline cursor-pointer flex items-center gap-1"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        <span>+ Enroll Another Member</span>
+                      </button>
                     </div>
-                  ) : (
-                    filteredAvailableCustomers.map((cust: any) => {
-                      const isSelected = selectedCustomer?.id === cust.id;
-                      const isAlreadyEnrolled = groupMembers.some(m => m.customerId === cust.id);
 
-                      return (
-                        <div
-                          key={cust.id}
-                          onClick={() => {
-                            if (!isAlreadyEnrolled) {
-                              setSelectedCustomer(cust);
-                            }
-                          }}
-                          className={`p-2.5 flex items-center justify-between cursor-pointer transition-colors ${
-                            isSelected
-                              ? 'bg-blue-50 border-l-4 border-l-blue-600'
-                              : isAlreadyEnrolled
-                                ? 'opacity-50 cursor-not-allowed bg-slate-100'
-                                : 'hover:bg-white'
-                          }`}
-                        >
-                          <div>
-                            <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                              <span>{cust.name || cust.fullName}</span>
-                              {isAlreadyEnrolled && (
-                                <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 rounded">Enrolled</span>
-                              )}
+                    <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden bg-slate-50/30 max-h-[50vh] overflow-y-auto">
+                      {groupMembers.map((m, idx) => {
+                        const paid = isMemberPaid(m);
+                        return (
+                          <div key={`${m.ticketNumber}_${idx}`} className="p-3.5 flex items-center justify-between gap-3 hover:bg-white transition bg-white/70">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="w-8 h-8 rounded-xl bg-blue-50 text-blue-800 font-black flex items-center justify-center font-mono text-xs shrink-0 border border-blue-200">
+                                #{m.ticketNumber}
+                              </span>
+                              <div className="min-w-0">
+                                <div className="font-bold text-slate-900 text-xs truncate flex items-center gap-1.5">
+                                  <span>{m.customerName}</span>
+                                  <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${paid ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                    {paid ? 'Paid' : 'Due'}
+                                  </span>
+                                </div>
+                                <div className="text-[11px] text-slate-400 font-mono truncate">
+                                  ID: {m.customerId} {m.mobile ? `• 📞 ${m.mobile}` : ''} • Scheme: {m.scheme || 'Regular'}
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-[11px] text-slate-500 font-mono">
-                              ID: {cust.id} • 📞 {cust.mobile || cust.phone || 'No phone'}
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsAddMemberModalOpen(false);
+                                  handleOpenCollect(m);
+                                }}
+                                className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] transition shadow-2xs flex items-center gap-1 cursor-pointer"
+                                title="Collect payment for this member"
+                              >
+                                <Target className="w-3 h-3" />
+                                <span>Collect</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveMember(m)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                title="Unenroll / Remove member from this chit"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </div>
-                          {isSelected && <Check className="w-4 h-4 text-blue-600 shrink-0" />}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              {selectedCustomer && (
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between">
-                  <div>
-                    <span className="text-[11px] font-bold uppercase text-blue-700 block">Selected Customer:</span>
-                    <strong className="text-slate-900 text-sm">{selectedCustomer.name || selectedCustomer.fullName}</strong>
-                    <p className="text-xs text-slate-500 font-mono">ID: {selectedCustomer.id} • Phone: {selectedCustomer.mobile || selectedCustomer.phone}</p>
+                        );
+                      })}
+                    </div>
                   </div>
+                )}
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end">
                   <button
                     type="button"
-                    onClick={() => setSelectedCustomer(null)}
-                    className="text-xs text-rose-600 font-bold hover:underline"
+                    onClick={() => setIsAddMemberModalOpen(false)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
                   >
-                    Change
+                    Close Directory
                   </button>
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* Ticket Number & Scheme */}
-              <div className="grid grid-cols-2 gap-3">
+            {/* TAB 2: ENROLL NEW MEMBER FORM */}
+            {manageMembersModalTab === 'enroll' && (
+              <form onSubmit={handleEnrollMemberSubmit} className="p-6 overflow-y-auto space-y-4 flex-1 text-xs sm:text-sm">
+                {/* Customer Selector */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Ticket Number *
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Select Customer to Enroll *
                   </label>
-                  <input
-                    type="text"
-                    value={ticketNumberInput}
-                    onChange={(e) => setTicketNumberInput(e.target.value)}
-                    required
-                    placeholder="e.g. 1"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
-                  />
-                  <p className="text-[10px] text-slate-400 mt-0.5">Suggested: #{nextTicketNumber}</p>
+                  <div className="relative mb-2">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={memberSearchQuery}
+                      onChange={(e) => setMemberSearchQuery(e.target.value)}
+                      placeholder="Search customer by name, mobile, or ID..."
+                      className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    />
+                  </div>
+
+                  {/* Filtered suggestions list */}
+                  <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100 bg-slate-50/50">
+                    {filteredAvailableCustomers.length === 0 ? (
+                      <div className="p-3 text-center text-xs text-slate-400">
+                        No matching customers found.
+                      </div>
+                    ) : (
+                      filteredAvailableCustomers.map((cust: any) => {
+                        const isSelected = selectedCustomer?.id === cust.id;
+                        const isAlreadyEnrolled = groupMembers.some(m => m.customerId === cust.id);
+
+                        return (
+                          <div
+                            key={cust.id}
+                            onClick={() => {
+                              if (!isAlreadyEnrolled) {
+                                setSelectedCustomer(cust);
+                              }
+                            }}
+                            className={`p-2.5 flex items-center justify-between cursor-pointer transition-colors ${
+                              isSelected
+                                ? 'bg-blue-50 border-l-4 border-l-blue-600'
+                                : isAlreadyEnrolled
+                                  ? 'opacity-50 cursor-not-allowed bg-slate-100'
+                                  : 'hover:bg-white'
+                            }`}
+                          >
+                            <div>
+                              <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                                <span>{cust.name || cust.fullName}</span>
+                                {isAlreadyEnrolled && (
+                                  <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 rounded">Enrolled</span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-500 font-mono">
+                                ID: {cust.id} • 📞 {cust.mobile || cust.phone || 'No phone'}
+                              </div>
+                            </div>
+                            {isSelected && <Check className="w-4 h-4 text-blue-600 shrink-0" />}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Scheme Plan *
-                  </label>
-                  <select
-                    value={schemeInput}
-                    onChange={(e) => setSchemeInput(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                {selectedCustomer && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] font-bold uppercase text-blue-700 block">Selected Customer:</span>
+                      <strong className="text-slate-900 text-sm">{selectedCustomer.name || selectedCustomer.fullName}</strong>
+                      <p className="text-xs text-slate-500 font-mono">ID: {selectedCustomer.id} • Phone: {selectedCustomer.mobile || selectedCustomer.phone}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCustomer(null)}
+                      className="text-xs text-rose-600 font-bold hover:underline cursor-pointer"
+                    >
+                      Change
+                    </button>
+                  </div>
+                )}
+
+                {/* Ticket Number & Scheme */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Ticket Number *
+                    </label>
+                    <input
+                      type="text"
+                      value={ticketNumberInput}
+                      onChange={(e) => setTicketNumberInput(e.target.value)}
+                      required
+                      placeholder="e.g. 1"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-0.5">Suggested: #{nextTicketNumber}</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Scheme Plan *
+                    </label>
+                    <select
+                      value={schemeInput}
+                      onChange={(e) => setSchemeInput(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    >
+                      <option value="Regular">Regular Chit</option>
+                      <option value="Fixed">Fixed Chit (Bonus)</option>
+                      <option value="Auction">Auction Chit</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Joining Date & Monthly Installment */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Joining Date *
+                    </label>
+                    <input
+                      type="date"
+                      value={joiningDateInput}
+                      onChange={(e) => setJoiningDateInput(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Monthly Installment
+                    </label>
+                    <input
+                      type="text"
+                      value={formatCurrency(installmentPerMember)}
+                      disabled
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-100 text-xs font-bold text-slate-700"
+                    />
+                  </div>
+                </div>
+
+                {/* Submit Buttons */}
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setManageMembersModalTab('enrolled')}
+                    className="px-4 py-2 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
                   >
-                    <option value="Regular">Regular Chit</option>
-                    <option value="Fixed">Fixed Chit (Bonus)</option>
-                    <option value="Auction">Auction Chit</option>
-                  </select>
+                    View Members List
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!selectedCustomer}
+                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-black rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Confirm Enrollment</span>
+                  </button>
                 </div>
-              </div>
-
-              {/* Joining Date & Monthly Installment */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Joining Date *
-                  </label>
-                  <input
-                    type="date"
-                    value={joiningDateInput}
-                    onChange={(e) => setJoiningDateInput(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Monthly Installment
-                  </label>
-                  <input
-                    type="text"
-                    value={formatCurrency(installmentPerMember)}
-                    disabled
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-100 text-xs font-bold text-slate-700"
-                  />
-                </div>
-              </div>
-
-              {/* Submit Buttons */}
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setIsAddMemberModalOpen(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!selectedCustomer}
-                  className="px-5 py-2 bg-gradient-to-r from-blue-700 to-indigo-800 hover:from-blue-800 hover:to-indigo-900 disabled:opacity-50 text-white text-xs font-black rounded-xl shadow-xs transition-all flex items-center gap-1.5"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>Confirm Enrollment</span>
-                </button>
-              </div>
-            </form>
+              </form>
+            )}
           </div>
         </div>
       )}
 
       {/* ========================================================= */}
-      {/* MODAL 2: COLLECT INSTALLMENT RECEIPT ENTRY */}
+      {/* MODAL 2: COLLECT INSTALLMENT RECEIPT ENTRY                 */}
       {/* ========================================================= */}
       {isCollectModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150">
@@ -1278,141 +1450,210 @@ export const ChitGroupDetail = () => {
               <button
                 type="button"
                 onClick={() => setIsCollectModalOpen(false)}
-                className="p-1.5 text-blue-200 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
+                className="p-1.5 text-blue-200 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Modal Form */}
-            <form onSubmit={handleCollectSubmit} className="p-6 overflow-y-auto space-y-4 flex-1 text-xs sm:text-sm">
-              {/* Member Selection */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Enrolled Member *
-                </label>
-                <select
-                  value={collectMember?.ticketNumber || ''}
-                  onChange={(e) => {
-                    const found = groupMembers.find(m => String(m.ticketNumber) === e.target.value);
-                    setCollectMember(found || null);
-                  }}
-                  required
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
-                >
-                  <option value="">-- Choose Member --</option>
-                  {groupMembers.map((m) => {
-                    const paid = isMemberPaid(m);
-                    return (
-                      <option key={m.ticketNumber} value={m.ticketNumber}>
-                        Ticket #{m.ticketNumber} - {m.customerName} ({paid ? 'Already Paid ✓' : 'Due ₹' + installmentPerMember})
-                      </option>
-                    );
-                  })}
-                </select>
+            {/* Check if no members enrolled in this group */}
+            {groupMembers.length === 0 ? (
+              <div className="p-8 text-center space-y-4">
+                <div className="w-14 h-14 mx-auto rounded-full bg-amber-50 flex items-center justify-center text-amber-600 border border-amber-200">
+                  <AlertCircle className="w-7 h-7" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-800 text-sm">No Members Enrolled Yet</h4>
+                  <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
+                    You must enroll at least one member into {group.name} before collecting monthly installments.
+                  </p>
+                </div>
+                <div className="pt-2 flex items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsCollectModalOpen(false)}
+                    className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-50 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCollectModalOpen(false);
+                      handleOpenManageMembers('enroll');
+                    }}
+                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>+ Enroll Member Now</span>
+                  </button>
+                </div>
               </div>
-
-              {/* Amount & Month */}
-              <div className="grid grid-cols-2 gap-3">
+            ) : (
+              /* Modal Form */
+              <form onSubmit={handleCollectSubmit} className="p-6 overflow-y-auto space-y-4 flex-1 text-xs sm:text-sm">
+                {/* Member Selection */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Amount Received (₹) *
+                    Enrolled Member *
                   </label>
-                  <input
-                    type="number"
-                    value={collectAmount}
-                    onChange={(e) => setCollectAmount(e.target.value)}
+                  <select
+                    value={collectMember?.ticketNumber || ''}
+                    onChange={(e) => {
+                      const found = groupMembers.find(m => String(m.ticketNumber) === e.target.value);
+                      setCollectMember(found || null);
+                    }}
                     required
-                    placeholder="e.g. 5000"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
-                  />
-                  <p className="text-[10px] text-slate-400 mt-0.5">Standard: ₹{installmentPerMember}</p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Month Cycle
-                  </label>
-                  <select
-                    value={collectMonth}
-                    onChange={(e) => setCollectMonth(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
                   >
-                    {Array.from({ length: duration }, (_, i) => i + 1).map(m => (
-                      <option key={m} value={m}>Month {m} of {duration}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Payment Mode & Reference */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Payment Mode *
-                  </label>
-                  <select
-                    value={collectMode}
-                    onChange={(e) => setCollectMode(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
-                  >
-                    <option value="Cash">Cash</option>
-                    <option value="UPI">UPI (GPay / PhonePe / Paytm)</option>
-                    <option value="Bank Transfer">Bank Transfer / NEFT / IMPS</option>
-                    <option value="Cheque">Cheque</option>
+                    <option value="">-- Choose Member --</option>
+                    {groupMembers.map((m) => {
+                      const paid = isMemberPaid(m);
+                      return (
+                        <option key={m.ticketNumber} value={m.ticketNumber}>
+                          Ticket #{m.ticketNumber} - {m.customerName} ({paid ? 'Already Paid ✓' : 'Due ₹' + installmentPerMember})
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Ref / UTR Number
-                  </label>
-                  <input
-                    type="text"
-                    value={collectReference}
-                    onChange={(e) => setCollectReference(e.target.value)}
-                    placeholder="e.g. UTR-12345678"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
-                  />
+                {/* Selected Member Summary Card */}
+                {collectMember && (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
+                    <div>
+                      <span className="font-bold text-slate-900 block text-xs">
+                        Ticket #{collectMember.ticketNumber} • {collectMember.customerName}
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-mono">
+                        ID: {collectMember.customerId} • 📞 {collectMember.mobile || 'No phone'}
+                      </span>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      isMemberPaid(collectMember) ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                    }`}>
+                      {isMemberPaid(collectMember) ? 'Month Paid ✓' : 'Payment Due'}
+                    </span>
+                  </div>
+                )}
+
+                {/* Amount & Month */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Amount Received (₹) *
+                    </label>
+                    <input
+                      type="number"
+                      value={collectAmount}
+                      onChange={(e) => setCollectAmount(e.target.value)}
+                      required
+                      placeholder="e.g. 5000"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    />
+                    <div className="flex gap-1.5 mt-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setCollectAmount(String(installmentPerMember))}
+                        className="px-2 py-0.5 bg-blue-50 text-blue-700 hover:bg-blue-100 text-[10px] font-bold rounded cursor-pointer"
+                      >
+                        Full (₹{installmentPerMember})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCollectAmount(String(Math.round(installmentPerMember / 2)))}
+                        className="px-2 py-0.5 bg-slate-100 text-slate-600 hover:bg-slate-200 text-[10px] font-bold rounded cursor-pointer"
+                      >
+                        Half (₹{Math.round(installmentPerMember / 2)})
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Month Cycle
+                    </label>
+                    <select
+                      value={collectMonth}
+                      onChange={(e) => setCollectMonth(Number(e.target.value))}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    >
+                      {Array.from({ length: duration }, (_, i) => i + 1).map(m => (
+                        <option key={m} value={m}>Month {m} of {duration}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              </div>
 
-              {/* Direct Link to Full Receipts Desk */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
-                <span className="text-slate-600">Need full printer & multi-line details?</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsCollectModalOpen(false);
-                    const custId = collectMember?.customerId || '';
-                    navigate(`/admin/receipts?customerId=${encodeURIComponent(custId)}&chitGroup=${encodeURIComponent(group.name)}&amount=${collectAmount || installmentPerMember}`);
-                  }}
-                  className="font-bold text-blue-700 hover:underline flex items-center gap-1"
-                >
-                  <span>Open Full Receipt Entry</span>
-                  <Receipt className="w-3.5 h-3.5" />
-                </button>
-              </div>
+                {/* Payment Mode & Reference */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Payment Mode *
+                    </label>
+                    <select
+                      value={collectMode}
+                      onChange={(e) => setCollectMode(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    >
+                      <option value="Cash">Cash</option>
+                      <option value="UPI">UPI (GPay / PhonePe / Paytm)</option>
+                      <option value="Bank Transfer">Bank Transfer / NEFT / IMPS</option>
+                      <option value="Cheque">Cheque</option>
+                    </select>
+                  </div>
 
-              {/* Submit Buttons */}
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setIsCollectModalOpen(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!collectMember}
-                  className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 disabled:opacity-50 text-white text-xs font-black rounded-xl shadow-xs transition-all flex items-center gap-1.5"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Record & Verify Payment</span>
-                </button>
-              </div>
-            </form>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Ref / UTR Number
+                    </label>
+                    <input
+                      type="text"
+                      value={collectReference}
+                      onChange={(e) => setCollectReference(e.target.value)}
+                      placeholder="e.g. UTR-12345678"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    />
+                  </div>
+                </div>
+
+                {/* Direct Link to Full Receipts Desk */}
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
+                  <span className="text-slate-600">Need full printer & multi-line details?</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCollectModalOpen(false);
+                      const custId = collectMember?.customerId || '';
+                      navigate(`/admin/receipts?customerId=${encodeURIComponent(custId)}&chitGroup=${encodeURIComponent(group.name)}&amount=${collectAmount || installmentPerMember}`);
+                    }}
+                    className="font-bold text-blue-700 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Open Full Receipt Entry</span>
+                    <Receipt className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Submit Buttons */}
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsCollectModalOpen(false)}
+                    className="px-4 py-2 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!collectMember}
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-black rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Record & Verify Payment</span>
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

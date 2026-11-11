@@ -23,6 +23,8 @@ interface StaffMember {
   role: 'STAFF' | 'COLLECTION_AGENT' | 'BRANCH_MANAGER';
   roleName?: string;
   status: 'ACTIVE' | 'INACTIVE';
+  password?: string;
+  branch?: string;
   lastLoginAt?: string;
   createdAt?: string;
 }
@@ -170,20 +172,22 @@ export const StaffManagement: React.FC = () => {
           });
         } catch {}
 
-        setStaffList((prev) =>
-          prev.map((s) =>
-            (s.id === staffId || s._id === staffId)
-              ? {
-                  ...s,
-                  name: formData.name.trim(),
-                  phone: formData.phone.trim(),
-                  email: formData.email.trim(),
-                  role: formData.role,
-                  status: formData.status,
-                }
-              : s
-          )
+        const updated = staffList.map((s) =>
+          (s.id === staffId || s._id === staffId)
+            ? {
+                ...s,
+                name: formData.name.trim(),
+                phone: formData.phone.trim(),
+                email: formData.email.trim(),
+                role: formData.role,
+                status: formData.status,
+                password: formData.password || s.password,
+              }
+            : s
         );
+        setStaffList(updated);
+        localStorage.setItem('staffMembers', JSON.stringify(updated));
+        window.dispatchEvent(new Event('storage'));
         showToast('Staff details updated successfully');
       } else {
         // Create new staff
@@ -206,17 +210,20 @@ export const StaffManagement: React.FC = () => {
           phone: formData.phone.trim(),
           email: formData.email.trim(),
           role: formData.role,
-          roleName: formData.role === 'COLLECTION_AGENT' ? 'Collection Agent' : 'Field Staff Member',
+          roleName: formData.role === 'COLLECTION_AGENT' ? 'Collection Agent' : formData.role === 'BRANCH_MANAGER' ? 'Branch Manager' : 'Field Staff Member',
           status: formData.status,
+          password: formData.password || 'staff',
           createdAt: new Date().toISOString(),
         };
 
-        setStaffList((prev) => [newMember, ...prev]);
-        showToast('New staff member created successfully');
+        const updated = [newMember, ...staffList];
+        setStaffList(updated);
+        localStorage.setItem('staffMembers', JSON.stringify(updated));
+        window.dispatchEvent(new Event('storage'));
+        showToast(`New staff member created: ${newMember.name} (${newMember.userCode})`);
       }
 
       setIsModalOpen(false);
-      localStorage.setItem('staffMembers', JSON.stringify(staffList));
     } catch (err: any) {
       setFormError(err.message || 'Operation failed. Please try again.');
     } finally {
@@ -225,7 +232,7 @@ export const StaffManagement: React.FC = () => {
   };
 
   const handleToggleStatus = async (staff: StaffMember) => {
-    const newStatus = staff.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    const newStatus: 'ACTIVE' | 'INACTIVE' = staff.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     const staffId = staff.id || staff._id;
     try {
       await fetchClient(`/staff/${staffId}`, {
@@ -234,9 +241,10 @@ export const StaffManagement: React.FC = () => {
       });
     } catch {}
 
-    setStaffList((prev) =>
-      prev.map((s) => ((s.id === staffId || s._id === staffId) ? { ...s, status: newStatus } : s))
-    );
+    const updated: StaffMember[] = staffList.map((s) => ((s.id === staffId || s._id === staffId) ? { ...s, status: newStatus } : s));
+    setStaffList(updated);
+    localStorage.setItem('staffMembers', JSON.stringify(updated));
+    window.dispatchEvent(new Event('storage'));
     showToast(`Staff marked as ${newStatus}`);
   };
 
@@ -251,7 +259,10 @@ export const StaffManagement: React.FC = () => {
       await fetchClient(`/staff/${staffId}`, { method: 'DELETE' });
     } catch {}
 
-    setStaffList((prev) => prev.filter((s) => s.id !== staffId && s._id !== staffId));
+    const updated = staffList.filter((s) => s.id !== staffId && s._id !== staffId);
+    setStaffList(updated);
+    localStorage.setItem('staffMembers', JSON.stringify(updated));
+    window.dispatchEvent(new Event('storage'));
     showToast('Staff member removed successfully');
   };
 
@@ -314,6 +325,28 @@ export const StaffManagement: React.FC = () => {
             + Add New Staff
           </button>
         </div>
+      </div>
+
+      {/* Staff Login Credentials Notice Banner */}
+      <div className="bg-blue-50/80 border border-blue-200/90 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-100 rounded-xl text-blue-700 shrink-0">
+            <KeyRound className="w-4 h-4" />
+          </div>
+          <div>
+            <p className="font-bold text-slate-900">How Staff Members Log In</p>
+            <p className="text-slate-600 mt-0.5">
+              Newly created staff can sign in at <strong className="text-blue-700">/login</strong> or <strong className="text-blue-700">/admin/login</strong> using their <strong>Mobile Number</strong> (or Staff ID) and assigned <strong>Password</strong> to access the Staff Field Operations Dashboard.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleOpenAdd}
+          className="shrink-0 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-xs transition"
+        >
+          + Add Staff
+        </button>
       </div>
 
       {/* KPI Stats Row */}
