@@ -83,7 +83,7 @@ export const CustomerList = () => {
             (lc.phone && (lc.phone === c.phone || lc.mobile === c.phone))
           );
           const chits = (c.chits && c.chits.length > 0) ? c.chits : (local?.chits || []);
-          const chosenScheme = local?.scheme || c.scheme || (local?.interestedPlan?.includes('Fix') ? 'Fixed' : local?.interestedPlan?.includes('Auc') ? 'Auction' : local?.interestedPlan?.includes('Reg') ? 'Regular' : undefined) || 'Regular';
+          const chosenScheme = c.scheme || c.chits?.[0]?.scheme || local?.scheme || local?.chits?.[0]?.scheme || (local?.interestedPlan?.includes('Fix') ? 'Fixed' : local?.interestedPlan?.includes('Auc') ? 'Auction' : local?.interestedPlan?.includes('Reg') ? 'Regular' : undefined) || 'Regular';
           
           return {
             id: c.customerCode || c._id,
@@ -99,7 +99,7 @@ export const CustomerList = () => {
             activeChits: chits.length,
             chits: chits,
             scheme: chosenScheme,
-            interestedPlan: local?.interestedPlan || c.interestedPlan || `${chosenScheme} Scheme`,
+            interestedPlan: c.interestedPlan || local?.interestedPlan || `${chosenScheme} Scheme`,
             status: c.status || 'ACTIVE'
           };
         });
@@ -464,7 +464,7 @@ export const CustomerList = () => {
     };
 
     const updatedCusts = allCustomers.map((c: any) => {
-      if (c.id === editingCustomer.id) {
+      if (c.id === editingCustomer.id || (editingCustomer.mongoId && c.mongoId === editingCustomer.mongoId)) {
         return {
           ...c,
           scheme: assignScheme,
@@ -478,11 +478,64 @@ export const CustomerList = () => {
 
     setAllCustomers(updatedCusts);
     localStorage.setItem('mockCustomers', JSON.stringify(updatedCusts));
+
+    // Update chitGroupMemberships
+    try {
+      const memberships = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
+      const cleanPhone = (editingCustomer.phone || editingCustomer.mobile || '').replace(/\D/g, '');
+      const updatedMemberships = memberships.map((m: any) => {
+        const mPhone = (m.phone || m.mobile || '').replace(/\D/g, '');
+        if (m.customerId === editingCustomer.id || (cleanPhone && mPhone === cleanPhone)) {
+          return {
+            ...m,
+            scheme: assignScheme,
+            groupName: groupNameStr,
+            chitValue: chitValNum,
+            monthlyInstallment: installmentNum,
+            duration: monthsNum
+          };
+        }
+        return m;
+      });
+      localStorage.setItem('chitGroupMemberships', JSON.stringify(updatedMemberships));
+    } catch {}
+
+    // Update websiteLeads to prevent self-healing from restoring stale plan
+    try {
+      const storedLeads = JSON.parse(localStorage.getItem('websiteLeads') || '[]');
+      const cleanPhone = (editingCustomer.phone || editingCustomer.mobile || '').replace(/\D/g, '');
+      const cleanName = (editingCustomer.name || editingCustomer.fullName || '').trim().toLowerCase();
+      const updatedLeads = storedLeads.map((l: any) => {
+        const lPhone = (l.phone || '').replace(/\D/g, '');
+        const lName = (l.fullName || '').trim().toLowerCase();
+        if ((cleanPhone && lPhone === cleanPhone) || (cleanName && lName === cleanName) || l.convertedCustomerId === editingCustomer.id) {
+          return {
+            ...l,
+            interestedPlan: `${assignScheme} Scheme`,
+            scheme: assignScheme
+          };
+        }
+        return l;
+      });
+      localStorage.setItem('websiteLeads', JSON.stringify(updatedLeads));
+    } catch {}
+
     window.dispatchEvent(new Event('storage'));
 
     // Sync to MongoDB backend so it reflects across all devices
     const targetLookupId = editingCustomer.mongoId || editingCustomer._id || editingCustomer.customerCode || editingCustomer.id || editingCustomer.phone || editingCustomer.mobile;
     if (targetLookupId) {
+      // 1. Update customer scheme & profile
+      fetchClient(`/customers/${encodeURIComponent(targetLookupId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          scheme: assignScheme,
+          interestedPlan: groupNameStr,
+          chits: [updatedChit, ...(editingCustomer.chits?.slice(1) || [])]
+        })
+      }).catch(err => console.warn('Could not sync customer scheme to backend:', err));
+
+      // 2. Sync chit record
       fetchClient(`/customers/${encodeURIComponent(targetLookupId)}/chits`, {
         method: 'POST',
         body: JSON.stringify(updatedChit)

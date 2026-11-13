@@ -26,8 +26,9 @@ import {
 import { Platform } from 'react-native';
 
 const envPort = process.env.PORT || process.env.EXPO_PUBLIC_BACKEND_PORT || '3000';
-const customEnvUrl = process.env.EXPO_PUBLIC_API_URL;
-const LOCAL_DEV_IP = '192.168.1.35';
+const PROD_API_URL = 'https://jenista-chit-app.onrender.com/api/v1';
+const customEnvUrl = process.env.EXPO_PUBLIC_API_URL || PROD_API_URL;
+const LOCAL_DEV_IP = '192.168.1.39';
 
 let cachedBaseUrl: string | null = null;
 
@@ -126,19 +127,23 @@ export const getActiveBaseUrl = async (): Promise<string> => {
     return cachedBaseUrl;
   }
 
-  // 3. For native devices (Expo Go / Emulator), test local development backend
+  // 3. For native devices (Android APK, Standalone, Emulator), test candidate endpoints
   const candidates = [
+    customEnvUrl,
+    PROD_API_URL,
     `http://${LOCAL_DEV_IP}:${envPort}/api/v1`,
     `http://10.0.2.2:${envPort}/api/v1`,
-    customEnvUrl,
     `http://localhost:${envPort}/api/v1`,
   ].filter(Boolean) as string[];
 
-  for (const candidate of candidates) {
+  const uniqueCandidates = Array.from(new Set(candidates));
+
+  for (const candidate of uniqueCandidates) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 1800);
-      const res = await fetch(`${candidate.replace('/api/v1', '')}/health`, {
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      const healthUrl = `${candidate.replace(/\/api\/v1\/?$/, '')}/health`;
+      const res = await fetch(healthUrl, {
         signal: controller.signal,
       }).catch(() => null);
       clearTimeout(timeout);
@@ -149,8 +154,8 @@ export const getActiveBaseUrl = async (): Promise<string> => {
     } catch {}
   }
 
-  // Fallback to local dev IP so it never hangs on dead Render URL
-  cachedBaseUrl = `http://${LOCAL_DEV_IP}:${envPort}/api/v1`;
+  // Fallback to live Production Render API URL so production APK always fetches data
+  cachedBaseUrl = PROD_API_URL;
   return cachedBaseUrl;
 };
 
@@ -270,25 +275,29 @@ export const DataSyncManager = {
       const totalPaid = Math.max(Number(c.totalPaid || 0), Number(existing?.totalPaid || 0), chitPaidTotal);
       const pending = Math.max(Number(c.pending || 0), Number(existing?.pending || 0), chitPendingTotal);
 
-      return {
-        id: c.customerCode || c._id,
-        mongoId: c._id,
-        name: c.fullName || c.name || 'Member',
-        fullName: c.fullName || c.name,
-        phone: c.phone || c.mobile || '',
-        mobile: c.phone || c.mobile || '',
-        aadhar: c.aadhar || existing?.aadhar || '—',
-        pan: c.pan || existing?.pan || '—',
-        address: c.address || existing?.address || '',
-        branch: c.branchId?.branchName || c.branch || 'Head Office',
-        pending: Number(pending),
-        totalPaid: Number(totalPaid),
-        activeChits: chits.length,
-        scheme: c.scheme || existing?.scheme || c.interestedPlan || existing?.interestedPlan,
-        interestedPlan: c.interestedPlan || existing?.interestedPlan || c.scheme || existing?.scheme,
-        chits,
-        status: c.status || 'ACTIVE',
-      };
+        const rawSch = String(c.scheme || chits[0]?.scheme || existing?.scheme || c.interestedPlan || existing?.interestedPlan || 'Regular').toUpperCase();
+        const resolvedScheme: 'Regular' | 'Fixed' | 'Auction' = rawSch.includes('FIX') ? 'Fixed' : rawSch.includes('AUC') ? 'Auction' : 'Regular';
+        const resolvedPlan = c.interestedPlan || chits[0]?.groupName || existing?.interestedPlan || `${resolvedScheme} Scheme`;
+
+        return {
+          id: c.customerCode || c._id,
+          mongoId: c._id,
+          name: c.fullName || c.name || 'Member',
+          fullName: c.fullName || c.name,
+          phone: c.phone || c.mobile || '',
+          mobile: c.phone || c.mobile || '',
+          aadhar: c.aadhar || existing?.aadhar || '—',
+          pan: c.pan || existing?.pan || '—',
+          address: c.address || existing?.address || '',
+          branch: c.branchId?.branchName || c.branch || 'Head Office',
+          pending: Number(pending),
+          totalPaid: Number(totalPaid),
+          activeChits: chits.length,
+          scheme: resolvedScheme,
+          interestedPlan: resolvedPlan,
+          chits,
+          status: c.status || 'ACTIVE',
+        };
     });
 
     // Merge any locally added customers that haven't reached mongo yet
@@ -390,9 +399,24 @@ export const DataSyncManager = {
     const target = customers.find((c) => c.id === customerId || c.mongoId === customerId);
     if (!target) return null;
 
+    let updatedChits = target.chits;
+    if (patchData.scheme && Array.isArray(target.chits) && target.chits.length > 0) {
+      updatedChits = target.chits.map((ch: any, idx: number) => {
+        if (idx === 0) {
+          return {
+            ...ch,
+            scheme: patchData.scheme,
+            groupName: patchData.interestedPlan || (ch.groupName ? ch.groupName.replace(/Regular|Fixed|Auction/i, patchData.scheme!) : `${patchData.scheme} Scheme`),
+          };
+        }
+        return ch;
+      });
+    }
+
     const updatedCustomer: Customer = {
       ...target,
       ...patchData,
+      chits: updatedChits,
     };
 
     // 1. Update in backend
@@ -402,7 +426,10 @@ export const DataSyncManager = {
       await fetch(`${baseUrl}/customers/${encodeURIComponent(lookupId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patchData),
+        body: JSON.stringify({
+          ...patchData,
+          chits: updatedChits,
+        }),
       });
     } catch (e) {
       console.warn('Backend update customer error:', e);
@@ -745,10 +772,22 @@ export const DataSyncManager = {
       dueDate: new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],
     };
 
-    // 1. Sync directly to MongoDB customer record
+    // 1. Sync directly to MongoDB customer record (both PATCH /customers/:id and POST /customers/:id/chits)
     const targetLookupId = targetCust?.mongoId || targetCust?.id || params.customerId;
+    const otherChits = existingChits.filter((ch: any) => ch.groupId !== params.groupId);
     try {
       const baseUrl = await getActiveBaseUrl();
+      // Update customer scheme and interestedPlan in backend
+      await fetch(`${baseUrl}/customers/${encodeURIComponent(targetLookupId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scheme: params.scheme,
+          interestedPlan: params.groupName,
+          chits: [newChit, ...otherChits],
+        }),
+      });
+
       await fetch(`${baseUrl}/customers/${encodeURIComponent(targetLookupId)}/chits`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -763,15 +802,18 @@ export const DataSyncManager = {
       if (c.id === params.customerId || c.mongoId === params.customerId) {
         return {
           ...c,
+          scheme: params.scheme as any,
+          interestedPlan: params.groupName,
           pending: (Number(c.pending) || 0) + params.monthlyInstallment,
-          chits: [...existingChits, newChit],
-          activeChits: existingChits.length + 1,
+          chits: [newChit, ...otherChits],
+          activeChits: otherChits.length + 1,
         };
       }
       return c;
     });
 
     await secureStorage.setItem('synced_customers', JSON.stringify(updatedCusts));
+    await secureStorage.setItem('mockCustomers', JSON.stringify(updatedCusts));
   },
 
   /**

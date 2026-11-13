@@ -86,9 +86,15 @@ export const AddModifyCustomer = () => {
   const CustomerForm = ({ disabled = false, customer = null }: { disabled?: boolean, customer?: any }) => {
     const [showPassword, setShowPassword] = useState(false);
     const [mobileInput, setMobileInput] = useState(customer?.mobile || customer?.phone || '');
+    const [selectedScheme, setSelectedScheme] = useState<'Regular' | 'Fixed' | 'Auction'>(() => {
+      const s = String(customer?.scheme || customer?.chits?.[0]?.scheme || 'Regular').toUpperCase();
+      return s.includes('FIX') ? 'Fixed' : s.includes('AUC') ? 'Auction' : 'Regular';
+    });
 
     useEffect(() => {
       setMobileInput(customer?.mobile || customer?.phone || '');
+      const s = String(customer?.scheme || customer?.chits?.[0]?.scheme || 'Regular').toUpperCase();
+      setSelectedScheme(s.includes('FIX') ? 'Fixed' : s.includes('AUC') ? 'Auction' : 'Regular');
     }, [customer]);
 
     const handleMobileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -184,6 +190,37 @@ export const AddModifyCustomer = () => {
                   Optional. If entered, must be 10 characters (e.g. ABCDE1234F).
                 </span>
               </div>
+            </div>
+          </section>
+
+          {/* Chit Scheme & Plan Preference */}
+          <section>
+            <div className="flex items-center space-x-2 border-b border-neutral-100 pb-3 mb-6">
+              <ShieldCheck className="w-5 h-5 text-primary-900" />
+              <h4 className="text-lg font-bold text-neutral-800">Chit Plan & Scheme Preference</h4>
+            </div>
+            <input type="hidden" name="scheme" value={selectedScheme} />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[
+                { type: 'Regular', label: 'Regular Scheme', desc: 'Standard 20-month monthly chit' },
+                { type: 'Fixed', label: 'Fixed Plan', desc: 'Full face value monthly lucky draw' },
+                { type: 'Auction', label: 'Auction Scheme', desc: 'Reverse bidding dividend model' },
+              ].map(s => (
+                <button
+                  key={s.type}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setSelectedScheme(s.type as any)}
+                  className={`p-4 rounded-xl border text-left transition-all ${
+                    selectedScheme === s.type
+                      ? 'bg-primary-50 border-primary-500 ring-2 ring-primary-200'
+                      : 'bg-white border-neutral-200 hover:bg-neutral-50'
+                  }`}
+                >
+                  <div className="font-bold text-sm text-neutral-900">{s.label}</div>
+                  <div className="text-xs text-neutral-500 mt-1">{s.desc}</div>
+                </button>
+              ))}
             </div>
           </section>
 
@@ -446,6 +483,7 @@ export const AddModifyCustomer = () => {
         }
 
         // Username is the mobile number
+        const schemeVal = (formData.get('scheme') as string) || 'Regular';
         const newCustomer: any = {
           id: cleanMobile,
           customerCode: cleanMobile,
@@ -460,6 +498,8 @@ export const AddModifyCustomer = () => {
           dob: (formData.get('dob') as string) || '',
           gender: (formData.get('gender') as string) || '',
           address: addressVal,
+          scheme: schemeVal,
+          interestedPlan: `${schemeVal} Scheme`,
           status: 'PENDING_APPROVAL',
           referredBy: user?.name || (isStaff ? 'Staff User' : 'Admin User'),
           registeredBy: user?.name || (isStaff ? 'Staff User' : 'Admin User'),
@@ -484,6 +524,8 @@ export const AddModifyCustomer = () => {
               password: passwordVal,
               gender: newCustomer.gender ? newCustomer.gender.toUpperCase() : undefined,
               status: 'PENDING_APPROVAL',
+              scheme: schemeVal,
+              interestedPlan: `${schemeVal} Scheme`,
               referredBy: newCustomer.referredBy,
             })
           });
@@ -545,12 +587,17 @@ export const AddModifyCustomer = () => {
           return;
         }
 
+        const schemeVal = (formData.get('scheme') as string) || activeCustomer.scheme || 'Regular';
+        const planNameVal = `${schemeVal} Scheme`;
+
         const payload: any = {
           fullName: formData.get('name') as string,
           phone: formData.get('mobile') as string,
           address: formData.get('address') as string,
           aadhar: cleanAadhar || undefined,
           pan: panRaw || undefined,
+          scheme: schemeVal,
+          interestedPlan: planNameVal,
         };
         if (newPassword) {
           payload.password = newPassword;
@@ -568,6 +615,14 @@ export const AddModifyCustomer = () => {
         const localSaved = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
         const updatedLocal = localSaved.map((c: any) => {
           if (c.id === activeCustomer.id || c.mongoId === activeCustomer.mongoId) {
+            const existingChits = Array.isArray(c.chits) && c.chits.length > 0 ? [...c.chits] : [];
+            if (existingChits.length > 0) {
+              existingChits[0] = {
+                ...existingChits[0],
+                scheme: schemeVal,
+                groupName: existingChits[0].groupName ? existingChits[0].groupName.replace(/Regular|Fixed|Auction/i, schemeVal) : planNameVal
+              };
+            }
             return {
               ...c,
               name: payload.fullName || c.name,
@@ -577,6 +632,9 @@ export const AddModifyCustomer = () => {
               address: payload.address || c.address,
               aadhar: cleanAadhar || c.aadhar || '—',
               pan: panRaw || c.pan || '—',
+              scheme: schemeVal,
+              interestedPlan: planNameVal,
+              chits: existingChits,
               ...(newPassword ? { password: newPassword } : {})
             };
           }

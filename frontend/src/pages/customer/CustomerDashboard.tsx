@@ -184,6 +184,7 @@ export const CustomerDashboard = () => {
             finalChits = [...finalChits, {
               groupId: m.groupId,
               groupName: m.groupName || m.groupId,
+              scheme: m.scheme || customer?.scheme || 'Fixed',
               ticketNumber: m.ticketNumber,
               chitValue: m.chitValue,
               monthlyInstallment: m.monthlyInstallment,
@@ -196,8 +197,13 @@ export const CustomerDashboard = () => {
           }
         });
 
-        setMyChits(finalChits);
-        setActiveChits(finalChits.length);
+        const enrichedChits = finalChits.map((ch: any) => ({
+          ...ch,
+          scheme: ch.scheme || customer?.scheme || (ch.groupName?.includes('Fix') ? 'Fixed' : ch.groupName?.includes('Auc') ? 'Auction' : 'Regular')
+        }));
+
+        setMyChits(enrichedChits);
+        setActiveChits(enrichedChits.length);
 
         // Reconcile total invested across MongoDB, localStorage, ledger transactions, and staff receipts
         const cIds = [
@@ -1153,7 +1159,7 @@ export const CustomerDashboard = () => {
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-700">
-                                {chit.schemeType || 'Chit Group'}
+                                {chit.scheme ? `${chit.scheme} Scheme` : (chit.schemeType || 'Chit Group')}
                               </span>
                               <h4 className="font-black text-base text-neutral-900 mt-1">
                                 {chit.groupName || chit.groupId}

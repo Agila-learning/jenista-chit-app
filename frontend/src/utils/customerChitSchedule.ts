@@ -107,13 +107,22 @@ export const buildCustomerChitSchedule = (params: {
   const chitValue = Number(chit?.chitValue || chit?.amount || group?.value || 100000);
   const totalDurationMonths = Number(chit?.duration || chit?.months || group?.duration || group?.months || 20);
 
-  // Raw scheme detection (checks scheme, type, groupName, groupId, or customer scheme)
-  const combinedSchemeHint = `${chit?.scheme || ''} ${group?.scheme || ''} ${group?.type || ''} ${chit?.groupName || ''} ${chit?.groupId || ''} ${group?.name || ''} ${group?.id || ''} ${customer?.scheme || ''}`.toUpperCase();
-  const scheme: 'Regular' | 'Fixed' | 'Auction' = combinedSchemeHint.includes('FIX')
-    ? 'Fixed'
-    : combinedSchemeHint.includes('AUC')
-      ? 'Auction'
-      : 'Regular';
+  // Raw scheme detection (prioritize direct scheme on chit or customer before ambient hints)
+  let scheme: 'Regular' | 'Fixed' | 'Auction' = 'Regular';
+  const directScheme = String(chit?.scheme || customer?.scheme || '').toUpperCase();
+  if (directScheme.includes('FIX')) {
+    scheme = 'Fixed';
+  } else if (directScheme.includes('REG')) {
+    scheme = 'Regular';
+  } else if (directScheme.includes('AUC')) {
+    scheme = 'Auction';
+  } else {
+    const combinedSchemeHint = `${group?.scheme || ''} ${group?.type || ''} ${chit?.groupName || ''} ${chit?.groupId || ''} ${group?.name || ''} ${group?.id || ''} ${customer?.interestedPlan || ''}`.toUpperCase();
+    if (combinedSchemeHint.includes('FIX')) scheme = 'Fixed';
+    else if (combinedSchemeHint.includes('REG')) scheme = 'Regular';
+    else if (combinedSchemeHint.includes('AUC')) scheme = 'Auction';
+    else scheme = 'Regular';
+  }
 
   // Joining / start date determination
   const joiningDateIso = chit?.joiningDate || chit?.createdAt || new Date().toISOString();

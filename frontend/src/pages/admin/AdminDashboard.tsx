@@ -1031,6 +1031,8 @@ export const AdminDashboard = () => {
         const existingChits = Array.isArray(c.chits) ? c.chits.filter((ch: any) => ch.groupId !== selectedGroup.id && ch.groupName !== selectedGroup.name) : [];
         return {
           ...c,
+          scheme: memberScheme,
+          interestedPlan: selectedGroup.name,
           pending: (Number(c.pending) || 0) + installment,
           chits: [...existingChits, newChit],
           activeChits: existingChits.length + 1
@@ -1041,6 +1043,8 @@ export const AdminDashboard = () => {
     if (!foundInLocal) {
       updatedLocal.push({
         ...foundCustomer,
+        scheme: memberScheme,
+        interestedPlan: selectedGroup.name,
         pending: installment,
         chits: [newChit],
         activeChits: 1
@@ -1093,7 +1097,15 @@ export const AdminDashboard = () => {
     // 4. Record new Chit in MongoDB backend so it reflects across all devices
     const targetLookupId = foundCustomer.mongoId || foundCustomer._id || foundCustomer.customerCode || foundCustomer.id || cleanMobile;
     if (targetLookupId) {
-      fetchClient(`/customers/${encodeURIComponent(targetLookupId)}/chits`, {
+      fetchClient(`/customers/`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          scheme: memberScheme,
+          interestedPlan: selectedGroup.name
+        })
+      }).catch(err => console.warn('Could not sync customer scheme to MongoDB:', err));
+
+      fetchClient(`/customers//chits`, {
         method: 'POST',
         body: JSON.stringify(newChit),
       }).catch(err => console.warn('Could not sync chit to MongoDB:', err));

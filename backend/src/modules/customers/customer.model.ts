@@ -26,6 +26,8 @@ export interface ICustomer extends Document {
   status: 'ACTIVE' | 'INACTIVE' | 'PENDING_APPROVAL' | 'REJECTED';
   referredBy?: string;
   registeredBy?: string;
+  scheme?: string;
+  interestedPlan?: string;
   chits?: any[];
   pending?: number;
   totalPaid?: number;
@@ -62,13 +64,15 @@ const CustomerSchema: Schema = new Schema(
       phone: { type: String },
       address: { type: String },
     },
-    status: { 
-      type: String, 
-      enum: ['ACTIVE', 'INACTIVE', 'PENDING_APPROVAL', 'REJECTED'], 
-      default: 'PENDING_APPROVAL' 
+    status: {
+      type: String,
+      enum: ['ACTIVE', 'INACTIVE', 'PENDING_APPROVAL', 'REJECTED'],
+      default: 'PENDING_APPROVAL'
     },
     referredBy: { type: String, trim: true },
     registeredBy: { type: String, trim: true },
+    scheme: { type: String, trim: true, default: 'Regular' },
+    interestedPlan: { type: String, trim: true, default: '' },
     chits: { type: Array, default: [] },
     pending: { type: Number, default: 0 },
     totalPaid: { type: Number, default: 0 },

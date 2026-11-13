@@ -169,8 +169,10 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
       ? styles.textPaid
       : styles.textNeutral;
 
-    const groupName = item.chits?.[0]?.groupName || 'Unassigned Group';
-    const schemeUpper = String(item.chits?.[0]?.scheme || 'FIXED').toUpperCase();
+    const rawSch = String(item.scheme || item.chits?.[0]?.scheme || 'REGULAR').toUpperCase();
+    const schemeUpper = rawSch.includes('FIX') ? 'FIXED' : rawSch.includes('AUC') ? 'AUCTION' : 'REGULAR';
+    const schemeLabel = schemeUpper === 'FIXED' ? 'Fixed' : schemeUpper === 'REGULAR' ? 'Regular' : 'Auction';
+    const groupName = item.interestedPlan || item.chits?.[0]?.groupName || `${schemeLabel} Plan`;
     const schemeIcon =
       schemeUpper === 'FIXED'
         ? 'shield-checkmark'
@@ -197,7 +199,7 @@ export const CustomerListScreen: React.FC<{ route?: any; navigation: any }> = ({
               <View style={styles.schemeTagPill}>
                 <Ionicons name={schemeIcon} size={11} color="#2563EB" />
                 <Text style={styles.schemeTagText} numberOfLines={1}>
-                  {groupName}
+                  {groupName.toUpperCase().includes(schemeLabel.toUpperCase()) ? groupName : `${schemeLabel} • ${groupName}`}
                 </Text>
               </View>
               <Text style={styles.memberIdText}>• {item.id}</Text>

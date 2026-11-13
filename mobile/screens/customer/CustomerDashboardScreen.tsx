@@ -778,7 +778,7 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
                           )}
                         </View>
                         <Text style={styles.ticketSubtitle}>
-                          Ticket #{item.ticketNumber} • {item.scheme || 'Auction'} Plan ({duration}M)
+                          Ticket #{item.ticketNumber} • {scheduleSummary.scheme || item.scheme || 'Fixed'} Plan ({duration}M)
                         </Text>
                         
                         {/* Group Total Members Badge */}

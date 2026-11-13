@@ -68,12 +68,22 @@ export const buildCustomerChitSchedule = (params: {
   const chitValue = Number(chit?.chitValue || chit?.amount || group?.value || 100000);
   const totalDurationMonths = Number(chit?.duration || chit?.months || group?.duration || group?.months || 20);
 
-  const rawScheme = String(chit?.scheme || group?.type || 'Auction').toLowerCase();
-  const scheme: 'Regular' | 'Fixed' | 'Auction' = rawScheme.includes('fix')
-    ? 'Fixed'
-    : rawScheme.includes('reg')
-    ? 'Regular'
-    : 'Auction';
+  // Raw scheme detection (prioritize direct scheme on chit or customer before ambient hints)
+  let scheme: 'Regular' | 'Fixed' | 'Auction' = 'Regular';
+  const directScheme = String(chit?.scheme || customer?.scheme || '').toUpperCase();
+  if (directScheme.includes('FIX')) {
+    scheme = 'Fixed';
+  } else if (directScheme.includes('REG')) {
+    scheme = 'Regular';
+  } else if (directScheme.includes('AUC')) {
+    scheme = 'Auction';
+  } else {
+    const combinedSchemeHint = `${group?.scheme || ''} ${group?.type || ''} ${chit?.groupName || ''} ${chit?.groupId || ''} ${group?.name || ''} ${group?.id || ''} ${customer?.interestedPlan || ''}`.toUpperCase();
+    if (combinedSchemeHint.includes('FIX')) scheme = 'Fixed';
+    else if (combinedSchemeHint.includes('REG')) scheme = 'Regular';
+    else if (combinedSchemeHint.includes('AUC')) scheme = 'Auction';
+    else scheme = 'Regular';
+  }
 
   const isWithdrawn = Boolean(chit?.isWithdrawn || chit?.withdrawn || false);
   const withdrawnAmount = chit?.withdrawnAmount ? Number(chit?.withdrawnAmount) : undefined;

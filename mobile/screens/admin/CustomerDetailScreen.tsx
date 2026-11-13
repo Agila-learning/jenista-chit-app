@@ -35,6 +35,8 @@ export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = (
   const [editPhone, setEditPhone] = useState(customer.phone || customer.mobile || '');
   const [editEmail, setEditEmail] = useState(customer.email || '');
   const [editAddress, setEditAddress] = useState(customer.address || '');
+  const [editScheme, setEditScheme] = useState<'Regular' | 'Fixed' | 'Auction'>('Regular');
+  const [editPlanName, setEditPlanName] = useState('');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   // Assign Chit Modal State
@@ -113,6 +115,10 @@ export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = (
     setEditPhone(customer.phone || customer.mobile || '');
     setEditEmail(customer.email || '');
     setEditAddress(customer.address || '');
+    const curScheme = String(customer.scheme || customer.chits?.[0]?.scheme || 'Regular').toUpperCase();
+    const resolved: 'Regular' | 'Fixed' | 'Auction' = curScheme.includes('FIX') ? 'Fixed' : curScheme.includes('AUC') ? 'Auction' : 'Regular';
+    setEditScheme(resolved);
+    setEditPlanName(customer.interestedPlan || customer.chits?.[0]?.groupName || `${resolved} Scheme`);
     setIsEditModalOpen(true);
   };
 
@@ -130,12 +136,14 @@ export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = (
         mobile: editPhone.trim(),
         email: editEmail.trim(),
         address: editAddress.trim(),
+        scheme: editScheme,
+        interestedPlan: editPlanName.trim() || `${editScheme} Scheme`,
       } as any);
       if (patched) {
         setCustomer(patched);
       }
       setIsEditModalOpen(false);
-      Alert.alert('Success', 'Customer profile updated successfully.');
+      Alert.alert('Success', `Customer profile and ${editScheme} plan updated successfully.`);
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Failed to update profile');
     } finally {
@@ -239,8 +247,15 @@ export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = (
           <View style={styles.cardDivider} />
 
           <View style={styles.contactRow}>
-            <Ionicons name="people-outline" size={18} color={Colors.navy.primary} />
-            <Text style={styles.contactRowText}>{customer.chits?.[0]?.groupName || 'Group A'}</Text>
+            <Ionicons name="shield-checkmark-outline" size={18} color={Colors.navy.primary} />
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={styles.contactRowText}>
+                {customer.scheme || customer.chits?.[0]?.scheme || 'Regular'} Scheme ({customer.chits?.[0]?.groupName || customer.interestedPlan || 'Chit Plan'})
+              </Text>
+              <TouchableOpacity onPress={handleOpenEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: '#1D4ED8' }}>Change</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </View>
@@ -407,6 +422,34 @@ export const CustomerDetailScreen: React.FC<{ route: any; navigation: any }> = (
 
               <Text style={[styles.inputLabel, { marginTop: 12 }]}>RESIDENTIAL ADDRESS</Text>
               <TextInput style={[styles.textInput, { height: 60 }]} multiline value={editAddress} onChangeText={setEditAddress} />
+
+              <Text style={[styles.inputLabel, { marginTop: 12 }]}>PLAN SCHEME</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                {(['Regular', 'Fixed', 'Auction'] as const).map((s) => (
+                  <TouchableOpacity
+                    key={s}
+                    style={[styles.schemePillBtn, editScheme === s && styles.schemePillBtnActive]}
+                    onPress={() => {
+                      setEditScheme(s);
+                      if (!editPlanName || editPlanName.includes('Scheme') || editPlanName.includes('Plan')) {
+                        setEditPlanName(`${s} Scheme`);
+                      }
+                    }}
+                  >
+                    <Text style={[styles.schemePillBtnText, editScheme === s && styles.schemePillBtnTextActive]}>
+                      {s}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.inputLabel, { marginTop: 12 }]}>PLAN / GROUP NAME</Text>
+              <TextInput
+                style={styles.textInput}
+                value={editPlanName}
+                onChangeText={setEditPlanName}
+                placeholder="e.g. Fixed 1L Series"
+              />
             </ScrollView>
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
               <TouchableOpacity style={styles.cancelModalBtn} onPress={() => setIsEditModalOpen(false)}>

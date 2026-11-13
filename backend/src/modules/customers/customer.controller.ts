@@ -135,6 +135,13 @@ export class CustomerController {
         });
         if ((!c.totalPaid || c.totalPaid === 0) && computedPaid > 0) c.totalPaid = computedPaid;
         if ((!c.pending || c.pending === 0) && computedPending > 0) c.pending = computedPending;
+        if (!c.scheme) {
+          const ch0Scheme = chits[0]?.scheme;
+          c.scheme = ch0Scheme || (c.interestedPlan?.includes('Fix') ? 'Fixed' : c.interestedPlan?.includes('Auc') ? 'Auction' : 'Regular');
+        }
+        if (!c.interestedPlan) {
+          c.interestedPlan = chits[0]?.groupName || `${c.scheme} Scheme`;
+        }
         return c;
       });
 
@@ -167,7 +174,16 @@ export class CustomerController {
         throw new ApiError(404, 'Customer not found', 'NOT_FOUND');
       }
 
-      res.status(200).json({ success: true, data: customer });
+      const cObj: any = customer.toObject();
+      if (!cObj.scheme) {
+        const ch0 = Array.isArray(cObj.chits) && cObj.chits.length > 0 ? cObj.chits[0] : null;
+        cObj.scheme = ch0?.scheme || (cObj.interestedPlan?.includes('Fix') ? 'Fixed' : cObj.interestedPlan?.includes('Auc') ? 'Auction' : 'Regular');
+      }
+      if (!cObj.interestedPlan) {
+        cObj.interestedPlan = cObj.chits?.[0]?.groupName || `${cObj.scheme} Scheme`;
+      }
+
+      res.status(200).json({ success: true, data: cObj });
     } catch (error) {
       next(error);
     }
@@ -211,7 +227,18 @@ export class CustomerController {
       if (fullName || name) customer.fullName = fullName || name;
       if (phone || mobile) customer.phone = phone || mobile;
       if (address) customer.address = address;
-      if (req.body.chits) customer.chits = req.body.chits;
+      if (req.body.scheme) customer.scheme = req.body.scheme;
+      if (req.body.interestedPlan) customer.interestedPlan = req.body.interestedPlan;
+      if (req.body.chits) {
+        customer.chits = req.body.chits;
+        customer.markModified('chits');
+      } else if (req.body.scheme && Array.isArray(customer.chits) && customer.chits.length > 0) {
+        customer.chits[0].scheme = req.body.scheme;
+        if (req.body.interestedPlan) {
+          customer.chits[0].groupName = req.body.interestedPlan;
+        }
+        customer.markModified('chits');
+      }
       if (req.body.pending !== undefined) customer.pending = req.body.pending;
       if (req.body.totalPaid !== undefined) customer.totalPaid = req.body.totalPaid;
       if (req.body.referredBy !== undefined) customer.referredBy = req.body.referredBy;
@@ -554,10 +581,35 @@ export class CustomerController {
         throw new ApiError(404, 'Customer not found', 'NOT_FOUND');
       }
 
+      if (chit.scheme) {
+        customer.scheme = chit.scheme;
+      }
+      if (chit.groupName) {
+        customer.interestedPlan = chit.groupName;
+      }
+
       const existingChits = Array.isArray(customer.chits) ? customer.chits : [];
-      const filteredChits = existingChits.filter((c: any) => c.groupId !== chit.groupId && c.groupName !== chit.groupName);
-      customer.chits = [...filteredChits, chit];
-      if (chit.monthlyInstallment) {
+      let foundIndex = existingChits.findIndex((c: any) => 
+        (chit.groupId && c.groupId === chit.groupId) || 
+        (chit.groupName && c.groupName === chit.groupName) ||
+        (chit.ticketNumber && c.ticketNumber === chit.ticketNumber) ||
+        c.groupId === 'PENDING'
+      );
+
+      // If updating primary chit (e.g. changing from Regular to Fixed)
+      if (foundIndex === -1 && existingChits.length <= 1) {
+        foundIndex = 0;
+      }
+
+      if (foundIndex >= 0 && foundIndex < existingChits.length) {
+        existingChits[foundIndex] = { ...existingChits[foundIndex], ...chit };
+        customer.chits = existingChits;
+      } else {
+        const filteredChits = existingChits.filter((c: any) => c.groupId !== chit.groupId && c.groupName !== chit.groupName);
+        customer.chits = [chit, ...filteredChits];
+      }
+
+      if (chit.monthlyInstallment && (!existingChits.length || foundIndex === -1)) {
         customer.pending = (Number(customer.pending) || 0) + Number(chit.monthlyInstallment);
       }
       customer.markModified('chits');
