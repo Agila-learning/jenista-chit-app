@@ -1,16 +1,15 @@
-export const formatCurrency = (amount: number): string => {
-  const num = Number(amount) || 0;
-  const isNegative = num < 0;
-  const formatted = new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(Math.abs(num));
-  return isNegative ? `-${formatted}` : formatted;
+import { formatIndianCurrency, formatIndianNumber, parseIndianNumber } from './indianCurrency';
+
+export { formatIndianCurrency, formatIndianNumber, parseIndianNumber };
+
+export const formatCurrency = (amount: number | string | null | undefined, showDecimals = false): string => {
+  return formatIndianCurrency(amount, { showDecimals });
 };
 
 export const formatDate = (dateString: string | Date): string => {
+  if (!dateString) return '—';
   const date = new Date(dateString);
+  if (isNaN(date.getTime())) return String(dateString);
   return new Intl.DateTimeFormat('en-IN', {
     day: '2-digit',
     month: 'short',
@@ -31,4 +30,3 @@ export const formatDateTime = (dateString?: string | Date): string => {
     hour12: true
   }).format(date);
 };
-

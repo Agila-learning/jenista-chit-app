@@ -117,11 +117,16 @@ export const ActionLayout = ({
         )}
         {onConfirm && (
           <button 
-            className="px-4 py-2 text-sm font-medium text-white bg-primary-900 rounded-md hover:bg-primary-800 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-900"
+            type="submit"
+            className="px-4 py-2 text-sm font-medium text-white bg-primary-900 rounded-md hover:bg-primary-800 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-900 inline-flex items-center gap-1.5"
             onClick={onConfirm} 
             disabled={!activeAction}
+            title="Save Form (Ctrl+S)"
           >
-            Confirm
+            <span>Confirm</span>
+            <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.2 text-[10px] font-mono bg-white/20 border border-white/30 rounded text-white font-bold">
+              Ctrl+S
+            </kbd>
           </button>
         )}
         {onConfirmApprove && (

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '../../../components/common/Button';
 import { Input } from '../../../components/common/Input';
+import { CurrencyInput } from '../../../components/common/CurrencyInput';
 import { Search, Filter, Layers, MoreVertical, X, Pencil, Trash2 } from 'lucide-react';
 import { formatCurrency } from '../../../utils/format';
 import { isMockGroup, isDeletedGroup } from '../../../utils/cleanMockData';
@@ -45,7 +46,11 @@ export const ChitGroupList = () => {
   const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
 
   useEffect(() => {
-    if ((location.state && (location.state as any).openCreate) || location.search.includes('action=create')) {
+    if (
+      (location.state && (location.state as any).openCreate) || 
+      location.search.includes('action=create') || 
+      location.search.includes('action=new-group')
+    ) {
       setIsModalOpen(true);
     }
   }, [location.state, location.search]);
@@ -172,7 +177,7 @@ export const ChitGroupList = () => {
       id: `CG-${Math.floor(Math.random() * 900) + 100}-${formData.type.charAt(0)}`,
       name: formData.name.trim(),
       type: formData.type || 'Mixed Schemes',
-      value: parseInt(formData.value) || 0,
+      value: parseInt(String(formData.value).replace(/\D/g, '')) || 0,
       duration: parseInt(formData.duration) || 20,
       members: parseInt(formData.members) || 0,
       currentMonth: 0,
@@ -200,7 +205,7 @@ export const ChitGroupList = () => {
     if (!editingGroup) return;
     const updated = groups.map(g =>
       g.id === editingGroup.id
-        ? { ...g, name: editFormData.name, type: editFormData.type, value: parseInt(editFormData.value), duration: parseInt(editFormData.duration), members: parseInt(editFormData.members) }
+        ? { ...g, name: editFormData.name, type: editFormData.type, value: parseInt(String(editFormData.value).replace(/\D/g, '')) || 0, duration: parseInt(editFormData.duration) || 0, members: parseInt(editFormData.members) || 0 }
         : g
     );
     setGroups(updated);
@@ -275,7 +280,7 @@ export const ChitGroupList = () => {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleEditSave} className="p-6 space-y-5">
+            <form onSubmit={handleEditSave} data-smart-enter="true" className="p-6 space-y-5">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Group Name *</label>
                 <Input placeholder="e.g. Diamond Series B" value={editFormData.name} onChange={e => setEditFormData({...editFormData, name: e.target.value})} required />
@@ -290,7 +295,12 @@ export const ChitGroupList = () => {
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Total Chit Value (₹) *</label>
-                <Input type="number" placeholder="e.g. 500000" value={editFormData.value} onChange={e => setEditFormData({...editFormData, value: e.target.value})} required />
+                <CurrencyInput 
+                  placeholder="5,00,000" 
+                  value={editFormData.value} 
+                  onChange={(raw) => setEditFormData({...editFormData, value: String(raw)})} 
+                  required 
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -325,7 +335,7 @@ export const ChitGroupList = () => {
               </button>
             </div>
             
-            <form onSubmit={handleCreateGroup} className="p-6 space-y-5">
+            <form onSubmit={handleCreateGroup} data-smart-enter="true" className="p-6 space-y-5">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Group Name *</label>
                 <Input placeholder="e.g. Diamond Series B" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required />
@@ -347,7 +357,11 @@ export const ChitGroupList = () => {
 
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Total Chit Value (₹) (Optional)</label>
-                <Input type="number" placeholder="e.g. 500000" value={formData.value} onChange={e => setFormData({...formData, value: e.target.value})} />
+                <CurrencyInput 
+                  placeholder="5,00,000" 
+                  value={formData.value} 
+                  onChange={(raw) => setFormData({...formData, value: String(raw)})} 
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -380,7 +394,12 @@ export const ChitGroupList = () => {
             <Filter className="w-4 h-4 mr-2" />
             Filters
           </Button>
-          <Button variant="primary" onClick={() => setIsModalOpen(true)}>Create Group</Button>
+          <Button variant="primary" onClick={() => setIsModalOpen(true)}>
+            Create Group
+            <kbd className="ml-2 hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono bg-white/20 border border-white/30 rounded text-white font-bold">
+              Alt+G
+            </kbd>
+          </Button>
         </div>
       </div>
 

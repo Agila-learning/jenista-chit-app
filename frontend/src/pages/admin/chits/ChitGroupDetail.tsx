@@ -1265,7 +1265,7 @@ export const ChitGroupDetail = () => {
 
             {/* TAB 2: ENROLL NEW MEMBER FORM */}
             {manageMembersModalTab === 'enroll' && (
-              <form onSubmit={handleEnrollMemberSubmit} className="p-6 overflow-y-auto space-y-4 flex-1 text-xs sm:text-sm">
+              <form onSubmit={handleEnrollMemberSubmit} data-smart-enter="true" className="p-6 overflow-y-auto space-y-4 flex-1 text-xs sm:text-sm">
                 {/* Customer Selector */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">

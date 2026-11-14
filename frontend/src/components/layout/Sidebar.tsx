@@ -37,6 +37,7 @@ interface NavItem {
   href: string;
   icon: any;
   badge?: number;
+  shortcut?: string;
   subItems?: { name: string; href: string; }[];
 }
 
@@ -162,10 +163,11 @@ export const Sidebar = ({
       href: '/admin/customers', 
       icon: Users,
       badge: pendingApprovalsCount,
+      shortcut: 'Alt+C',
       subItems: [
         { name: 'Customer Directory', href: '/admin/customers' },
-        { name: 'Register Customer', href: '/admin/customers/add' },
-        { name: 'Registration Approvals', href: '/admin/customers/approvals' }
+        { name: 'Register Customer (Alt+C)', href: '/admin/customers/add' },
+        { name: 'Registration Approvals (Alt+M)', href: '/admin/customers/approvals' }
       ]
     },
   ];
@@ -176,9 +178,10 @@ export const Sidebar = ({
       name: 'Chit Groups', 
       href: '/admin/chit-groups', 
       icon: Layers,
+      shortcut: 'Alt+G',
       subItems: [
         { name: 'All Chit Groups', href: '/admin/chit-groups' },
-        { name: '+ Create Group', href: '/admin/chit-groups?action=create' },
+        { name: '+ Create Group (Alt+G)', href: '/admin/chit-groups?action=create' },
         { name: 'Schemes & Plans', href: '/admin/manage-plans' }
       ]
     },
@@ -192,16 +195,18 @@ export const Sidebar = ({
       name: 'Payments', 
       href: '/admin/payments', 
       icon: CreditCard,
-      badge: pendingPaymentsCount
+      badge: pendingPaymentsCount,
+      shortcut: 'Alt+P'
     },
     { name: 'Manage Bank', href: '/admin/banks', icon: Landmark },
-    { name: 'Ledger', href: '/admin/ledger', icon: FileText },
+    { name: 'Ledger', href: '/admin/ledger', icon: FileText, shortcut: 'Alt+T' },
     { 
       name: 'Reports', 
       href: '/admin/reports/non-payers', 
       icon: BarChart3,
+      shortcut: 'Alt+O',
       subItems: [
-        { name: 'Non Payers List', href: '/admin/reports/non-payers' }
+        { name: 'Non Payers List (Alt+O)', href: '/admin/reports/non-payers' }
       ]
     },
     { 
@@ -220,10 +225,10 @@ export const Sidebar = ({
 
   // 4. Management Section
   const adminManagementNav: NavItem[] = [
-    { name: 'Receipt Desk', href: '/admin/receipts', icon: Receipt },
+    { name: 'Receipt Desk', href: '/admin/receipts', icon: Receipt, shortcut: 'Alt+P' },
     { name: 'Support Chat', href: '/admin/chat', icon: MessageSquare },
     { name: 'Staff & Team', href: '/admin/staff', icon: Users },
-    { name: 'User Management', href: '/admin/customers/approvals', icon: UserCheck },
+    { name: 'User Management', href: '/admin/customers/approvals', icon: UserCheck, shortcut: 'Alt+M' },
     { name: 'Settings', href: '/admin/settings', icon: Settings },
   ];
 
@@ -320,6 +325,11 @@ export const Sidebar = ({
                 {/* Expanded pill badge and chevron */}
                 {isExpanded && (
                   <div className="flex items-center gap-1.5 shrink-0 animate-in fade-in duration-150">
+                    {item.shortcut && !item.badge && (
+                      <kbd className="hidden 2xl:inline-flex items-center px-1.5 py-0.2 text-[9px] font-mono text-slate-400 bg-white/5 border border-white/10 rounded">
+                        {item.shortcut}
+                      </kbd>
+                    )}
                     {item.badge !== undefined && item.badge > 0 && (
                       <span className={cn(
                         "text-[10px] font-black px-1.5 py-0.5 rounded-full shadow-xs",

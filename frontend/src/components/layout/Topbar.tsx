@@ -20,7 +20,8 @@ import {
   Sparkles,
   Award,
   AlertCircle,
-  AlertTriangle
+  AlertTriangle,
+  Keyboard
 } from 'lucide-react';
 import { useAuth } from '../../store/AuthContext';
 import { isMockCustomer, isMockGroup } from '../../utils/cleanMockData';
@@ -30,9 +31,11 @@ import { formatDate } from '../../utils/format';
 interface TopbarProps {
   onMenuClick?: () => void;
   isSidebarOpen?: boolean;
+  onOpenQuickActions?: () => void;
+  onOpenShortcutGuide?: () => void;
 }
 
-export const Topbar = ({ onMenuClick }: TopbarProps = {}) => {
+export const Topbar = ({ onMenuClick, onOpenQuickActions, onOpenShortcutGuide }: TopbarProps = {}) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -213,13 +216,19 @@ export const Topbar = ({ onMenuClick }: TopbarProps = {}) => {
               placeholder="Search members, groups, receipts..."
               className="w-full bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200 rounded-xl pl-10 pr-9 py-2 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all font-medium"
             />
-            {searchQuery && (
+            {searchQuery ? (
               <button
                 onClick={() => setSearchQuery('')}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
+            ) : (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:flex items-center pointer-events-none">
+                <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-bold text-slate-400 bg-slate-100 border border-slate-200 rounded">
+                  Ctrl+K
+                </kbd>
+              </div>
             )}
           </div>
 
@@ -320,7 +329,36 @@ export const Topbar = ({ onMenuClick }: TopbarProps = {}) => {
       </div>
 
       {/* Right: Actions, Notifications & Administrator Profile */}
-      <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        {/* Quick Actions Button (Ctrl+K) */}
+        {onOpenQuickActions && (
+          <button
+            type="button"
+            onClick={onOpenQuickActions}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100/80 text-amber-900 border border-amber-200/90 rounded-xl text-xs font-bold transition-all shadow-2xs hover:shadow-xs active:scale-95"
+            title="Quick Actions Palette (Ctrl+K)"
+          >
+            <Keyboard className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span className="hidden md:inline">Quick Actions</span>
+            <kbd className="hidden lg:inline-flex items-center px-1.5 py-0.2 text-[9px] font-mono bg-white border border-amber-300 rounded text-amber-800 font-bold">
+              Ctrl+K
+            </kbd>
+          </button>
+        )}
+
+        {/* Keyboard Shortcut Guide Button (Shift+?) */}
+        {onOpenShortcutGuide && (
+          <button
+            type="button"
+            onClick={onOpenShortcutGuide}
+            className="p-2 text-slate-500 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors relative"
+            title="Keyboard Shortcuts Guide (Shift + ?)"
+            aria-label="Keyboard Shortcuts"
+          >
+            <Keyboard className="w-5 h-5 text-slate-600" />
+          </button>
+        )}
+
         {/* Customer Registration Link Feature */}
         <button 
           onClick={copyRegistrationLink}

@@ -103,7 +103,7 @@ export const AddModifyCustomer = () => {
     };
 
     return (
-      <form id="customer-form" className={`bg-white p-8 rounded-xl shadow-sm border border-neutral-200 ${disabled ? 'opacity-70 pointer-events-none' : ''}`}>
+      <form id="customer-form" data-smart-enter="true" className={`bg-white p-8 rounded-xl shadow-sm border border-neutral-200 ${disabled ? 'opacity-70 pointer-events-none' : ''}`}>
         <div className="space-y-8">
           
           {/* Personal Details */}

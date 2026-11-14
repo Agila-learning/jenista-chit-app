@@ -4,9 +4,10 @@ import { Input } from '../../../components/common/Input';
 import { 
   Building2, Shield, Bell, 
   FileCheck, ShieldCheck, MapPin, Plus, Trash2, CheckCircle2,
-  PenTool, UploadCloud
+  PenTool, UploadCloud, Keyboard
 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
+import { KEYBOARD_SHORTCUTS, isMacPlatform } from '../../../utils/keyboardShortcuts';
 
 // Default Models
 const DEFAULT_ORG = { 
@@ -188,6 +189,7 @@ export const Settings = () => {
 
   const settingsTabs = [
     { id: 'organization', name: 'Organization Profile', icon: Building2 },
+    { id: 'shortcuts', name: 'Keyboard Shortcuts', icon: Keyboard },
     { id: 'signature', name: 'Admin Signature & Seal', icon: PenTool },
     { id: 'branches', name: 'Branch Management', icon: MapPin },
     { id: 'roles', name: 'Roles & Permissions', icon: Shield },
@@ -828,6 +830,93 @@ export const Settings = () => {
                   </Button>
                 </div>
               </form>
+            </div>
+          )}
+
+          {/* 7. KEYBOARD SHORTCUTS REFERENCE SECTION */}
+          {activeTab === 'shortcuts' && (
+            <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
+              <div className="flex items-center justify-between p-6 border-b border-neutral-100 bg-neutral-50">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-amber-100 rounded-lg text-amber-900">
+                    <Keyboard className="w-6 h-6 text-amber-700" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-primary-900">Keyboard Shortcuts Reference</h2>
+                    <p className="text-sm text-neutral-500">
+                      Standard hotkeys and smart navigation bindings for power users.
+                    </p>
+                  </div>
+                </div>
+                <div className="hidden sm:flex items-center gap-2">
+                  <span className="text-xs text-slate-400">Quick Guide:</span>
+                  <kbd className="px-2 py-1 text-xs font-mono font-bold bg-white border border-slate-200 rounded text-slate-700 shadow-2xs">
+                    Shift + ?
+                  </kbd>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-6">
+                {/* Reference Location Banner */}
+                <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-xl flex items-start gap-3">
+                  <ShieldCheck className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                  <div className="text-xs">
+                    <p className="font-bold text-blue-900">Dedicated Reference Storage Section</p>
+                    <p className="text-blue-800 mt-0.5 leading-relaxed">
+                      All shortcuts, definitions, and event handlers are centralized in{' '}
+                      <code className="font-mono bg-white px-1.5 py-0.5 rounded border border-blue-200 text-blue-950 font-bold">
+                        frontend/src/utils/keyboardShortcuts.ts
+                      </code>
+                      . They operate uniformly across all operating systems ({isMacPlatform() ? 'macOS Command ⌘' : 'Windows Alt / Ctrl'}).
+                    </p>
+                  </div>
+                </div>
+
+                {/* Shortcuts Table */}
+                <div className="overflow-x-auto border border-neutral-200 rounded-xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-neutral-50 border-b border-neutral-200 text-neutral-600 font-bold uppercase tracking-wider">
+                      <tr>
+                        <th className="py-3 px-4">Action</th>
+                        <th className="py-3 px-4">Category</th>
+                        <th className="py-3 px-4">Description</th>
+                        <th className="py-3 px-4 text-right">Shortcut</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-100 font-medium">
+                      {KEYBOARD_SHORTCUTS.map(s => {
+                        const isMac = isMacPlatform();
+                        const keys = (isMac && s.macKeys) ? s.macKeys : s.keys;
+                        return (
+                          <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="py-3.5 px-4 font-bold text-neutral-900">{s.name}</td>
+                            <td className="py-3.5 px-4 text-neutral-500">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+                                {s.category}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 text-neutral-600 max-w-xs">{s.description}</td>
+                            <td className="py-3.5 px-4 text-right">
+                              <div className="inline-flex items-center gap-1">
+                                {keys.map((k, idx) => (
+                                  <span key={idx} className="inline-flex items-center">
+                                    <kbd className="px-2 py-1 text-[11px] font-mono font-bold text-neutral-800 bg-white border border-neutral-300 rounded shadow-2xs">
+                                      {k}
+                                    </kbd>
+                                    {idx < keys.length - 1 && (
+                                      <span className="mx-1 text-neutral-400 font-bold">+</span>
+                                    )}
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           )}
 

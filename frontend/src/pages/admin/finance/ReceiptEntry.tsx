@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, Printer, CheckCircle2, RotateCcw } from 'lucide-react';
+import { CurrencyInput } from '../../../components/common/CurrencyInput';
 import { fetchClient } from '../../../api/client';
 import { printCashReceipt } from '../../../utils/receiptPrinter';
 import { useAuth } from '../../../store/AuthContext';
@@ -454,10 +455,14 @@ export const ReceiptEntry = () => {
           <button
             onClick={handleSave}
             disabled={saved}
-            className="flex items-center gap-2 px-5 py-2 bg-primary-900 text-white rounded-lg text-sm font-bold hover:bg-primary-800 transition-colors disabled:opacity-60"
+            className="flex items-center gap-2 px-5 py-2 bg-primary-900 text-white rounded-lg text-sm font-bold hover:bg-primary-800 transition-colors disabled:opacity-60 shadow-2xs hover:shadow-xs active:scale-95"
+            title="Save and Record Receipt (Ctrl+S)"
           >
             <CheckCircle2 className="w-4 h-4" />
-            {saved ? 'Saved' : 'Save & Record'}
+            <span>{saved ? 'Saved' : 'Save & Record'}</span>
+            <kbd className="ml-1 hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono bg-white/20 border border-white/30 rounded text-white font-bold">
+              Ctrl+S
+            </kbd>
           </button>
         </div>
       </div>
@@ -505,7 +510,7 @@ export const ReceiptEntry = () => {
 
       <div className="flex flex-col xl:flex-row gap-6">
         {/* LEFT – FORM */}
-        <div className="flex-1 space-y-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div data-smart-enter="true" className="flex-1 space-y-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           {/* SECTION 1 */}
           <div className="bg-slate-800 text-white px-6 py-3 text-xs font-black uppercase tracking-widest">
             Transaction Information
@@ -606,12 +611,11 @@ export const ReceiptEntry = () => {
             </Field>
             <Field label="Receipt Amount (₹)">
               <div>
-                <input 
-                  type="number" 
+                <CurrencyInput 
                   value={form.receiptAmt} 
-                  onChange={e => set('receiptAmt', e.target.value)} 
-                  placeholder="0.00" 
-                  className={`field-input font-bold text-lg ${isPartial ? 'text-amber-800 bg-amber-50/40' : 'text-slate-900'}`} 
+                  onChange={(raw) => set('receiptAmt', raw > 0 ? String(raw) : '')} 
+                  placeholder="0" 
+                  className={`border-0 rounded-none shadow-none py-1.5 text-base font-bold focus:ring-0 ${isPartial ? 'text-amber-800 bg-amber-50/40' : 'text-slate-900'}`} 
                 />
                 {expectedAmt > 0 && (
                   <div className="px-3 py-1 text-[10px] flex items-center justify-between bg-slate-50 border-t border-slate-100">
