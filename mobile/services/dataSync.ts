@@ -1200,6 +1200,26 @@ export const DataSyncManager = {
 
   async submitPaymentRequest(reqData: Partial<PaymentRequest>): Promise<PaymentRequest> {
     const id = reqData.id || `PAY-${Date.now().toString().slice(-6)}`;
+    const planName = reqData.planName || reqData.scheme || 'Regular';
+    const monthNumber = reqData.monthNumber || '1';
+
+    // Duplicate check across existing requests
+    const existing = await this.getPaymentRequests();
+    const isDuplicate = existing.some(r => {
+      if (r.id === id) return false;
+      const sameCust = (r.customerId && reqData.customerId && r.customerId === reqData.customerId) || 
+                       (r.customerMobile && reqData.customerMobile && r.customerMobile.replace(/\D/g, '') === reqData.customerMobile.replace(/\D/g, ''));
+      const sameGroup = String(r.groupId || r.groupName || '').toLowerCase() === String(reqData.groupId || reqData.groupName || '').toLowerCase();
+      const sameMonth = String(r.monthNumber || '1') === String(monthNumber);
+      const samePlan = String(r.planName || r.scheme || 'Regular').toLowerCase() === String(planName).toLowerCase();
+      const isActive = r.status === 'PENDING' || r.status === 'APPROVED' || (r as any).status === 'PENDING_VERIFICATION';
+      return sameCust && sameGroup && sameMonth && samePlan && isActive;
+    });
+
+    if (isDuplicate) {
+      throw new Error(`Duplicate Payment Alert: A payment request for Group ${reqData.groupName || reqData.groupId} (${planName} Plan - Month ${monthNumber}) is already submitted. Duplicate requests are not permitted.`);
+    }
+
     const newReq: PaymentRequest = {
       id,
       customerId: reqData.customerId || 'CUST',
@@ -1207,6 +1227,9 @@ export const DataSyncManager = {
       customerMobile: reqData.customerMobile || '',
       groupId: reqData.groupId || '',
       groupName: reqData.groupName || reqData.groupId || 'Chit Group',
+      planName,
+      scheme: planName,
+      monthNumber,
       ticketNumber: reqData.ticketNumber || '1',
       amount: Number(reqData.amount || 0),
       paymentMode: reqData.paymentMode || 'UPI',

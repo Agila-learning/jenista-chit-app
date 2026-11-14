@@ -10,6 +10,9 @@ export interface PaymentRequest {
   mobile: string;
   groupId: string;
   groupName?: string;
+  planName?: string;
+  scheme?: string;
+  monthNumber?: number | string;
   ticketNumber?: string;
   amount: number;
   paymentMode: string;
@@ -205,11 +208,118 @@ export const syncPaymentRequestsWithBackend = async (): Promise<PaymentRequest[]
   return getStoredPaymentRequests();
 };
 
+export const resolvePaymentRequestDetails = (req: PaymentRequest): { planName: string; monthNumber: string } => {
+  let plan = req.planName || req.scheme;
+  let month = req.monthNumber ? String(req.monthNumber) : '';
+
+  // 1. Try parsing month from remarks e.g. [Month 1 Installment]
+  if (!month && req.remarks) {
+    const mMatch = req.remarks.match(/Month\s*(\d+)/i);
+    if (mMatch) month = mMatch[1];
+  }
+
+  // 2. Try inferring plan from group name
+  if (!plan) {
+    const gLower = (req.groupName || req.groupId || '').toLowerCase();
+    if (gLower.includes('fix')) plan = 'Fixed';
+    else if (gLower.includes('auc')) plan = 'Auction';
+    else if (gLower.includes('reg')) plan = 'Regular';
+  }
+
+  // 3. Fallback: Lookup customer's enrolled chit
+  if (!plan || !month) {
+    try {
+      const custs = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
+      const cleanMobile = String(req.mobile || '').replace(/\D/g, '');
+      const cust = custs.find((c: any) => {
+        const cMobile = String(c.mobile || c.phone || '').replace(/\D/g, '');
+        return c.id === req.customerId || (cleanMobile && cMobile === cleanMobile);
+      });
+      if (cust && Array.isArray(cust.chits)) {
+        const chit = cust.chits.find((ch: any) => {
+          const chG = String(ch.groupId || ch.groupName || '').toLowerCase();
+          const reqG = String(req.groupId || req.groupName || '').toLowerCase();
+          return chG === reqG || (req.ticketNumber && String(ch.ticketNumber) === String(req.ticketNumber));
+        }) || cust.chits[0];
+
+        if (chit) {
+          if (!plan) plan = chit.scheme || chit.type || chit.planName || 'Regular';
+          if (!month) month = String(chit.currentMonth || chit.month || '1');
+        }
+      }
+    } catch { }
+  }
+
+  return {
+    planName: plan || 'Regular',
+    monthNumber: month || '1'
+  };
+};
+
+export const isDuplicatePaymentRequest = (req: PaymentRequest, allRequests: PaymentRequest[]): boolean => {
+  const cleanCustMobile = String(req.mobile || '').replace(/\D/g, '');
+  const reqDetails = resolvePaymentRequestDetails(req);
+  const reqMonth = reqDetails.monthNumber;
+  const reqPlan = reqDetails.planName.toLowerCase();
+  const reqGroup = String(req.groupId || req.groupName || '').trim().toLowerCase();
+  const reqTicket = String(req.ticketNumber || '').trim();
+
+  return allRequests.some(r => {
+    if (r.id === req.id) return false;
+    const rMobile = String(r.mobile || '').replace(/\D/g, '');
+    const rDetails = resolvePaymentRequestDetails(r);
+    const rMonth = rDetails.monthNumber;
+    const rPlan = rDetails.planName.toLowerCase();
+    const rGroup = String(r.groupId || r.groupName || '').trim().toLowerCase();
+    const rTicket = String(r.ticketNumber || '').trim();
+
+    const sameCustomer = (r.customerId && req.customerId && r.customerId === req.customerId) || (cleanCustMobile && rMobile && cleanCustMobile === rMobile);
+    const sameGroup = rGroup === reqGroup || (r.groupName && req.groupName && r.groupName.toLowerCase() === req.groupName.toLowerCase());
+    const sameMonth = rMonth === reqMonth;
+    const samePlan = rPlan === reqPlan;
+    const sameTicket = reqTicket && rTicket ? reqTicket === rTicket : true;
+
+    return sameCustomer && sameGroup && sameMonth && samePlan && sameTicket;
+  });
+};
+
 export const savePaymentRequest = async (req: PaymentRequest) => {
-  // 1. Save locally
+  // Check for duplicate payment request before saving
   const current = getStoredPaymentRequests();
-  const filtered = current.filter(r => r.id !== req.id);
-  const updated = [req, ...filtered];
+  const reqDetails = resolvePaymentRequestDetails(req);
+  const enrichedReq: PaymentRequest = {
+    ...req,
+    planName: req.planName || reqDetails.planName,
+    scheme: req.scheme || reqDetails.planName,
+    monthNumber: req.monthNumber || reqDetails.monthNumber
+  };
+
+  const isDuplicate = current.some(r => {
+    if (r.id === enrichedReq.id) return false;
+    const rMobile = String(r.mobile || '').replace(/\D/g, '');
+    const reqMobile = String(enrichedReq.mobile || '').replace(/\D/g, '');
+    const sameCustomer = (r.customerId && enrichedReq.customerId && r.customerId === enrichedReq.customerId) || (reqMobile && rMobile && reqMobile === rMobile);
+
+    const rGroup = String(r.groupId || r.groupName || '').trim().toLowerCase();
+    const reqGroup = String(enrichedReq.groupId || enrichedReq.groupName || '').trim().toLowerCase();
+    const sameGroup = rGroup === reqGroup;
+
+    const rDetails = resolvePaymentRequestDetails(r);
+    const sameMonth = String(rDetails.monthNumber).trim() === String(enrichedReq.monthNumber).trim();
+    const samePlan = String(rDetails.planName).trim().toLowerCase() === String(enrichedReq.planName).trim().toLowerCase();
+
+    const isActive = r.status === 'PENDING_VERIFICATION' || r.status === 'APPROVED';
+
+    return sameCustomer && sameGroup && sameMonth && samePlan && isActive;
+  });
+
+  if (isDuplicate) {
+    throw new Error(`Duplicate Payment Alert: A payment request for Group ${enrichedReq.groupName || enrichedReq.groupId} (${enrichedReq.planName} Plan - Month ${enrichedReq.monthNumber}) is already submitted or verified. Duplicate requests for the same plan, month, and group are not allowed.`);
+  }
+
+  // 1. Save locally
+  const filtered = current.filter(r => r.id !== enrichedReq.id);
+  const updated = [enrichedReq, ...filtered];
   localStorage.setItem('paymentRequests', JSON.stringify(updated));
 
   // 1b. Dispatch System Notification for Admin & Staff
@@ -217,14 +327,16 @@ export const savePaymentRequest = async (req: PaymentRequest) => {
     addSystemNotification({
       type: 'PAYMENT_PENDING',
       title: 'New Online Payment Submitted',
-      message: `${req.customerName || 'Customer'} submitted ₹${Number(req.amount).toLocaleString('en-IN')} via ${req.paymentMode} for ${req.groupName || req.groupId} (Ref: ${req.referenceNo})`,
+      message: `${enrichedReq.customerName || 'Customer'} submitted ₹${Number(enrichedReq.amount).toLocaleString('en-IN')} via ${enrichedReq.paymentMode} for ${enrichedReq.groupName || enrichedReq.groupId} [${enrichedReq.planName} Plan - Month ${enrichedReq.monthNumber}] (Ref: ${enrichedReq.referenceNo})`,
       targetRole: 'ADMIN',
       metadata: {
-        customerId: req.customerId,
-        customerName: req.customerName,
-        groupId: req.groupId,
-        amount: Number(req.amount),
-        referenceNo: req.referenceNo
+        customerId: enrichedReq.customerId,
+        customerName: enrichedReq.customerName,
+        groupId: enrichedReq.groupId,
+        planName: enrichedReq.planName,
+        monthNumber: enrichedReq.monthNumber,
+        amount: Number(enrichedReq.amount),
+        referenceNo: enrichedReq.referenceNo
       }
     });
   } catch (err) {
@@ -232,13 +344,13 @@ export const savePaymentRequest = async (req: PaymentRequest) => {
   }
 
   // 2. Broadcast immediately
-  notifyPaymentSync(req);
+  notifyPaymentSync(enrichedReq);
 
   // 3. Post to backend DB so other browsers / InPrivate windows receive it
   try {
     await fetchClient('/payments/requests', {
       method: 'POST',
-      body: JSON.stringify(req)
+      body: JSON.stringify(enrichedReq)
     });
   } catch (err) {
     console.warn('Could not post payment request to backend:', err);
@@ -271,6 +383,7 @@ export const approvePaymentRequestAction = async (req: PaymentRequest) => {
   localStorage.setItem('paymentRequests', JSON.stringify(updatedReqs));
 
   // 3. Add to ledgerTransactions
+  const details = resolvePaymentRequestDetails(req);
   const ledger = JSON.parse(localStorage.getItem('ledgerTransactions') || '[]');
   const newLedgerEntry = {
     id: `REC-${Date.now().toString().slice(-6)}`,
@@ -279,10 +392,14 @@ export const approvePaymentRequestAction = async (req: PaymentRequest) => {
     category: 'INSTALLMENT',
     amount: Number(req.amount),
     reference: `${req.customerId} / ${req.groupId}`,
-    description: `Customer Online Payment (${req.paymentMode} Ref: ${req.referenceNo}) - Deposited to ${assignedBank?.bankName || 'Bank'}`,
+    description: `Customer Online Payment (${req.paymentMode} Ref: ${req.referenceNo}) [${details.planName} Plan - Month ${details.monthNumber}] - Deposited to ${assignedBank?.bankName || 'Bank'}`,
     customerName: req.customerName,
     customerId: req.customerId,
     groupId: req.groupId,
+    groupName: req.groupName || req.groupId,
+    planName: details.planName,
+    scheme: details.planName,
+    monthNumber: details.monthNumber,
     bankAccountId: assignedBank?.id,
     bankName: assignedBank?.bankName,
     paymentMode: req.paymentMode,
@@ -303,7 +420,8 @@ export const approvePaymentRequestAction = async (req: PaymentRequest) => {
       customerName: req.customerName,
       mobileNumber: req.mobile,
       chitGroup: req.groupName || req.groupId,
-      monthNumber: '1',
+      scheme: details.planName,
+      monthNumber: String(req.monthNumber || details.monthNumber || '1'),
       amount: Number(req.amount),
       dueAmount: Number(req.amount),
       remainingBalance: 0,

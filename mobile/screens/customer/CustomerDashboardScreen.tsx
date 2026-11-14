@@ -265,6 +265,9 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
     setPaySubmitting(true);
     try {
       const activeBank = companyBank || allCompanyBanks[0];
+      const resolvedPlan = paymentModalChit?.scheme || paymentModalChit?.planName || 'Regular';
+      const resolvedMonth = paymentModalChit?.currentMonth || paymentModalChit?.month || 1;
+
       const newReq = {
         id: `PAY-${Date.now().toString().slice(-6)}`,
         customerId: user?.id || 'CUST',
@@ -272,6 +275,9 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
         customerMobile: user?.phone || user?.mobile || '',
         groupId: paymentModalChit?.groupId || 'CHIT-GROUP',
         groupName: paymentModalChit?.groupName || paymentModalChit?.groupId,
+        planName: resolvedPlan,
+        scheme: resolvedPlan,
+        monthNumber: resolvedMonth,
         ticketNumber: paymentModalChit?.ticketNumber || '1',
         amount: Number(payAmount) || 0,
         paymentMode: payMode,
@@ -281,8 +287,8 @@ export const CustomerDashboardScreen: React.FC<{ navigation: any }> = ({ navigat
         requestedAt: new Date().toISOString(),
         status: 'PENDING' as const,
         adminNotes: isAdvancePayment 
-          ? `[Advance Payment] Submitted from mobile app via ${payMode}`
-          : `Submitted from mobile app via ${payMode}`,
+          ? `[${resolvedPlan} Plan - Month ${resolvedMonth} Advance Payment] Submitted from mobile app via ${payMode}`
+          : `[${resolvedPlan} Plan - Month ${resolvedMonth}] Submitted from mobile app via ${payMode}`,
       };
 
       await DataSyncManager.submitPaymentRequest(newReq);

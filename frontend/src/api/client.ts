@@ -14,10 +14,16 @@ export const fetchClient = async (endpoint: string, options: RequestInit = {}) =
     ...options.headers,
   };
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers,
+    });
+  } catch (netErr: any) {
+    console.warn(`[API Network Warning] Endpoint ${endpoint} unreachable:`, netErr?.message || netErr);
+    throw new Error(`Network connection error: ${netErr?.message || 'Server unreachable'}`);
+  }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));

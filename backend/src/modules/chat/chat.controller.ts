@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import { ChatMessage, StoryModel } from './chat.model';
+import { Customer } from '../customers/customer.model';
 
 const DEFAULT_SEED_STORIES: Array<{
   customId: string;
@@ -110,11 +111,28 @@ export class ChatController {
             status: { $ne: 'READ' },
           });
 
+          // Resolve real customer profile by phone number or customerCode
+          let cust: any = null;
+          try {
+            cust = await Customer.findOne({
+              $or: [
+                { phone: convId },
+                { alternatePhone: convId },
+                { customerCode: convId },
+                ...(mongoose.Types.ObjectId.isValid(convId) ? [{ _id: convId }] : [])
+              ]
+            }).lean();
+          } catch { }
+
+          const resolvedName = cust?.fullName || (lastMsg?.customerName && lastMsg.customerName !== 'Customer' ? lastMsg.customerName : 'Customer');
+          const resolvedPhone = cust?.phone || lastMsg?.customerPhone || (String(convId).match(/^\d{10}$/) ? String(convId) : '');
+          const resolvedId = cust?.customerCode || (cust?._id ? String(cust._id) : (lastMsg?.customerId || convId));
+
           return {
             conversationId: convId,
-            customerId: lastMsg?.customerId || convId,
-            customerName: lastMsg?.customerName || 'Customer',
-            customerPhone: lastMsg?.customerPhone || '',
+            customerId: resolvedId,
+            customerName: resolvedName,
+            customerPhone: resolvedPhone,
             lastMessage: lastMsg?.text || (lastMsg?.attachment ? `[${lastMsg.attachment.type || 'Attachment'}]` : ''),
             lastMessageAt: lastMsg?.createdAt || new Date(),
             lastSenderRole: lastMsg?.senderRole || 'CUSTOMER',

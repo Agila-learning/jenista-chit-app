@@ -67,15 +67,63 @@ export const SupportChat: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Helper to resolve real customer name from directory if only phone or fallback was stored
+  const resolveCustomerDetails = (idOrPhone?: string, existingName?: string) => {
+    if (!idOrPhone && !existingName) return { name: 'Customer', phone: '', code: '' };
+    const cleanDigits = String(idOrPhone || '').replace(/\D/g, '');
+
+    const allKnown = [...customersList];
+    try {
+      const stored = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
+      if (Array.isArray(stored)) {
+        stored.forEach((s: any) => {
+          if (!allKnown.some(k => k.id === s.id || (k.mongoId && k.mongoId === s.mongoId))) {
+            allKnown.push(s);
+          }
+        });
+      }
+    } catch { }
+
+    const found = allKnown.find((c: any) => {
+      const cMobile = String(c.mobile || c.phone || '').replace(/\D/g, '');
+      const cId = String(c.id || c.customerCode || c._id || '').toLowerCase();
+      const target = String(idOrPhone || '').toLowerCase();
+      return (cleanDigits && cMobile && (cMobile === cleanDigits || cMobile.endsWith(cleanDigits) || cleanDigits.endsWith(cMobile))) || (cId && cId === target);
+    });
+
+    if (found) {
+      return {
+        name: found.name || found.fullName || existingName || 'Customer',
+        phone: found.mobile || found.phone || idOrPhone || '',
+        code: found.id || found.customerCode || ''
+      };
+    }
+
+    const hasValidName = existingName && existingName !== 'Customer' && existingName !== idOrPhone && !/^\d+$/.test(existingName);
+    return {
+      name: hasValidName ? existingName : (cleanDigits ? `Member (${idOrPhone})` : (idOrPhone || 'Customer')),
+      phone: cleanDigits ? idOrPhone : '',
+      code: idOrPhone || ''
+    };
+  };
+
   // Load conversations from backend
   const loadConversations = async (silent = false) => {
     if (!silent) setLoadingConv(true);
     try {
       const res = await fetchClient('/chat/conversations');
       if (res && res.data) {
-        setConversations(res.data);
-        if (!selectedConv && res.data.length > 0) {
-          setSelectedConv(res.data[0]);
+        const mapped = res.data.map((c: any) => {
+          const resolved = resolveCustomerDetails(c.customerId || c.customerPhone || c.conversationId, c.customerName);
+          return {
+            ...c,
+            customerName: resolved.name,
+            customerPhone: c.customerPhone || resolved.phone,
+          };
+        });
+        setConversations(mapped);
+        if (!selectedConv && mapped.length > 0) {
+          setSelectedConv(mapped[0]);
         }
       }
     } catch {
@@ -83,10 +131,10 @@ export const SupportChat: React.FC = () => {
       try {
         const stored = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
         if (stored.length > 0) {
-          const fallbackList: Conversation[] = stored.slice(0, 10).map((c: any) => ({
-            conversationId: c.id,
+          const fallbackList: Conversation[] = stored.slice(0, 15).map((c: any) => ({
+            conversationId: c.phone || c.mobile || c.id,
             customerId: c.id,
-            customerName: c.name,
+            customerName: c.name || c.fullName || 'Customer',
             customerPhone: c.phone || c.mobile || '',
             lastMessage: 'Tap to start live customer support chat...',
             lastMessageAt: new Date().toISOString(),
@@ -226,13 +274,20 @@ export const SupportChat: React.FC = () => {
     setShowNewChatModal(false);
   };
 
-  const filteredConversations = conversations.filter((c) => {
-    const q = searchQuery.toLowerCase();
-    return (
-      c.customerName.toLowerCase().includes(q) ||
-      (c.customerPhone && c.customerPhone.includes(q)) ||
-      c.lastMessage.toLowerCase().includes(q)
-    );
+  const filteredConversations = conversations.map((c) => {
+    const resolved = resolveCustomerDetails(c.customerId || c.customerPhone || c.conversationId, c.customerName);
+    return {
+      ...c,
+      customerName: resolved.name || c.customerName || 'Customer',
+      customerPhone: c.customerPhone || resolved.phone || '',
+    };
+  }).filter((c) => {
+    const q = (searchQuery || '').trim().toLowerCase();
+    if (!q) return true;
+    const name = String(c.customerName || '').toLowerCase();
+    const phone = String(c.customerPhone || '').toLowerCase();
+    const last = String(c.lastMessage || '').toLowerCase();
+    return name.includes(q) || phone.includes(q) || last.includes(q);
   });
 
   return (
@@ -356,40 +411,48 @@ export const SupportChat: React.FC = () => {
         </div>
 
         {/* Right Pane: Active Message Thread */}
-        {selectedConv ? (
+        {selectedConv ? (() => {
+          const activeDetails = resolveCustomerDetails(
+            selectedConv.customerId || selectedConv.customerPhone || selectedConv.conversationId,
+            selectedConv.customerName
+          );
+          const displayName = activeDetails.name || selectedConv.customerName || 'Customer';
+          const displayPhone = activeDetails.phone || selectedConv.customerPhone || '';
+
+          return (
           <div className="flex-1 flex flex-col bg-slate-50">
             {/* Thread Header */}
             <div className="bg-white border-b border-slate-200 px-6 py-3.5 flex items-center justify-between shadow-2xs">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-[#102B63] text-amber-300 flex items-center justify-center font-bold text-sm shadow-xs">
-                  {(selectedConv.customerName || 'C')[0].toUpperCase()}
+                  {displayName.charAt(0).toUpperCase()}
                 </div>
                 <div>
                   <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                    {selectedConv.customerName}
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold border border-blue-200">
-                      ID: {selectedConv.customerId.slice(-6).toUpperCase()}
+                    {displayName}
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold border border-blue-200 font-mono">
+                      ID: {activeDetails.code || selectedConv.customerId || 'MEMBER'}
                     </span>
                   </h2>
-                  <p className="text-xs text-slate-500">
-                    {selectedConv.customerPhone || 'Verified Subscriber'}
+                  <p className="text-xs text-slate-500 font-medium">
+                    {displayPhone ? `📞 ${displayPhone}` : 'Verified Subscriber'}
                   </p>
                 </div>
               </div>
 
               {/* Quick Actions */}
               <div className="flex items-center gap-2">
-                {selectedConv.customerPhone && (
+                {displayPhone && (
                   <>
                     <a
-                      href={`tel:${selectedConv.customerPhone}`}
+                      href={`tel:${displayPhone}`}
                       className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition"
                     >
                       <PhoneCall className="w-3.5 h-3.5" />
                       Call
                     </a>
                     <a
-                      href={`https://wa.me/91${selectedConv.customerPhone.replace(/\D/g, '')}`}
+                      href={`https://wa.me/91${displayPhone.replace(/\D/g, '')}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition"
@@ -496,7 +559,8 @@ export const SupportChat: React.FC = () => {
               </form>
             </div>
           </div>
-        ) : (
+          );
+        })() : (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400 bg-slate-50">
             <MessageSquare className="w-12 h-12 text-slate-300 mb-3" />
             <h3 className="text-sm font-bold text-slate-700">Select a Conversation</h3>

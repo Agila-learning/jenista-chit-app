@@ -507,6 +507,9 @@ export const CustomerDashboard = () => {
     const resolvedBank = resolveBankForPayment(user?.id, paymentModalChit?.groupId, paymentModalChit?.groupName).bank || activeCompanyBanks[0];
     const generatedCashRef = `CASH-${Date.now().toString().slice(-6)}`;
     
+    const resolvedPlan = paymentModalChit?.scheme || paymentModalChit?.planName || 'Regular';
+    const resolvedMonth = selectedMonthForPay?.monthNumber || paymentModalChit?.currentMonth || 1;
+
     const newReq: PaymentRequest = {
       id: `PAY-${Date.now().toString().slice(-6)}`,
       customerId: user?.id || 'CUST',
@@ -514,6 +517,9 @@ export const CustomerDashboard = () => {
       mobile: userPhone,
       groupId: paymentModalChit?.groupId,
       groupName: paymentModalChit?.groupName || paymentModalChit?.groupId,
+      planName: resolvedPlan,
+      scheme: resolvedPlan,
+      monthNumber: resolvedMonth,
       ticketNumber: paymentModalChit?.ticketNumber || '',
       amount: Number(payAmount),
       paymentMode: payMode,
@@ -525,25 +531,30 @@ export const CustomerDashboard = () => {
       submittedAt: new Date().toISOString(),
       status: 'PENDING_VERIFICATION',
       remarks: payMode === 'Cash' 
-        ? `${selectedMonthForPay ? `[Month ${selectedMonthForPay.monthNumber} Installment] ` : ''}${isAdvancePayment ? '[Advance Payment] ' : ''}Direct Cash payment submission for ₹${Number(payAmount).toLocaleString('en-IN')}`
-        : `${selectedMonthForPay ? `[Month ${selectedMonthForPay.monthNumber} Installment] ` : ''}${isAdvancePayment ? '[Advance Payment] ' : ''}Paid via ${payMode} to ${resolvedBank?.bankName || 'Company Bank'}`
+        ? `[${resolvedPlan} Plan - Month ${resolvedMonth} Installment] ${isAdvancePayment ? '[Advance Payment] ' : ''}Direct Cash payment submission for ₹${Number(payAmount).toLocaleString('en-IN')}`
+        : `[${resolvedPlan} Plan - Month ${resolvedMonth} Installment] ${isAdvancePayment ? '[Advance Payment] ' : ''}Paid via ${payMode} to ${resolvedBank?.bankName || 'Company Bank'}`
     };
 
     setPaySubmitting(true);
-    await savePaymentRequest(newReq);
-    setPendingRequests(prev => [newReq, ...prev.filter(r => r.id !== newReq.id)]);
+    try {
+      await savePaymentRequest(newReq);
+      setPendingRequests(prev => [newReq, ...prev.filter(r => r.id !== newReq.id)]);
 
-    setTimeout(() => {
-      setPaySubmitting(false);
-      setPaySuccessMsg('Payment request submitted successfully! Admin will verify and update your receipt.');
       setTimeout(() => {
-        setPaymentModalChit(null);
-        setSelectedMonthForPay(null);
-        setPayScreenshot('');
-        setScreenshotFileName('');
-        setPaySuccessMsg('');
-      }, 2000);
-    }, 400);
+        setPaySubmitting(false);
+        setPaySuccessMsg('Payment request submitted successfully! Admin will verify and update your receipt.');
+        setTimeout(() => {
+          setPaymentModalChit(null);
+          setSelectedMonthForPay(null);
+          setPayScreenshot('');
+          setScreenshotFileName('');
+          setPaySuccessMsg('');
+        }, 2000);
+      }, 400);
+    } catch (err: any) {
+      setPaySubmitting(false);
+      alert(err?.message || 'Failed to submit payment request');
+    }
   };
 
   const handlePrintReceiptSlip = (trx: any) => {

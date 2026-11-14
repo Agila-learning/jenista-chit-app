@@ -47,7 +47,12 @@ export const ChitGroupDetail = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
   const [ticketNumberInput, setTicketNumberInput] = useState('');
   const [schemeInput, setSchemeInput] = useState('Regular');
+  const [customInstallmentInput, setCustomInstallmentInput] = useState('');
   const [joiningDateInput, setJoiningDateInput] = useState(() => new Date().toISOString().split('T')[0]);
+
+  // Plan filtering & search in members tab
+  const [memberPlanFilter, setMemberPlanFilter] = useState<'ALL' | 'REGULAR' | 'FIXED' | 'AUCTION'>('ALL');
+  const [memberSearchTerm, setMemberSearchTerm] = useState('');
 
   // Quick Collect Form state
   const [collectMember, setCollectMember] = useState<any | null>(null);
@@ -317,6 +322,54 @@ export const ChitGroupDetail = () => {
   const paidMembersCount = groupMembers.filter(isMemberPaid).length;
   const filled = groupMembers.length;
 
+  // Scheme plan breakdown & counts
+  const regularMembers = useMemo(() => groupMembers.filter(m => {
+    const s = (m.scheme || 'Regular').toLowerCase();
+    return s.includes('reg') || (!s.includes('fix') && !s.includes('auc'));
+  }), [groupMembers]);
+
+  const fixedMembers = useMemo(() => groupMembers.filter(m => {
+    const s = (m.scheme || '').toLowerCase();
+    return s.includes('fix');
+  }), [groupMembers]);
+
+  const auctionMembers = useMemo(() => groupMembers.filter(m => {
+    const s = (m.scheme || '').toLowerCase();
+    return s.includes('auc');
+  }), [groupMembers]);
+
+  const regularCount = regularMembers.length;
+  const fixedCount = fixedMembers.length;
+  const auctionCount = auctionMembers.length;
+
+  const regularExpected = regularMembers.reduce((sum, m) => sum + (Number(m.monthlyInstallment) || installmentPerMember), 0);
+  const fixedExpected = fixedMembers.reduce((sum, m) => sum + (Number(m.monthlyInstallment) || installmentPerMember), 0);
+  const auctionExpected = auctionMembers.reduce((sum, m) => sum + (Number(m.monthlyInstallment) || installmentPerMember), 0);
+
+  // Filtered members for table display
+  const displayedMembers = useMemo(() => {
+    return groupMembers.filter(m => {
+      const s = (m.scheme || 'Regular').toLowerCase();
+      let matchPlan = true;
+      if (memberPlanFilter === 'REGULAR') {
+        matchPlan = s.includes('reg') || (!s.includes('fix') && !s.includes('auc'));
+      } else if (memberPlanFilter === 'FIXED') {
+        matchPlan = s.includes('fix');
+      } else if (memberPlanFilter === 'AUCTION') {
+        matchPlan = s.includes('auc');
+      }
+      if (!matchPlan) return false;
+
+      if (!memberSearchTerm.trim()) return true;
+      const q = memberSearchTerm.toLowerCase();
+      const name = String(m.customerName || '').toLowerCase();
+      const ticket = String(m.ticketNumber || '').toLowerCase();
+      const phone = String(m.mobile || '').toLowerCase();
+      const cId = String(m.customerId || '').toLowerCase();
+      return name.includes(q) || ticket.includes(q) || phone.includes(q) || cId.includes(q);
+    });
+  }, [groupMembers, memberPlanFilter, memberSearchTerm]);
+
   // Auto calculate next suggested ticket number
   const nextTicketNumber = useMemo(() => {
     const taken = new Set(groupMembers.map(m => Number(m.ticketNumber)).filter(Boolean));
@@ -332,6 +385,7 @@ export const ChitGroupDetail = () => {
     setActiveTab('members');
     setTicketNumberInput(nextTicketNumber);
     setSchemeInput(isAuction ? 'Auction' : group?.type?.includes('FIX') ? 'Fixed' : 'Regular');
+    setCustomInstallmentInput(String(installmentPerMember || 5000));
     setSelectedCustomer(null);
     setMemberSearchQuery('');
     setManageMembersModalTab(targetTab);
@@ -342,7 +396,7 @@ export const ChitGroupDetail = () => {
   const handleOpenCollect = (targetMember?: any) => {
     const candidate = targetMember || groupMembers.find(m => !isMemberPaid(m)) || groupMembers[0] || null;
     setCollectMember(candidate);
-    setCollectAmount(String(installmentPerMember || 5000));
+    setCollectAmount(String(candidate?.monthlyInstallment || installmentPerMember || 5000));
     setCollectMonth(currentMonth > 0 ? currentMonth : 1);
     setCollectMode('Cash');
     setCollectReference('');
@@ -366,6 +420,7 @@ export const ChitGroupDetail = () => {
     const custName = selectedCustomer.name || selectedCustomer.fullName || 'Customer';
     const custId = selectedCustomer.id || selectedCustomer.customerCode || selectedCustomer._id;
     const custMobile = selectedCustomer.mobile || selectedCustomer.phone || '';
+    const finalInstallment = Number(customInstallmentInput) > 0 ? Number(customInstallmentInput) : installmentPerMember;
 
     // 1. Add to chitGroupMemberships in localStorage
     const existingMemberships = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
@@ -380,7 +435,7 @@ export const ChitGroupDetail = () => {
       scheme: schemeInput,
       duration: duration,
       chitValue: chitValue,
-      monthlyInstallment: installmentPerMember,
+      monthlyInstallment: finalInstallment,
       joiningDate: joiningDateInput,
       joinedAt: joiningDateInput,
       status: 'ACTIVE'
@@ -394,7 +449,7 @@ export const ChitGroupDetail = () => {
       groupId: group.id || group.code,
       groupName: group.name,
       chitValue: chitValue,
-      monthlyInstallment: installmentPerMember,
+      monthlyInstallment: finalInstallment,
       ticketNumber: ticketNo,
       duration: duration,
       scheme: schemeInput,
@@ -411,7 +466,7 @@ export const ChitGroupDetail = () => {
           ...c,
           chits: [...oldChits, newChit],
           activeChits: oldChits.length + 1,
-          pending: (Number(c.pending) || 0) + installmentPerMember
+          pending: (Number(c.pending) || 0) + finalInstallment
         };
       }
       return c;
@@ -424,7 +479,7 @@ export const ChitGroupDetail = () => {
         name: custName,
         chits: [newChit],
         activeChits: 1,
-        pending: installmentPerMember
+        pending: finalInstallment
       });
     }
     localStorage.setItem('mockCustomers', JSON.stringify(updatedCusts));
@@ -890,6 +945,31 @@ export const ChitGroupDetail = () => {
                         {group.status || 'ACTIVE'}
                       </span>
                     </div>
+
+                    {/* Multi-Scheme Breakdown in Group Summary */}
+                    <div className="pt-3 border-t border-slate-100 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Supported Scheme Plans</span>
+                        <span className="text-[11px] font-mono text-slate-400 font-bold">{groupMembers.length} enrolled</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="p-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200/60 text-center">
+                          <span className="block text-[10px] font-bold text-emerald-800 uppercase">Regular</span>
+                          <span className="text-sm font-black text-emerald-950">{regularCount}</span>
+                          <span className="block text-[10px] text-emerald-600 font-mono mt-0.5">{formatCurrency(regularExpected)}</span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-blue-50/80 border border-blue-200/60 text-center">
+                          <span className="block text-[10px] font-bold text-blue-800 uppercase">Fixed</span>
+                          <span className="text-sm font-black text-blue-950">{fixedCount}</span>
+                          <span className="block text-[10px] text-blue-600 font-mono mt-0.5">{formatCurrency(fixedExpected)}</span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-purple-50/80 border border-purple-200/60 text-center">
+                          <span className="block text-[10px] font-bold text-purple-800 uppercase">Auction</span>
+                          <span className="text-sm font-black text-purple-950">{auctionCount}</span>
+                          <span className="block text-[10px] text-purple-600 font-mono mt-0.5">{formatCurrency(auctionExpected)}</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -898,8 +978,8 @@ export const ChitGroupDetail = () => {
 
           {/* MEMBERS TAB */}
           {activeTab === 'members' && (
-            <div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3 mb-5">
+            <div className="space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
                 <div>
                   <h3 className="text-base sm:text-lg font-bold text-slate-900">Enrolled Members Directory</h3>
                   <p className="text-xs text-slate-500">
@@ -918,6 +998,133 @@ export const ChitGroupDetail = () => {
                 </div>
               </div>
 
+              {/* Multi-Scheme Quick Summary Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div 
+                  onClick={() => setMemberPlanFilter(memberPlanFilter === 'REGULAR' ? 'ALL' : 'REGULAR')}
+                  className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+                    memberPlanFilter === 'REGULAR'
+                      ? 'bg-emerald-50 border-emerald-400 shadow-xs ring-2 ring-emerald-400/30'
+                      : 'bg-emerald-50/40 border-emerald-200/60 hover:bg-emerald-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">Regular Chit</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">{regularCount} Members</span>
+                  </div>
+                  <div className="mt-2 flex items-baseline justify-between">
+                    <span className="text-lg font-black text-emerald-950">{formatCurrency(regularExpected)}</span>
+                    <span className="text-[11px] text-emerald-700 font-medium">per month</span>
+                  </div>
+                </div>
+
+                <div 
+                  onClick={() => setMemberPlanFilter(memberPlanFilter === 'FIXED' ? 'ALL' : 'FIXED')}
+                  className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+                    memberPlanFilter === 'FIXED'
+                      ? 'bg-blue-50 border-blue-400 shadow-xs ring-2 ring-blue-400/30'
+                      : 'bg-blue-50/40 border-blue-200/60 hover:bg-blue-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-blue-800">Fixed Chit</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">{fixedCount} Members</span>
+                  </div>
+                  <div className="mt-2 flex items-baseline justify-between">
+                    <span className="text-lg font-black text-blue-950">{formatCurrency(fixedExpected)}</span>
+                    <span className="text-[11px] text-blue-700 font-medium">per month</span>
+                  </div>
+                </div>
+
+                <div 
+                  onClick={() => setMemberPlanFilter(memberPlanFilter === 'AUCTION' ? 'ALL' : 'AUCTION')}
+                  className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+                    memberPlanFilter === 'AUCTION'
+                      ? 'bg-purple-50 border-purple-400 shadow-xs ring-2 ring-purple-400/30'
+                      : 'bg-purple-50/40 border-purple-200/60 hover:bg-purple-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-purple-800">Auction Chit</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">{auctionCount} Members</span>
+                  </div>
+                  <div className="mt-2 flex items-baseline justify-between">
+                    <span className="text-lg font-black text-purple-950">{formatCurrency(auctionExpected)}</span>
+                    <span className="text-[11px] text-purple-700 font-medium">per month</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filter Tabs & Search Bar */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-50 p-2.5 rounded-2xl border border-slate-200/80">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setMemberPlanFilter('ALL')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      memberPlanFilter === 'ALL'
+                        ? 'bg-[#102B63] text-white shadow-xs'
+                        : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+                    }`}
+                  >
+                    All Plans ({groupMembers.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMemberPlanFilter('REGULAR')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      memberPlanFilter === 'REGULAR'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-white text-emerald-800 hover:bg-emerald-50 border border-emerald-200'
+                    }`}
+                  >
+                    Regular ({regularCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMemberPlanFilter('FIXED')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      memberPlanFilter === 'FIXED'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-white text-blue-800 hover:bg-blue-50 border border-blue-200'
+                    }`}
+                  >
+                    Fixed ({fixedCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMemberPlanFilter('AUCTION')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      memberPlanFilter === 'AUCTION'
+                        ? 'bg-purple-600 text-white shadow-xs'
+                        : 'bg-white text-purple-800 hover:bg-purple-50 border border-purple-200'
+                    }`}
+                  >
+                    Auction ({auctionCount})
+                  </button>
+                </div>
+
+                <div className="relative sm:w-64">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={memberSearchTerm}
+                    onChange={(e) => setMemberSearchTerm(e.target.value)}
+                    placeholder="Search name, ticket, phone..."
+                    className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  />
+                  {memberSearchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => setMemberSearchTerm('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              </div>
+
               {/* Members Table - Responsive Mobile Wrap */}
               <div className="overflow-x-auto rounded-xl border border-slate-200">
                 <table className="min-w-full divide-y divide-slate-100 text-xs">
@@ -925,7 +1132,8 @@ export const ChitGroupDetail = () => {
                     <tr>
                       <th className="p-3.5 text-left">Ticket</th>
                       <th className="p-3.5 text-left">Customer Name</th>
-                      <th className="p-3.5 text-left">Scheme</th>
+                      <th className="p-3.5 text-left">Scheme Plan</th>
+                      <th className="p-3.5 text-right">Monthly Due</th>
                       <th className="p-3.5 text-center">Duration</th>
                       <th className="p-3.5 text-left">Joining Date</th>
                       <th className="p-3.5 text-center">Month {currentMonth} Status</th>
@@ -933,26 +1141,39 @@ export const ChitGroupDetail = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white whitespace-nowrap">
-                    {groupMembers.length === 0 ? (
+                    {displayedMembers.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="py-12 text-center text-slate-400">
+                        <td colSpan={8} className="py-12 text-center text-slate-400">
                           <Users className="w-10 h-10 mx-auto mb-2 text-slate-300" />
-                          <p className="font-semibold text-slate-600">No members enrolled in this group yet.</p>
-                          <p className="text-xs text-slate-400 mt-1">Click "Enroll Member" above to add customers to this chit.</p>
-                          <button
-                            onClick={handleOpenManageMembers}
-                            className="mt-4 px-4 py-2 bg-[#102B63] text-white text-xs font-bold rounded-xl shadow-xs"
-                          >
-                            + Enroll First Member
-                          </button>
+                          <p className="font-semibold text-slate-600">
+                            {groupMembers.length === 0 
+                              ? 'No members enrolled in this group yet.'
+                              : 'No members match the selected scheme or search criteria.'}
+                          </p>
+                          {groupMembers.length === 0 ? (
+                            <button
+                              onClick={handleOpenManageMembers}
+                              className="mt-4 px-4 py-2 bg-[#102B63] text-white text-xs font-bold rounded-xl shadow-xs"
+                            >
+                              + Enroll First Member
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => { setMemberPlanFilter('ALL'); setMemberSearchTerm(''); }}
+                              className="mt-2 text-xs text-blue-600 font-bold hover:underline"
+                            >
+                              Clear filters & view all members
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ) : (
-                      groupMembers.map((m, idx) => {
+                      displayedMembers.map((m, idx) => {
                         const hasPaid = isMemberPaid(m);
                         const scheme = m.scheme || 'Regular';
                         const isFixed = scheme.toLowerCase().includes('fix');
                         const isAuctionScheme = scheme.toLowerCase().includes('auc');
+                        const memberInstallment = Number(m.monthlyInstallment) || installmentPerMember;
 
                         return (
                           <tr key={`${m.ticketNumber}_${idx}`} className="hover:bg-slate-50/70 transition-colors">
@@ -976,15 +1197,18 @@ export const ChitGroupDetail = () => {
                               </div>
                             </td>
                             <td className="p-3.5">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold ${
+                              <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-bold ${
                                 isFixed
-                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  ? 'bg-blue-50 text-blue-800 border border-blue-200'
                                   : isAuctionScheme
-                                    ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                                    : 'bg-amber-50 text-amber-900 border border-amber-200'
+                                    ? 'bg-purple-50 text-purple-800 border border-purple-200'
+                                    : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                               }`}>
-                                {scheme}
+                                {isFixed ? 'Fixed Plan' : isAuctionScheme ? 'Auction Plan' : 'Regular Plan'}
                               </span>
+                            </td>
+                            <td className="p-3.5 text-right font-black text-slate-900 font-mono">
+                              {formatCurrency(memberInstallment)}
                             </td>
                             <td className="p-3.5 text-center font-bold text-slate-700">
                               {m.months || m.duration || duration} Mos
@@ -1013,7 +1237,7 @@ export const ChitGroupDetail = () => {
                                     title="Collect installment for this member"
                                   >
                                     <CreditCard className="w-3.5 h-3.5" />
-                                    <span>Collect ₹{installmentPerMember}</span>
+                                    <span>Collect {formatCurrency(memberInstallment)}</span>
                                   </button>
                                 ) : (
                                   <button
@@ -1371,9 +1595,9 @@ export const ChitGroupDetail = () => {
                       onChange={(e) => setSchemeInput(e.target.value)}
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
                     >
-                      <option value="Regular">Regular Chit</option>
-                      <option value="Fixed">Fixed Chit (Bonus)</option>
-                      <option value="Auction">Auction Chit</option>
+                      <option value="Regular">Regular Chit (Monthly Dividend)</option>
+                      <option value="Fixed">Fixed Chit (Standard Draw)</option>
+                      <option value="Auction">Auction Chit (Variable Bidding)</option>
                     </select>
                   </div>
                 </div>
@@ -1395,14 +1619,16 @@ export const ChitGroupDetail = () => {
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                      Monthly Installment
+                      Monthly Installment (₹) *
                     </label>
                     <input
-                      type="text"
-                      value={formatCurrency(installmentPerMember)}
-                      disabled
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-100 text-xs font-bold text-slate-700"
+                      type="number"
+                      value={customInstallmentInput}
+                      onChange={(e) => setCustomInstallmentInput(e.target.value)}
+                      placeholder={String(installmentPerMember)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
                     />
+                    <p className="text-[10px] text-slate-400 mt-0.5">Group default: {formatCurrency(installmentPerMember)}</p>
                   </div>
                 </div>
 

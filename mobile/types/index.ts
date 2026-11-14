@@ -125,6 +125,9 @@ export interface PaymentRequest {
   customerMobile?: string;
   groupId: string;
   groupName?: string;
+  planName?: string;
+  scheme?: string;
+  monthNumber?: number | string;
   ticketNumber?: string;
   amount: number;
   paymentMode: 'UPI' | 'Bank Transfer' | 'Cash' | 'BANK_TRANSFER' | 'CASH' | string;

@@ -25,7 +25,9 @@ import {
   onPaymentSync,
   isPendingPayment,
   approvePaymentRequestAction,
-  rejectPaymentRequestAction
+  rejectPaymentRequestAction,
+  resolvePaymentRequestDetails,
+  isDuplicatePaymentRequest
 } from '../../../utils/paymentRequestsData';
 import { addSystemNotification } from '../../../utils/notificationsData';
 import { calculateFixedPlanSchedule } from '../../../utils/chitCalculations';
@@ -69,6 +71,7 @@ export const Payments = () => {
   // Verification states
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('ALL');
+  const [filterPlan, setFilterPlan] = useState<'ALL' | 'REGULAR' | 'FIXED' | 'AUCTION'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
@@ -189,14 +192,22 @@ export const Payments = () => {
     if (filterStatus === 'APPROVED' && req.status !== 'APPROVED') return false;
     if (filterStatus === 'REJECTED' && req.status !== 'REJECTED') return false;
 
+    const details = resolvePaymentRequestDetails(req);
+    if (filterPlan !== 'ALL') {
+      const p = details.planName.toUpperCase();
+      if (!p.includes(filterPlan)) return false;
+    }
+
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
       const matchName = req.customerName?.toLowerCase().includes(q);
       const matchId = req.customerId?.toLowerCase().includes(q);
       const matchPhone = req.mobile?.includes(q);
-      const matchGroup = req.groupId?.toLowerCase().includes(q);
+      const matchGroup = (req.groupName || req.groupId)?.toLowerCase().includes(q);
       const matchRef = req.referenceNo?.toLowerCase().includes(q);
-      return matchName || matchId || matchPhone || matchGroup || matchRef;
+      const matchPlan = details.planName.toLowerCase().includes(q);
+      const matchMonth = `month ${details.monthNumber}`.includes(q) || details.monthNumber === q;
+      return matchName || matchId || matchPhone || matchGroup || matchRef || matchPlan || matchMonth;
     }
     return true;
   });
@@ -539,28 +550,53 @@ export const Payments = () => {
       {activeTab === 'VERIFICATION' && (
         <div className="space-y-4">
           {/* Filter & Search Bar */}
-          <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2 w-full md:w-auto">
+          <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2 w-full lg:w-auto flex-wrap">
+              {/* Status Filters */}
               {(['ALL', 'PENDING', 'APPROVED', 'REJECTED'] as const).map(st => (
                 <button
                   key={st}
                   onClick={() => setFilterStatus(st)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
                     filterStatus === st
-                      ? 'bg-primary-900 text-white border-primary-900'
+                      ? 'bg-primary-900 text-white border-primary-900 shadow-2xs'
                       : 'bg-neutral-50 text-neutral-600 border-neutral-200 hover:bg-neutral-100'
                   }`}
                 >
                   {st === 'ALL' ? 'All Requests' : st === 'PENDING' ? `Pending (${pendingCount})` : st}
                 </button>
               ))}
+
+              <div className="h-5 w-px bg-neutral-200 hidden sm:block mx-1"></div>
+
+              {/* Plan Filters */}
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider hidden sm:inline">Plan:</span>
+              {(['ALL', 'REGULAR', 'FIXED', 'AUCTION'] as const).map(pl => (
+                <button
+                  key={pl}
+                  onClick={() => setFilterPlan(pl)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border ${
+                    filterPlan === pl
+                      ? pl === 'FIXED'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                        : pl === 'AUCTION'
+                        ? 'bg-purple-600 text-white border-purple-600 shadow-2xs'
+                        : pl === 'REGULAR'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                        : 'bg-slate-800 text-white border-slate-800 shadow-2xs'
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {pl === 'ALL' ? 'All Schemes' : `${pl.charAt(0) + pl.slice(1).toLowerCase()} Chit`}
+                </button>
+              ))}
             </div>
 
-            <div className="relative w-full md:w-80">
+            <div className="relative w-full lg:w-80">
               <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search by name, UTR, group, phone..."
+                placeholder="Search name, plan, UTR, group, month..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-medium focus:bg-white focus:outline-none focus:border-primary-600"
@@ -602,9 +638,12 @@ export const Payments = () => {
                       const isPending = isPendingPayment(req.status);
                       const isApproved = req.status === 'APPROVED';
                       const isRejected = req.status === 'REJECTED';
+                      const details = resolvePaymentRequestDetails(req);
+                      const isDuplicate = isDuplicatePaymentRequest(req, paymentRequests);
+                      const planLower = details.planName.toLowerCase();
 
                       return (
-                        <tr key={req.id} className="hover:bg-neutral-50/70 transition-colors">
+                        <tr key={req.id} className={`hover:bg-neutral-50/70 transition-colors ${isDuplicate && isPending ? 'bg-rose-50/30' : ''}`}>
                           <td className="py-4 px-4 whitespace-nowrap">
                             <p className="font-mono font-bold text-xs text-primary-900">{req.id}</p>
                             <p className="text-[11px] text-neutral-400 flex items-center gap-1 mt-0.5">
@@ -628,14 +667,42 @@ export const Payments = () => {
                           </td>
 
                           <td className="py-4 px-4">
-                            <span className="inline-block px-2.5 py-1 bg-neutral-100 text-neutral-800 rounded font-bold text-xs">
-                              {req.groupName || req.groupId}
-                            </span>
-                            {req.ticketNumber && (
-                              <p className="text-[11px] text-neutral-500 mt-1">
-                                Ticket: <span className="font-bold text-neutral-700">#{req.ticketNumber}</span>
-                              </p>
-                            )}
+                            <div className="space-y-1.5">
+                              {/* Group Name & Plan Badge */}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="inline-block px-2.5 py-1 bg-slate-100 text-slate-900 border border-slate-200/90 rounded font-extrabold text-xs shadow-2xs">
+                                  {req.groupName || req.groupId}
+                                </span>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                                  planLower.includes('fix')
+                                    ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                    : planLower.includes('auc')
+                                    ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                    : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                }`}>
+                                  {details.planName} Plan
+                                </span>
+                              </div>
+
+                              {/* Month and Ticket */}
+                              <div className="flex items-center gap-2 text-[11px] text-slate-600 font-medium">
+                                <span className="px-2 py-0.5 bg-amber-50 text-amber-900 border border-amber-300 rounded font-bold text-[10px] shadow-2xs">
+                                  Month {details.monthNumber}
+                                </span>
+                                {req.ticketNumber && (
+                                  <span className="font-mono text-slate-500">
+                                    Ticket: <strong className="text-slate-800 font-bold">#{req.ticketNumber}</strong>
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Duplicate Warning */}
+                              {isDuplicate && (
+                                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-50 border border-rose-300 text-rose-700 text-[10px] font-extrabold animate-pulse">
+                                  <span>⚠️ Duplicate Request</span>
+                                </div>
+                              )}
+                            </div>
                           </td>
 
                           <td className="py-4 px-4">

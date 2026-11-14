@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '../../../components/common/Button';
 import { Input } from '../../../components/common/Input';
@@ -30,7 +30,7 @@ export const ChitGroupList = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
-    type: 'AUCTION',
+    type: 'MULTI',
     value: '',
     duration: '',
     members: ''
@@ -39,7 +39,7 @@ export const ChitGroupList = () => {
   // Edit Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<ChitGroup | null>(null);
-  const [editFormData, setEditFormData] = useState({ name: '', type: 'AUCTION', value: '', duration: '', members: '' });
+  const [editFormData, setEditFormData] = useState({ name: '', type: 'MULTI', value: '', duration: '', members: '' });
 
   // 3-dot dropdown
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -227,10 +227,48 @@ export const ChitGroupList = () => {
     setOpenMenuId(null);
   };
 
+  // Cache memberships for multi-scheme breakdowns
+  const memberships = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
+    } catch {
+      return [];
+    }
+  }, [groups]);
+
+  const getGroupBreakdown = (g: ChitGroup) => {
+    const gId = String(g.id || '').toLowerCase().trim();
+    const gName = String(g.name || '').toLowerCase().trim();
+    const matched = memberships.filter((m: any) => {
+      const mGId = String(m.groupId || '').toLowerCase().trim();
+      const mGName = String(m.groupName || '').toLowerCase().trim();
+      return (gId && mGId === gId) || (gName && mGName === gName) || (gId && mGId.includes(gId)) || (gName && mGName.includes(gName));
+    });
+    const reg = matched.filter((m: any) => {
+      const s = (m.scheme || 'Regular').toLowerCase();
+      return s.includes('reg') || (!s.includes('fix') && !s.includes('auc'));
+    }).length;
+    const fix = matched.filter((m: any) => (m.scheme || '').toLowerCase().includes('fix')).length;
+    const auc = matched.filter((m: any) => (m.scheme || '').toLowerCase().includes('auc')).length;
+    return {
+      total: matched.length,
+      reg,
+      fix,
+      auc,
+      isMulti: g.type === 'MULTI' || (reg > 0 && fix > 0) || (reg > 0 && auc > 0) || (fix > 0 && auc > 0)
+    };
+  };
+
   const filteredGroups = groups.filter(g => {
     const matchesSearch = g.id.toLowerCase().includes(searchTerm.toLowerCase()) || g.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = filterType ? g.type === filterType : true;
-    return matchesSearch && matchesType;
+    if (!matchesSearch) return false;
+    if (!filterType) return true;
+    const bd = getGroupBreakdown(g);
+    if (filterType === 'MULTI') return g.type === 'MULTI' || bd.isMulti;
+    if (filterType === 'REGULAR') return g.type === 'REGULAR' || bd.reg > 0;
+    if (filterType === 'FIXED') return g.type === 'FIXED' || bd.fix > 0;
+    if (filterType === 'AUCTION') return g.type === 'AUCTION' || bd.auc > 0;
+    return g.type === filterType;
   });
 
   // Calculate dynamic stats
@@ -288,6 +326,7 @@ export const ChitGroupList = () => {
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Scheme / Plan *</label>
                 <select className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none bg-white font-medium text-slate-700" value={editFormData.type} onChange={e => setEditFormData({...editFormData, type: e.target.value})} required>
+                  <option value="MULTI">Multi-Scheme Group (Regular, Fixed & Auction)</option>
                   <option value="REGULAR">Regular (Standard Plan)</option>
                   <option value="FIXED">Fixed (Standard Draw)</option>
                   <option value="AUCTION">Auction (Variable Bid)</option>
@@ -349,6 +388,7 @@ export const ChitGroupList = () => {
                   onChange={e => setFormData({...formData, type: e.target.value})}
                   required
                 >
+                  <option value="MULTI">Multi-Scheme Group (Regular, Fixed & Auction)</option>
                   <option value="REGULAR">Regular (Standard Plan)</option>
                   <option value="FIXED">Fixed (Standard Draw)</option>
                   <option value="AUCTION">Auction (Variable Bid)</option>
@@ -440,9 +480,11 @@ export const ChitGroupList = () => {
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
             >
-              <option value="">All Types</option>
-              <option value="AUCTION">Auction</option>
+              <option value="">All Schemes</option>
+              <option value="MULTI">Multi-Scheme</option>
+              <option value="REGULAR">Regular</option>
               <option value="FIXED">Fixed</option>
+              <option value="AUCTION">Auction</option>
             </select>
           </div>
         </div>
@@ -466,63 +508,97 @@ export const ChitGroupList = () => {
                   <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-medium">No groups found matching your criteria.</td>
                 </tr>
               ) : (
-                filteredGroups.map((g) => (
-                  <tr key={g.id} className="hover:bg-slate-50/50 transition-colors group">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center space-x-4">
-                        <div className={`p-2.5 rounded-xl ${g.type === 'AUCTION' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
-                          <Layers className="w-5 h-5" />
+                filteredGroups.map((g) => {
+                  const bd = getGroupBreakdown(g);
+                  return (
+                    <tr key={g.id} className="hover:bg-slate-50/50 transition-colors group">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center space-x-4">
+                          <div className={`p-2.5 rounded-xl ${
+                            g.type === 'MULTI' || bd.isMulti ? 'bg-indigo-100 text-indigo-700' :
+                            g.type === 'AUCTION' ? 'bg-purple-100 text-purple-700' :
+                            g.type === 'FIXED' ? 'bg-blue-100 text-blue-700' :
+                            'bg-emerald-100 text-emerald-700'
+                          }`}>
+                            <Layers className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <Link to={`/admin/chit-groups/${g.id}`} className="font-bold text-slate-800 hover:text-indigo-600 transition-colors">{g.name}</Link>
+                            <div className="text-xs font-medium text-slate-500 mt-0.5">{g.id}</div>
+                            {/* Scheme Tags Breakdown */}
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                g.type === 'MULTI' || bd.isMulti ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
+                                g.type === 'FIXED' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                                g.type === 'AUCTION' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
+                                'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              }`}>
+                                {g.type === 'MULTI' || bd.isMulti ? 'Multi-Scheme' : g.type}
+                              </span>
+                              {bd.reg > 0 && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  {bd.reg} Regular
+                                </span>
+                              )}
+                              {bd.fix > 0 && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                                  {bd.fix} Fixed
+                                </span>
+                              )}
+                              {bd.auc > 0 && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
+                                  {bd.auc} Auction
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <Link to={`/admin/chit-groups/${g.id}`} className="font-bold text-slate-800 hover:text-indigo-600 transition-colors">{g.name}</Link>
-                          <div className="text-xs font-medium text-slate-500 mt-0.5">{g.id} • {g.type}</div>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="font-black text-slate-800 text-sm">{formatCurrency(g.value)}</div>
+                      </td>
+                      <td className="px-6 py-4 text-center text-slate-600 font-medium">{g.duration} Months</td>
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex flex-col items-center">
+                          <span className="text-xs font-bold text-slate-700">{g.currentMonth} / {g.duration}</span>
+                          <div className="w-full bg-slate-100 rounded-full h-1.5 mt-1.5 max-w-[80px]">
+                            <div className="bg-indigo-600 h-1.5 rounded-full" style={{ width: `${(g.currentMonth / g.duration) * 100}%` }}></div>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="font-black text-slate-800 text-sm">{formatCurrency(g.value)}</div>
-                    </td>
-                    <td className="px-6 py-4 text-center text-slate-600 font-medium">{g.duration} Months</td>
-                    <td className="px-6 py-4 text-center">
-                      <div className="flex flex-col items-center">
-                        <span className="text-xs font-bold text-slate-700">{g.currentMonth} / {g.duration}</span>
-                        <div className="w-full bg-slate-100 rounded-full h-1.5 mt-1.5 max-w-[80px]">
-                          <div className="bg-indigo-600 h-1.5 rounded-full" style={{ width: `${(g.currentMonth / g.duration) * 100}%` }}></div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center space-x-2">
+                          <span className={`text-sm font-bold ${g.filled < g.members ? 'text-amber-600' : 'text-slate-600'}`}>
+                            {g.filled} / {g.members}
+                          </span>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center space-x-2">
-                        <span className={`text-sm font-bold ${g.filled < g.members ? 'text-amber-600' : 'text-slate-600'}`}>
-                          {g.filled} / {g.members}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                          g.status === 'ACTIVE' ? 'bg-green-100 text-green-700 border border-green-200' : 
+                          g.status === 'FORMATION' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 
+                          'bg-slate-100 text-slate-600 border border-slate-200'
+                        }`}>
+                          {g.status}
                         </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                        g.status === 'ACTIVE' ? 'bg-green-100 text-green-700 border border-green-200' : 
-                        g.status === 'FORMATION' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 
-                        'bg-slate-100 text-slate-600 border border-slate-200'
-                      }`}>
-                        {g.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={e => {
-                          e.stopPropagation();
-                          if (openMenuId === g.id) { setOpenMenuId(null); return; }
-                          const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                          setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
-                          setOpenMenuId(g.id);
-                        }}
-                        className="p-2 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors opacity-0 group-hover:opacity-100"
-                      >
-                        <MoreVertical className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            if (openMenuId === g.id) { setOpenMenuId(null); return; }
+                            const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                            setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                            setOpenMenuId(g.id);
+                          }}
+                          className="p-2 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <MoreVertical className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

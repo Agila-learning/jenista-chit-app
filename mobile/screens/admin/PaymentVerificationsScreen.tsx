@@ -291,7 +291,18 @@ export const PaymentVerificationsScreen: React.FC<{ navigation?: any }> = ({ nav
         <View style={styles.detailBox}>
           <View style={styles.row}>
             <Text style={styles.label}>Scheme Group:</Text>
-            <Text style={styles.val}>{item.groupName || item.groupId || 'Chit Group'}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.valBold}>{item.groupName || item.groupId || 'Chit Group'}</Text>
+              <View style={{ backgroundColor: (item.planName || item.scheme || '').toLowerCase().includes('fix') ? '#DBEAFE' : (item.planName || item.scheme || '').toLowerCase().includes('auc') ? '#F3E8FF' : '#D1FAE5', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                <Text style={{ fontSize: 10, fontWeight: '800', color: (item.planName || item.scheme || '').toLowerCase().includes('fix') ? '#1E40AF' : (item.planName || item.scheme || '').toLowerCase().includes('auc') ? '#6B21A8' : '#065F46' }}>
+                  {item.planName || item.scheme || 'Regular'} Plan
+                </Text>
+              </View>
+            </View>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.label}>Installment Month & Ticket:</Text>
+            <Text style={styles.val}>Month {item.monthNumber || '1'} • Ticket #{item.ticketNumber || '1'}</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.label}>Submitted Amount:</Text>

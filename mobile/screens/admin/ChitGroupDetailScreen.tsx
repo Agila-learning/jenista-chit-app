@@ -30,6 +30,7 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
   const [currentGroup, setCurrentGroup] = useState<ChitGroup>(group);
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'MEMBERS'>('OVERVIEW');
   const [enrolledMembers, setEnrolledMembers] = useState<any[]>([]);
+  const [mobilePlanFilter, setMobilePlanFilter] = useState<'ALL' | 'REGULAR' | 'FIXED' | 'AUCTION'>('ALL');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -388,11 +389,20 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
     (m.scheme || '').toUpperCase().includes('FIX')
   ).length;
   const regularCount = enrolledMembers.filter((m) =>
-    (m.scheme || '').toUpperCase().includes('REG')
+    (m.scheme || '').toUpperCase().includes('REG') || (!m.scheme?.toUpperCase().includes('FIX') && !m.scheme?.toUpperCase().includes('AUC'))
   ).length;
   const auctionCount = enrolledMembers.filter((m) =>
     (m.scheme || '').toUpperCase().includes('AUC')
   ).length;
+
+  const displayedEnrolledMembers = enrolledMembers.filter((m) => {
+    if (mobilePlanFilter === 'ALL') return true;
+    const s = (m.scheme || 'Regular').toUpperCase();
+    if (mobilePlanFilter === 'FIXED') return s.includes('FIX');
+    if (mobilePlanFilter === 'AUCTION') return s.includes('AUC');
+    if (mobilePlanFilter === 'REGULAR') return s.includes('REG') || (!s.includes('FIX') && !s.includes('AUC'));
+    return true;
+  });
 
   return (
     <View style={styles.container}>
@@ -584,16 +594,84 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
               </View>
             </View>
 
-            {enrolledMembers.length === 0 ? (
+            {/* Scheme Filter Pills */}
+            <View style={{ flexDirection: 'row', gap: 6, paddingHorizontal: 16, paddingBottom: 12, flexWrap: 'wrap' }}>
+              <TouchableOpacity
+                onPress={() => setMobilePlanFilter('ALL')}
+                style={{
+                  paddingVertical: 5,
+                  paddingHorizontal: 10,
+                  borderRadius: 16,
+                  backgroundColor: mobilePlanFilter === 'ALL' ? '#102B63' : '#F1F5F9',
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '700', color: mobilePlanFilter === 'ALL' ? '#FFFFFF' : '#475569' }}>
+                  All ({enrolledMembers.length})
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setMobilePlanFilter('REGULAR')}
+                style={{
+                  paddingVertical: 5,
+                  paddingHorizontal: 10,
+                  borderRadius: 16,
+                  backgroundColor: mobilePlanFilter === 'REGULAR' ? '#059669' : '#ECFDF5',
+                  borderWidth: 1,
+                  borderColor: mobilePlanFilter === 'REGULAR' ? '#059669' : '#A7F3D0',
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '700', color: mobilePlanFilter === 'REGULAR' ? '#FFFFFF' : '#065F46' }}>
+                  Regular ({regularCount})
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setMobilePlanFilter('FIXED')}
+                style={{
+                  paddingVertical: 5,
+                  paddingHorizontal: 10,
+                  borderRadius: 16,
+                  backgroundColor: mobilePlanFilter === 'FIXED' ? '#2563EB' : '#EFF6FF',
+                  borderWidth: 1,
+                  borderColor: mobilePlanFilter === 'FIXED' ? '#2563EB' : '#BFDBFE',
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '700', color: mobilePlanFilter === 'FIXED' ? '#FFFFFF' : '#1E40AF' }}>
+                  Fixed ({fixedCount})
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setMobilePlanFilter('AUCTION')}
+                style={{
+                  paddingVertical: 5,
+                  paddingHorizontal: 10,
+                  borderRadius: 16,
+                  backgroundColor: mobilePlanFilter === 'AUCTION' ? '#7C3AED' : '#F5F3FF',
+                  borderWidth: 1,
+                  borderColor: mobilePlanFilter === 'AUCTION' ? '#7C3AED' : '#DDD6FE',
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '700', color: mobilePlanFilter === 'AUCTION' ? '#FFFFFF' : '#5B21B6' }}>
+                  Auction ({auctionCount})
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {displayedEnrolledMembers.length === 0 ? (
               <View style={styles.emptyMembersBox}>
                 <Ionicons name="people-outline" size={36} color={Colors.textMuted} />
-                <Text style={styles.emptyMembersTitle}>No customers enrolled in this group yet</Text>
+                <Text style={styles.emptyMembersTitle}>
+                  {enrolledMembers.length === 0
+                    ? 'No customers enrolled in this group yet'
+                    : 'No members in this scheme plan'}
+                </Text>
                 <Text style={styles.emptyMembersSub}>
-                  Tap "Add Member" above to begin enrollment.
+                  {enrolledMembers.length === 0
+                    ? 'Tap "Add Member" above to begin enrollment.'
+                    : 'Select "All" above to see all enrolled members.'}
                 </Text>
               </View>
             ) : (
-              enrolledMembers.map((item, idx) => {
+              displayedEnrolledMembers.map((item, idx) => {
                 const isPaid = item.paymentStatus === 'PAID';
                 const schemeName = (item.scheme || 'Regular').trim();
                 const schemeUpper = schemeName.toUpperCase();
