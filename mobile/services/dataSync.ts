@@ -1252,8 +1252,8 @@ export const DataSyncManager = {
     }
 
     // 2. Save in local cache across all storage keys
-    const existing = await this.getPaymentRequests();
-    const updated = [newReq, ...existing.filter((r) => r.id !== id)];
+    const currentList = await this.getPaymentRequests();
+    const updated = [newReq, ...currentList.filter((r) => r.id !== id)];
     await secureStorage.setItem('payment_requests', JSON.stringify(updated));
     await secureStorage.setItem('paymentRequests', JSON.stringify(updated));
     await secureStorage.setItem('paymentVerifications', JSON.stringify(updated));
