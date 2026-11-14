@@ -7,6 +7,7 @@ const router = Router();
 // Universal System Notifications (for real-time sync with mobile & web)
 router.get('/', NotificationController.getAllNotifications);
 router.post('/', NotificationController.createNotification);
+router.post('/push', NotificationController.sendFcmPush);
 router.patch('/read-all', NotificationController.markAllNotificationsRead);
 router.patch('/:id/read', NotificationController.markNotificationRead);
 router.delete('/:id', NotificationController.deleteNotification);

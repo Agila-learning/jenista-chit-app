@@ -7,6 +7,8 @@ node_modules/
 .env*.local
 *.env
 */.env
+*firebase-service-account*.json
+!*firebase-service-account.example.json
 
 # Build outputs
 dist/

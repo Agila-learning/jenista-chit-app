@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { Notification, SystemNotificationModel } from './notification.model';
 import { NotificationService } from './notification.service';
 import { AnnouncementModel } from './announcement.model';
+import { sendPushNotification, sendTopicNotification } from '../../config/firebase';
 
 export class NotificationController {
   static async getNotificationsByCustomer(req: Request, res: Response, next: NextFunction) {
@@ -228,6 +229,30 @@ export class NotificationController {
       res.status(200).json({ success: true, message: 'Notification deleted' });
     } catch (error) {
       next(error);
+    }
+  }
+
+  /**
+   * Send Firebase Cloud Messaging (FCM) Push Notification
+   */
+  static async sendFcmPush(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { token, topic, title, body, data } = req.body;
+      if (!title || !body) {
+        res.status(400).json({ success: false, message: 'Title and body are required' });
+        return;
+      }
+      let result;
+      if (token) {
+        result = await sendPushNotification(token, title, body, data);
+      } else if (topic) {
+        result = await sendTopicNotification(topic, title, body, data);
+      } else {
+        result = await sendTopicNotification('all_customers', title, body, data);
+      }
+      res.status(200).json({ success: true, message: 'Push notification dispatched successfully', result });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err?.message || 'Failed to send push notification' });
     }
   }
 }

@@ -241,6 +241,7 @@ export class CustomerController {
       }
       if (req.body.pending !== undefined) customer.pending = req.body.pending;
       if (req.body.totalPaid !== undefined) customer.totalPaid = req.body.totalPaid;
+      if (req.body.fcmToken !== undefined) customer.fcmToken = req.body.fcmToken;
       if (req.body.referredBy !== undefined) customer.referredBy = req.body.referredBy;
       if (req.body.registeredBy !== undefined) customer.registeredBy = req.body.registeredBy;
       if (req.body.password) {

@@ -13,6 +13,7 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string(),
   JWT_ACCESS_EXPIRES: z.string().default('15m'),
   JWT_REFRESH_EXPIRES: z.string().default('7d'),
+  FIREBASE_PROJECT_ID: z.string().default('jenista-chits'),
 });
 
 const _env = envSchema.safeParse(process.env);

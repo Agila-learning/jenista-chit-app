@@ -28,6 +28,7 @@ export interface ICustomer extends Document {
   registeredBy?: string;
   scheme?: string;
   interestedPlan?: string;
+  fcmToken?: string;
   chits?: any[];
   pending?: number;
   totalPaid?: number;
@@ -73,6 +74,7 @@ const CustomerSchema: Schema = new Schema(
     registeredBy: { type: String, trim: true },
     scheme: { type: String, trim: true, default: 'Regular' },
     interestedPlan: { type: String, trim: true, default: '' },
+    fcmToken: { type: String, trim: true },
     chits: { type: Array, default: [] },
     pending: { type: Number, default: 0 },
     totalPaid: { type: Number, default: 0 },
