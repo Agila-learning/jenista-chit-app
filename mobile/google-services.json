@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "567149887417",
+    "project_id": "jenista-chits",
+    "storage_bucket": "jenista-chits.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:567149887417:android:ec5958602788fdb4aa8068",
+        "android_client_info": {
+          "package_name": "com.jenista.chits"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCUjKuwXd2XWGgwrzSjAF2Zl86_w_7r2VU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

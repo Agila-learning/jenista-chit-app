@@ -25,6 +25,7 @@
     },
     "android": {
       "package": "com.jenista.chits",
+      "googleServicesFile": "./google-services.json",
       "versionCode": 1,
       "usesCleartextTraffic": true,
       "adaptiveIcon": {
