@@ -167,3 +167,4 @@ export const useSmartEnterNavigation = (enabled = true) => {
     return () => window.removeEventListener('keydown', listener);
   }, [enabled]);
 };
+

@@ -268,3 +268,4 @@ export const matchesKeyboardShortcut = (e: KeyboardEvent, item: ShortcutItem): b
 
   return true;
 };
+
