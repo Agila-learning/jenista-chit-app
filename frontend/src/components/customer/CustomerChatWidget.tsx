@@ -43,9 +43,10 @@ export const CustomerChatWidget: React.FC = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const customerId = user?.id || (user as any)?._id || 'customer-me';
-  const customerName = user?.name || 'Valued Subscriber';
+  const customerName = user?.name || (user as any)?.fullName || 'Valued Subscriber';
   const customerPhone = user?.phone || (user as any)?.mobile || '';
-  const conversationId = customerId;
+  const cleanPhone = String(customerPhone).replace(/\D/g, '');
+  const conversationId = cleanPhone.length === 10 ? cleanPhone : (customerId || 'customer-me');
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

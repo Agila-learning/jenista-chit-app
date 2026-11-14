@@ -256,6 +256,31 @@ export class CustomerController {
     }
   }
 
+  static async registerFcmToken(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { userId, phone, fcmToken } = req.body;
+      if (!fcmToken) {
+        res.status(400).json({ success: false, message: 'fcmToken is required' });
+        return;
+      }
+      const isObjectId = typeof userId === 'string' && /^[0-9a-fA-F]{24}$/.test(userId);
+      const orConditions: any[] = [];
+      if (isObjectId) orConditions.push({ _id: userId });
+      if (userId) {
+        orConditions.push({ customerCode: userId });
+        orConditions.push({ phone: userId });
+      }
+      if (phone) orConditions.push({ phone });
+
+      if (orConditions.length > 0) {
+        await Customer.updateMany({ $or: orConditions }, { $set: { fcmToken } });
+      }
+      res.status(200).json({ success: true, message: 'FCM token registered successfully' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async customerLogin(req: Request, res: Response, next: NextFunction) {
     try {
       const { identifier, password } = req.body;

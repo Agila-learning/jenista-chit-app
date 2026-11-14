@@ -113,19 +113,30 @@ export class ChatController {
 
           // Resolve real customer profile by phone number or customerCode
           let cust: any = null;
+          const cleanDigits = String(convId).replace(/\D/g, '');
+          const lastPhoneDigits = String(lastMsg?.customerPhone || '').replace(/\D/g, '');
+          const lastCustId = String(lastMsg?.customerId || '');
+
           try {
             cust = await Customer.findOne({
               $or: [
                 { phone: convId },
-                { alternatePhone: convId },
+                { phone: cleanDigits },
+                { phone: lastPhoneDigits },
                 { customerCode: convId },
-                ...(mongoose.Types.ObjectId.isValid(convId) ? [{ _id: convId }] : [])
+                { customerCode: lastCustId },
+                ...(cleanDigits.length >= 10 ? [{ phone: { $regex: cleanDigits.slice(-10) } }] : []),
+                ...(lastPhoneDigits.length >= 10 ? [{ phone: { $regex: lastPhoneDigits.slice(-10) } }] : []),
+                ...(mongoose.Types.ObjectId.isValid(convId) ? [{ _id: convId }] : []),
+                ...(mongoose.Types.ObjectId.isValid(lastCustId) ? [{ _id: lastCustId }] : [])
               ]
             }).lean();
           } catch { }
 
-          const resolvedName = cust?.fullName || (lastMsg?.customerName && lastMsg.customerName !== 'Customer' ? lastMsg.customerName : 'Customer');
-          const resolvedPhone = cust?.phone || lastMsg?.customerPhone || (String(convId).match(/^\d{10}$/) ? String(convId) : '');
+          const resolvedName = cust?.fullName || cust?.name || 
+            (lastMsg?.customerName && lastMsg.customerName !== 'Customer' && lastMsg.customerName !== 'Member' && !/^\d+$/.test(lastMsg.customerName) ? lastMsg.customerName : '') || 
+            (cust?.phone ? `Member (${cust.phone})` : (cleanDigits.length === 10 ? `Member (${cleanDigits})` : 'Customer'));
+          const resolvedPhone = cust?.phone || cust?.mobile || lastMsg?.customerPhone || (cleanDigits.length === 10 ? cleanDigits : '');
           const resolvedId = cust?.customerCode || (cust?._id ? String(cust._id) : (lastMsg?.customerId || convId));
 
           return {
@@ -159,9 +170,22 @@ export class ChatController {
     try {
       const { conversationId } = req.params;
       const cleanId = String(conversationId || '').trim();
+      const cleanDigits = cleanId.replace(/\D/g, '');
+
+      const queryConditions: any[] = [
+        { conversationId: cleanId },
+        { customerId: cleanId },
+        { customerPhone: cleanId },
+      ];
+      if (cleanDigits.length >= 10) {
+        queryConditions.push({ conversationId: cleanDigits });
+        queryConditions.push({ customerPhone: cleanDigits });
+        queryConditions.push({ customerId: cleanDigits });
+        queryConditions.push({ customerPhone: { $regex: cleanDigits.slice(-10) } });
+      }
 
       const messages = await ChatMessage.find({
-        $or: [{ conversationId: cleanId }, { customerId: cleanId }],
+        $or: queryConditions,
       })
         .sort({ createdAt: 1 })
         .lean();
@@ -197,11 +221,34 @@ export class ChatController {
       const convId = conversationId || customerId || `chat-${Date.now()}`;
       const cId = customerId || convId;
 
+      let resolvedCustomerName = customerName;
+      let resolvedCustomerPhone = customerPhone;
+
+      if (!resolvedCustomerName || resolvedCustomerName === 'Member' || resolvedCustomerName === 'Customer' || /^\d+$/.test(resolvedCustomerName)) {
+        try {
+          const cleanPhone = String(customerPhone || convId || cId).replace(/\D/g, '');
+          const found = await Customer.findOne({
+            $or: [
+              { phone: cleanPhone },
+              { customerCode: cId },
+              { customerCode: convId },
+              ...(cleanPhone.length >= 10 ? [{ phone: { $regex: cleanPhone.slice(-10) } }] : []),
+              ...(mongoose.Types.ObjectId.isValid(cId) ? [{ _id: cId }] : []),
+              ...(mongoose.Types.ObjectId.isValid(convId) ? [{ _id: convId }] : [])
+            ]
+          }).lean();
+          if (found) {
+            resolvedCustomerName = found.fullName || found.name || resolvedCustomerName;
+            resolvedCustomerPhone = found.phone || found.mobile || resolvedCustomerPhone;
+          }
+        } catch {}
+      }
+
       const newMsg = await ChatMessage.create({
         conversationId: convId,
         customerId: cId,
-        customerName: customerName || 'Member',
-        customerPhone: customerPhone || '',
+        customerName: resolvedCustomerName || 'Member',
+        customerPhone: resolvedCustomerPhone || '',
         senderId: senderId || (req as any).user?.id || 'user',
         senderName: senderName || (req as any).user?.name || 'Support Staff',
         senderRole: senderRole || (req as any).user?.role || 'CUSTOMER',
@@ -209,6 +256,35 @@ export class ChatController {
         attachment: attachment || undefined,
         status: 'SENT',
       });
+
+      // Send Firebase FCM Push Notification if message is sent by Admin/Staff to a Customer
+      if (senderRole === 'ADMIN' || senderRole === 'STAFF') {
+        try {
+          const cleanPhone = String(resolvedCustomerPhone || convId || cId).replace(/\D/g, '');
+          const targetCust = await Customer.findOne({
+            $or: [
+              { phone: cleanPhone },
+              { customerCode: cId },
+              { customerCode: convId },
+              ...(cleanPhone.length >= 10 ? [{ phone: { $regex: cleanPhone.slice(-10) } }] : []),
+              ...(mongoose.Types.ObjectId.isValid(cId) ? [{ _id: cId }] : []),
+              ...(mongoose.Types.ObjectId.isValid(convId) ? [{ _id: convId }] : [])
+            ]
+          }).lean();
+
+          if (targetCust?.fcmToken) {
+            const { sendPushNotification } = await import('../../config/firebase');
+            await sendPushNotification(
+              targetCust.fcmToken,
+              `💬 Support Desk (${senderName || 'Admin'})`,
+              text ? text.trim() : 'Sent an attachment',
+              { conversationId: convId, type: 'CHAT_MESSAGE' }
+            );
+          }
+        } catch (pushErr) {
+          console.warn('Chat push notification failed (device may be offline):', pushErr);
+        }
+      }
 
       res.status(201).json({ success: true, data: newMsg });
     } catch (error) {

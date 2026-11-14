@@ -9,6 +9,9 @@ router.post('/', CustomerController.createCustomer);
 // Public route for customer login
 router.post('/login', CustomerController.customerLogin);
 
+// FCM push token registration for background native notifications
+router.post('/fcm-token', CustomerController.registerFcmToken);
+
 // Public route to track chit subscription
 router.get('/track', CustomerController.trackChit);
 router.post('/track', CustomerController.trackChit);

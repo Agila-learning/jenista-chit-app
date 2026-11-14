@@ -25,6 +25,7 @@ export const CustomerPaymentsScreen: React.FC<{ navigation: any }> = ({ navigati
   const [customer, setCustomer] = useState<any>(null);
   const [enrolledChits, setEnrolledChits] = useState<any[]>([]);
   const [selectedChit, setSelectedChit] = useState<any>(null);
+  const [selectedMonth, setSelectedMonth] = useState('1');
   const [amount, setAmount] = useState('');
   const [referenceNo, setReferenceNo] = useState('');
   const [paymentMode, setPaymentMode] = useState<'UPI' | 'Bank Transfer'>('UPI');
@@ -130,12 +131,20 @@ export const CustomerPaymentsScreen: React.FC<{ navigation: any }> = ({ navigati
 
     setSubmitting(true);
     try {
+      const planName = selectedChit?.scheme || selectedChit?.planType ||
+        (selectedChit?.groupName?.toLowerCase().includes('fix') ? 'Fixed' :
+         selectedChit?.groupName?.toLowerCase().includes('auc') ? 'Auction' : 'Regular');
+
       await DataSyncManager.submitPaymentRequest({
         customerId: customer.id,
         customerName: customer.name,
         customerMobile: customer.phone,
         groupId: selectedChit?.groupId || 'CHIT-GROUP',
         groupName: selectedChit?.groupName || 'Chit Scheme',
+        planName,
+        scheme: planName,
+        monthNumber: selectedMonth || '1',
+        ticketNumber: selectedChit?.ticketNumber || '1',
         amount: val,
         paymentMode,
         referenceNumber: cleanUtr,
@@ -145,7 +154,7 @@ export const CustomerPaymentsScreen: React.FC<{ navigation: any }> = ({ navigati
       await loadData();
       showAlert(
         'Proof Submitted! 🎉',
-        'Your payment proof has been submitted to the verification desk. Once verified, your ledger passbook will be credited automatically.'
+        `Payment proof for ${selectedChit?.groupName || 'Chit'} (${planName} Plan - Month ${selectedMonth}) has been submitted for admin verification.`
       );
     } catch (e: any) {
       showAlert('Error', e?.message || 'Failed to submit payment proof');
@@ -190,6 +199,7 @@ export const CustomerPaymentsScreen: React.FC<{ navigation: any }> = ({ navigati
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chitChipsRow}>
           {enrolledChits.map((c, i) => {
             const isSelected = selectedChit?.groupId === c.groupId;
+            const sch = c.scheme || (c.groupName?.toLowerCase().includes('fix') ? 'Fixed' : c.groupName?.toLowerCase().includes('auc') ? 'Auction' : 'Regular');
             return (
               <TouchableOpacity
                 key={c.groupId || i}
@@ -199,11 +209,41 @@ export const CustomerPaymentsScreen: React.FC<{ navigation: any }> = ({ navigati
                   setAmount(String(c.monthlyInstallment || 5000));
                 }}
               >
-                <Text style={[styles.chitChipTitle, isSelected && styles.chitChipTitleActive]}>
-                  {c.groupName || c.groupId}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                  <Text style={[styles.chitChipTitle, isSelected && styles.chitChipTitleActive]} numberOfLines={1}>
+                    {c.groupName || c.groupId}
+                  </Text>
+                  <View style={{ backgroundColor: sch === 'Fixed' ? '#DBEAFE' : sch === 'Auction' ? '#F3E8FF' : '#D1FAE5', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
+                    <Text style={{ fontSize: 9, fontWeight: '800', color: sch === 'Fixed' ? '#1E40AF' : sch === 'Auction' ? '#6B21A8' : '#065F46' }}>
+                      {sch}
+                    </Text>
+                  </View>
+                </View>
                 <Text style={[styles.chitChipSub, isSelected && styles.chitChipSubActive]}>
                   ₹{(c.monthlyInstallment || 5000).toLocaleString('en-IN')}/mo • Ticket #{c.ticketNumber || '1'}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* Installment Month Selector */}
+        <Text style={styles.fieldLabel}>INSTALLMENT MONTH (1 - 25)</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.chitChipsRow, { marginBottom: 12 }]}>
+          {Array.from({ length: 20 }, (_, idx) => String(idx + 1)).map((m) => {
+            const isMonthSelected = selectedMonth === m;
+            return (
+              <TouchableOpacity
+                key={m}
+                style={[
+                  styles.chitChip,
+                  { minWidth: 64, paddingVertical: 8, alignItems: 'center', justifyContent: 'center' },
+                  isMonthSelected && styles.chitChipActive,
+                ]}
+                onPress={() => setSelectedMonth(m)}
+              >
+                <Text style={[styles.chitChipTitle, { fontSize: 11 }, isMonthSelected && styles.chitChipTitleActive]}>
+                  Month {m}
                 </Text>
               </TouchableOpacity>
             );
@@ -321,8 +361,15 @@ export const CustomerPaymentsScreen: React.FC<{ navigation: any }> = ({ navigati
               <View key={item.id} style={styles.proofCard}>
                 <View style={styles.proofHeader}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.proofGroup}>{item.groupName || item.groupId}</Text>
-                    <Text style={styles.proofRef}>Ref / UTR: {item.referenceNumber || item.id}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <Text style={styles.proofGroup}>{item.groupName || item.groupId}</Text>
+                      <View style={{ backgroundColor: (item.planName || item.scheme || '').toLowerCase().includes('fix') ? '#DBEAFE' : (item.planName || item.scheme || '').toLowerCase().includes('auc') ? '#F3E8FF' : '#D1FAE5', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
+                        <Text style={{ fontSize: 9, fontWeight: '800', color: (item.planName || item.scheme || '').toLowerCase().includes('fix') ? '#1E40AF' : (item.planName || item.scheme || '').toLowerCase().includes('auc') ? '#6B21A8' : '#065F46' }}>
+                          {item.planName || item.scheme || 'Regular'}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.proofRef}>Month {item.monthNumber || '1'} • Ticket #{item.ticketNumber || '1'} • UTR: {item.referenceNumber || item.id}</Text>
                   </View>
                   <View
                     style={[

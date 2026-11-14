@@ -26,8 +26,8 @@ import {
 import { Platform } from 'react-native';
 
 const envPort = process.env.PORT || process.env.EXPO_PUBLIC_BACKEND_PORT || '3000';
-const PROD_API_URL = 'https://jenista-chit-app.onrender.com/api/v1';
-const customEnvUrl = process.env.EXPO_PUBLIC_API_URL || PROD_API_URL;
+const PROD_API_URL = 'https://jenista-chits.onrender.com/api/v1';
+const customEnvUrl = process.env.EXPO_PUBLIC_API_URL;
 const LOCAL_DEV_IP = '192.168.1.39';
 
 let cachedBaseUrl: string | null = null;
@@ -129,11 +129,11 @@ export const getActiveBaseUrl = async (): Promise<string> => {
 
   // 3. For native devices (Android APK, Standalone, Emulator), test candidate endpoints
   const candidates = [
-    customEnvUrl,
-    PROD_API_URL,
     `http://${LOCAL_DEV_IP}:${envPort}/api/v1`,
     `http://10.0.2.2:${envPort}/api/v1`,
+    customEnvUrl,
     `http://localhost:${envPort}/api/v1`,
+    PROD_API_URL,
   ].filter(Boolean) as string[];
 
   const uniqueCandidates = Array.from(new Set(candidates));
@@ -141,7 +141,7 @@ export const getActiveBaseUrl = async (): Promise<string> => {
   for (const candidate of uniqueCandidates) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3000);
+      const timeout = setTimeout(() => controller.abort(), 1500);
       const healthUrl = `${candidate.replace(/\/api\/v1\/?$/, '')}/health`;
       const res = await fetch(healthUrl, {
         signal: controller.signal,
@@ -154,8 +154,8 @@ export const getActiveBaseUrl = async (): Promise<string> => {
     } catch {}
   }
 
-  // Fallback to live Production Render API URL so production APK always fetches data
-  cachedBaseUrl = PROD_API_URL;
+  // Fallback to active LAN dev endpoint or production
+  cachedBaseUrl = `http://${LOCAL_DEV_IP}:${envPort}/api/v1`;
   return cachedBaseUrl;
 };
 

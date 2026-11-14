@@ -20,8 +20,9 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
 import { Colors } from '../../theme/colors';
 import { useAuth } from '../../store/AuthContext';
-import { getActiveBaseUrl } from '../../services/dataSync';
+import { getActiveBaseUrl, DataSyncManager } from '../../services/dataSync';
 import { secureStorage } from '../../services/storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export interface ChatAttachment {
   uri: string;
@@ -50,14 +51,35 @@ export interface Message {
 export const ChatScreen: React.FC<{ route?: any; navigation: any }> = ({ route, navigation }) => {
   const { user } = useAuth();
   const flatListRef = useRef<FlatList>(null);
+  const insets = useSafeAreaInsets();
+  const isInsideTab = route?.name === 'CustomerChatTab';
 
   const isAdminOrStaff = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN' || user?.role === 'STAFF';
 
   // Target conversation details
   const targetCustomerId = route?.params?.customerId || user?.id || 'customer';
-  const targetCustomerName = route?.params?.customerName || user?.name || 'Customer';
-  const targetCustomerPhone = route?.params?.customerPhone || user?.phone || '';
-  const conversationId = route?.params?.conversationId || targetCustomerId;
+  const initialName = route?.params?.customerName || user?.name || 'Customer';
+  const targetCustomerPhone = route?.params?.customerPhone || user?.phone || user?.mobile || '';
+  const conversationId = route?.params?.conversationId || (targetCustomerPhone ? targetCustomerPhone.replace(/\D/g, '') : targetCustomerId);
+
+  const [resolvedName, setResolvedName] = useState(initialName);
+
+  // Auto-resolve real customer name from directory
+  useEffect(() => {
+    DataSyncManager.getCustomers().then((custs) => {
+      const cleanPhone = String(targetCustomerPhone || conversationId || '').replace(/\D/g, '');
+      const cleanId = String(targetCustomerId || '').toLowerCase();
+      const match = custs.find((c: any) => {
+        const cPhone = String(c.phone || c.mobile || '').replace(/\D/g, '');
+        const cId = String(c.id || c.customerCode || c.mongoId || '').toLowerCase();
+        return (cleanPhone && cPhone && (cPhone === cleanPhone || cPhone.endsWith(cleanPhone) || cleanPhone.endsWith(cPhone))) ||
+               (cleanId && cId === cleanId);
+      });
+      if (match?.name || match?.fullName) {
+        setResolvedName(match.name || match.fullName);
+      }
+    }).catch(() => {});
+  }, [targetCustomerId, targetCustomerPhone, conversationId]);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
@@ -234,7 +256,7 @@ export const ChatScreen: React.FC<{ route?: any; navigation: any }> = ({ route, 
       id: `MSG-${Date.now()}`,
       conversationId,
       customerId: targetCustomerId,
-      customerName: targetCustomerName,
+      customerName: resolvedName || targetCustomerName,
       customerPhone: targetCustomerPhone,
       senderId: user?.id || 'me',
       senderName: user?.name || (isAdminOrStaff ? 'Support Desk' : 'Customer'),
@@ -284,12 +306,12 @@ export const ChatScreen: React.FC<{ route?: any; navigation: any }> = ({ route, 
       <View style={styles.topInfoBar}>
         <View style={styles.topAvatar}>
           <Text style={styles.topAvatarText}>
-            {(targetCustomerName || 'C').charAt(0).toUpperCase()}
+            {(resolvedName || targetCustomerName || 'C').charAt(0).toUpperCase()}
           </Text>
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.topInfoText} numberOfLines={1}>
-            {isAdminOrStaff ? targetCustomerName : 'Jenista Chit Funds Live Customer Support'}
+            {isAdminOrStaff ? (resolvedName || targetCustomerName) : 'Jenista Chit Funds Live Customer Support'}
           </Text>
           <View style={styles.onlineStatusRow}>
             <View style={styles.statusDot} />
@@ -316,7 +338,7 @@ export const ChatScreen: React.FC<{ route?: any; navigation: any }> = ({ route, 
           ref={flatListRef}
           data={messages}
           keyExtractor={(item, index) => item._id || item.id || String(index)}
-          contentContainerStyle={styles.messagesList}
+          contentContainerStyle={[styles.messagesList, { paddingBottom: 24 }]}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
           renderItem={({ item }) => {
             const isMe = item.senderId === user?.id || (isAdminOrStaff && item.senderRole !== 'CUSTOMER') || (!isAdminOrStaff && item.senderRole === 'CUSTOMER');
@@ -448,7 +470,16 @@ export const ChatScreen: React.FC<{ route?: any; navigation: any }> = ({ route, 
       )}
 
       {/* Bottom Input Row */}
-      <View style={styles.inputContainer}>
+      <View
+        style={[
+          styles.inputContainer,
+          {
+            paddingBottom: isInsideTab
+              ? 12
+              : Math.max(insets.bottom, Platform.OS === 'ios' ? 14 : 16),
+          },
+        ]}
+      >
         {/* Attachment Paperclip Button */}
         <TouchableOpacity
           style={styles.attachBtn}

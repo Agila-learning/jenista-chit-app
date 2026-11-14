@@ -68,11 +68,11 @@ export const SupportChat: React.FC = () => {
   };
 
   // Helper to resolve real customer name from directory if only phone or fallback was stored
-  const resolveCustomerDetails = (idOrPhone?: string, existingName?: string) => {
+  const resolveCustomerDetails = (idOrPhone?: string, existingName?: string, overrideList?: any[]) => {
     if (!idOrPhone && !existingName) return { name: 'Customer', phone: '', code: '' };
     const cleanDigits = String(idOrPhone || '').replace(/\D/g, '');
 
-    const allKnown = [...customersList];
+    const allKnown = [...(overrideList && overrideList.length > 0 ? overrideList : customersList)];
     try {
       const stored = JSON.parse(localStorage.getItem('mockCustomers') || '[]');
       if (Array.isArray(stored)) {
@@ -93,13 +93,13 @@ export const SupportChat: React.FC = () => {
 
     if (found) {
       return {
-        name: found.name || found.fullName || existingName || 'Customer',
+        name: found.fullName || found.name || existingName || 'Customer',
         phone: found.mobile || found.phone || idOrPhone || '',
         code: found.id || found.customerCode || ''
       };
     }
 
-    const hasValidName = existingName && existingName !== 'Customer' && existingName !== idOrPhone && !/^\d+$/.test(existingName);
+    const hasValidName = existingName && existingName !== 'Customer' && existingName !== 'Member' && existingName !== idOrPhone && !/^\d+$/.test(existingName);
     return {
       name: hasValidName ? existingName : (cleanDigits ? `Member (${idOrPhone})` : (idOrPhone || 'Customer')),
       phone: cleanDigits ? idOrPhone : '',
@@ -111,13 +111,24 @@ export const SupportChat: React.FC = () => {
   const loadConversations = async (silent = false) => {
     if (!silent) setLoadingConv(true);
     try {
+      let activeCustomers = customersList;
+      if (activeCustomers.length === 0) {
+        try {
+          const cRes = await fetchClient('/customers');
+          if (cRes && cRes.data) {
+            activeCustomers = cRes.data;
+            setCustomersList(cRes.data);
+          }
+        } catch {}
+      }
+
       const res = await fetchClient('/chat/conversations');
       if (res && res.data) {
         const mapped = res.data.map((c: any) => {
-          const resolved = resolveCustomerDetails(c.customerId || c.customerPhone || c.conversationId, c.customerName);
+          const resolved = resolveCustomerDetails(c.customerId || c.customerPhone || c.conversationId, c.customerName, activeCustomers);
           return {
             ...c,
-            customerName: resolved.name,
+            customerName: resolved.name || c.customerName,
             customerPhone: c.customerPhone || resolved.phone,
           };
         });

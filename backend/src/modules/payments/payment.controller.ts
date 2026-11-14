@@ -32,6 +32,31 @@ export class PaymentController {
       if (!data.id) {
         data.id = `PAY-${Date.now().toString().slice(-6)}`;
       }
+
+      const planName = data.planName || data.scheme || 'Regular';
+      const monthNumber = String(data.monthNumber || '1');
+      const groupId = String(data.groupId || data.groupName || '');
+
+      // Duplicate check: Do not allow duplicate payment request for same customer, same group, same plan, same month
+      if (data.customerId) {
+        const existing = await PaymentRequestModel.findOne({
+          customerId: data.customerId,
+          $or: [{ groupId }, { groupName: data.groupName || groupId }],
+          planName: { $regex: new RegExp(`^${planName}$`, 'i') },
+          monthNumber,
+          status: { $in: ['PENDING_VERIFICATION', 'APPROVED'] },
+          id: { $ne: data.id },
+        });
+
+        if (existing) {
+          res.status(409).json({
+            success: false,
+            message: `Duplicate Payment Alert: A payment request for ${data.groupName || groupId} (${planName} Plan - Month ${monthNumber}) is already submitted and pending verification or approved. Duplicate requests are not permitted.`,
+          });
+          return;
+        }
+      }
+
       const created = await PaymentRequestModel.findOneAndUpdate(
         { id: data.id },
         { $set: data },
@@ -66,6 +91,33 @@ export class PaymentController {
         { $set: req.body },
         { new: true }
       );
+
+      // If approved, trigger FCM background push notification to customer
+      if (req.body.status === 'APPROVED' && updated) {
+        try {
+          const { Customer } = await import('../customers/customer.model');
+          const targetCust = await Customer.findOne({
+            $or: [
+              { customerCode: updated.customerId },
+              { phone: updated.customerId },
+              { phone: updated.mobile },
+            ],
+          }).lean();
+
+          if (targetCust?.fcmToken) {
+            const { sendPushNotification } = await import('../../config/firebase');
+            await sendPushNotification(
+              targetCust.fcmToken,
+              '🎉 Payment Verified & Credited!',
+              `Your installment payment of ₹${Number(updated.amount || 0).toLocaleString('en-IN')} for ${updated.groupName || updated.groupId} has been verified and added to your digital passbook.`,
+              { type: 'PAYMENT_APPROVED', requestId: updated.id }
+            );
+          }
+        } catch (pushErr) {
+          console.warn('Payment approval push notification failed:', pushErr);
+        }
+      }
+
       res.status(200).json({ success: true, data: updated });
     } catch (error) {
       next(error);

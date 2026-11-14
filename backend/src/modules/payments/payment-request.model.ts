@@ -7,6 +7,9 @@ export interface IPaymentRequest extends Document {
   mobile: string;
   groupId: string;
   groupName?: string;
+  planName?: string;
+  scheme?: string;
+  monthNumber?: string;
   ticketNumber?: string;
   amount: number;
   paymentMode: string;
@@ -32,6 +35,9 @@ const PaymentRequestSchema: Schema = new Schema(
     mobile: { type: String },
     groupId: { type: String, required: true },
     groupName: { type: String },
+    planName: { type: String, default: 'Regular' },
+    scheme: { type: String, default: 'Regular' },
+    monthNumber: { type: String, default: '1' },
     ticketNumber: { type: String },
     amount: { type: Number, required: true },
     paymentMode: { type: String, required: true },

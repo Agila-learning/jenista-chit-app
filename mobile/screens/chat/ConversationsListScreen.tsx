@@ -42,7 +42,25 @@ export const ConversationsListScreen: React.FC<{ navigation: any }> = ({ navigat
       if (res.ok) {
         const json = await res.json();
         if (json && Array.isArray(json.data) && json.data.length > 0) {
-          setConversations(json.data);
+          const allCustomers = await DataSyncManager.getCustomers().catch(() => []);
+          const enriched = json.data.map((conv: any) => {
+            const cleanPhone = String(conv.customerPhone || conv.conversationId || '').replace(/\D/g, '');
+            const cleanCustId = String(conv.customerId || '').toLowerCase();
+            const matched = allCustomers.find((c: any) => {
+              const cPhone = String(c.phone || c.mobile || '').replace(/\D/g, '');
+              const cId = String(c.id || c.customerCode || c.mongoId || '').toLowerCase();
+              return (cleanPhone && cPhone && (cPhone === cleanPhone || cPhone.endsWith(cleanPhone) || cleanPhone.endsWith(cPhone))) ||
+                     (cleanCustId && cId === cleanCustId);
+            });
+            const validName = matched?.name || matched?.fullName ||
+              (conv.customerName && conv.customerName !== 'Customer' && conv.customerName !== 'Member' && !/^\d+$/.test(conv.customerName) ? conv.customerName : '');
+            return {
+              ...conv,
+              customerName: validName || (cleanPhone ? `Member (${cleanPhone})` : 'Customer'),
+              customerPhone: conv.customerPhone || matched?.phone || matched?.mobile || '',
+            };
+          });
+          setConversations(enriched);
           return;
         }
       }
@@ -51,10 +69,10 @@ export const ConversationsListScreen: React.FC<{ navigation: any }> = ({ navigat
     // Fallback: build list from known customers
     try {
       const customers = await DataSyncManager.getCustomers();
-      const fallbackList: Conversation[] = customers.slice(0, 15).map((c) => ({
-        conversationId: c.id,
+      const fallbackList: Conversation[] = customers.slice(0, 25).map((c) => ({
+        conversationId: c.phone || c.mobile || c.customerCode || c.id,
         customerId: c.id,
-        customerName: c.name,
+        customerName: c.name || c.fullName || 'Customer',
         customerPhone: c.phone || c.mobile || '',
         lastMessage: 'Tap to start customer support conversation...',
         lastMessageAt: new Date().toISOString(),
@@ -77,16 +95,20 @@ export const ConversationsListScreen: React.FC<{ navigation: any }> = ({ navigat
   };
 
   const filtered = conversations.filter((c) => {
-    const q = search.toLowerCase().trim();
+    const q = (search || '').toLowerCase().trim();
+    const cName = String(c?.customerName || '').toLowerCase();
+    const cPhone = String(c?.customerPhone || '').toLowerCase();
+    const cLast = String(c?.lastMessage || '').toLowerCase();
+
     const matchesSearch =
       !q ||
-      c.customerName.toLowerCase().includes(q) ||
-      (c.customerPhone && c.customerPhone.includes(q)) ||
-      c.lastMessage.toLowerCase().includes(q);
+      cName.includes(q) ||
+      cPhone.includes(q) ||
+      cLast.includes(q);
 
     if (!matchesSearch) return false;
 
-    if (activeTab === 'UNREAD') return c.unreadCount > 0;
+    if (activeTab === 'UNREAD') return (c.unreadCount || 0) > 0;
     if (activeTab === 'STAFF') return c.lastSenderRole === 'STAFF';
     return true;
   });
