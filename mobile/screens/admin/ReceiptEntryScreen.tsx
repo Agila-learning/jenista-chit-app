@@ -197,7 +197,7 @@ export const ReceiptEntryScreen: React.FC<{ route: any; navigation: any }> = ({
 
       showConfirmDialog(
         'Receipt Recorded & Synced',
-        `Official Collection Voucher #${receiptNo} for ₹${amount} dated ${formattedDisplayDate} was successfully recorded to live ledger!`,
+        `Official Collection Voucher #${receiptNo} for ₹${Number(amount || 0).toLocaleString('en-IN')} dated ${formattedDisplayDate} was successfully recorded to live ledger!`,
         [
           {
             text: 'Share / Print PDF',
@@ -309,14 +309,21 @@ export const ReceiptEntryScreen: React.FC<{ route: any; navigation: any }> = ({
 
         {/* 3. Amount Field */}
         <View style={styles.fieldSection}>
-          <Text style={styles.fieldLabel}>Collection Amount (₹)</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={styles.fieldLabel}>Collection Amount (₹)</Text>
+            {Number(amount || 0) > 0 && (
+              <Text style={{ fontSize: 13, color: '#16a34a', fontWeight: '800' }}>
+                ₹ {Number(amount).toLocaleString('en-IN')}
+              </Text>
+            )}
+          </View>
           <View style={styles.amountInputWrap}>
             <Text style={styles.currencySymbol}>₹</Text>
             <Input
-              placeholder="Enter amount (e.g. 5000)"
+              placeholder="Enter amount (e.g. 5,000)"
               keyboardType="number-pad"
               value={amount}
-              onChangeText={setAmount}
+              onChangeText={(txt) => setAmount(txt.replace(/\D/g, ''))}
               containerStyle={{ flex: 1, marginBottom: 0 }}
               style={styles.amountInputField}
             />

@@ -1763,6 +1763,9 @@ export const ChitGroupDetail = () => {
                     onChange={(e) => {
                       const found = groupMembers.find(m => String(m.ticketNumber) === e.target.value);
                       setCollectMember(found || null);
+                      if (found) {
+                        setCollectAmount(String(found.monthlyInstallment || installmentPerMember || 5000));
+                      }
                     }}
                     required
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
@@ -1770,9 +1773,10 @@ export const ChitGroupDetail = () => {
                     <option value="">-- Choose Member --</option>
                     {groupMembers.map((m) => {
                       const paid = isMemberPaid(m);
+                      const dueAmt = Number(m.monthlyInstallment || installmentPerMember || 5000);
                       return (
                         <option key={m.ticketNumber} value={m.ticketNumber}>
-                          Ticket #{m.ticketNumber} - {m.customerName} ({paid ? 'Already Paid ✓' : 'Due ₹' + installmentPerMember})
+                          Ticket #{m.ticketNumber} - {m.customerName} ({paid ? 'Already Paid ✓' : `Due ₹${dueAmt.toLocaleString('en-IN')}`})
                         </option>
                       );
                     })}
@@ -1789,6 +1793,9 @@ export const ChitGroupDetail = () => {
                       <span className="text-[11px] text-slate-500 font-mono">
                         ID: {collectMember.customerId} • 📞 {collectMember.mobile || 'No phone'}
                       </span>
+                      <span className="text-[11px] text-blue-700 font-semibold block mt-0.5">
+                        {collectMember.scheme || 'Plan'} • Installment: ₹{Number(collectMember.monthlyInstallment || installmentPerMember || 5000).toLocaleString('en-IN')}
+                      </span>
                     </div>
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                       isMemberPaid(collectMember) ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
@@ -1801,33 +1808,46 @@ export const ChitGroupDetail = () => {
                 {/* Amount & Month */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                      Amount Received (₹) *
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                        Amount Received (₹) *
+                      </label>
+                      {Number(collectAmount || 0) > 0 && (
+                        <span className="text-xs font-bold text-emerald-700 font-mono">
+                          ₹ {Number(collectAmount).toLocaleString('en-IN')}
+                        </span>
+                      )}
+                    </div>
                     <input
                       type="number"
                       value={collectAmount}
                       onChange={(e) => setCollectAmount(e.target.value)}
                       required
-                      placeholder="e.g. 5000"
+                      placeholder={Number(collectMember?.monthlyInstallment || installmentPerMember || 5000).toLocaleString('en-IN')}
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
                     />
-                    <div className="flex gap-1.5 mt-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setCollectAmount(String(installmentPerMember))}
-                        className="px-2 py-0.5 bg-blue-50 text-blue-700 hover:bg-blue-100 text-[10px] font-bold rounded cursor-pointer"
-                      >
-                        Full (₹{installmentPerMember})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCollectAmount(String(Math.round(installmentPerMember / 2)))}
-                        className="px-2 py-0.5 bg-slate-100 text-slate-600 hover:bg-slate-200 text-[10px] font-bold rounded cursor-pointer"
-                      >
-                        Half (₹{Math.round(installmentPerMember / 2)})
-                      </button>
-                    </div>
+                    {(() => {
+                      const dueAmt = Number(collectMember?.monthlyInstallment || installmentPerMember || 5000);
+                      const halfAmt = Math.round(dueAmt / 2);
+                      return (
+                        <div className="flex gap-1.5 mt-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setCollectAmount(String(dueAmt))}
+                            className="px-2 py-0.5 bg-blue-50 text-blue-700 hover:bg-blue-100 text-[10px] font-bold rounded cursor-pointer"
+                          >
+                            Full (₹{dueAmt.toLocaleString('en-IN')})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCollectAmount(String(halfAmt))}
+                            className="px-2 py-0.5 bg-slate-100 text-slate-600 hover:bg-slate-200 text-[10px] font-bold rounded cursor-pointer"
+                          >
+                            Half (₹{halfAmt.toLocaleString('en-IN')})
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div>
