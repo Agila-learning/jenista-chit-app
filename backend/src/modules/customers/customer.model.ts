@@ -30,6 +30,7 @@ export interface ICustomer extends Document {
   interestedPlan?: string;
   fcmToken?: string;
   chits?: any[];
+  activeChits?: number;
   pending?: number;
   totalPaid?: number;
   createdBy?: mongoose.Types.ObjectId;
@@ -76,6 +77,7 @@ const CustomerSchema: Schema = new Schema(
     interestedPlan: { type: String, trim: true, default: '' },
     fcmToken: { type: String, trim: true },
     chits: { type: Array, default: [] },
+    activeChits: { type: Number, default: 0 },
     pending: { type: Number, default: 0 },
     totalPaid: { type: Number, default: 0 },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },

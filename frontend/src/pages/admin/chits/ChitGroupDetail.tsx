@@ -47,6 +47,7 @@ export const ChitGroupDetail = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
   const [ticketNumberInput, setTicketNumberInput] = useState('');
   const [schemeInput, setSchemeInput] = useState('Regular');
+  const [customChitValueInput, setCustomChitValueInput] = useState('');
   const [customInstallmentInput, setCustomInstallmentInput] = useState('');
   const [joiningDateInput, setJoiningDateInput] = useState(() => new Date().toISOString().split('T')[0]);
 
@@ -266,7 +267,7 @@ export const ChitGroupDetail = () => {
         const mGId = String(m.groupId || '').trim().toLowerCase();
         const mGName = String(m.groupName || '').trim().toLowerCase();
         if (mGId === targetGroupId || mGName === targetGroupName || (targetGroupId && mGId.includes(targetGroupId))) {
-          if (!membersList.some(existing => existing.ticketNumber === String(m.ticketNumber) || (existing.customerId && existing.customerId === m.customerId))) {
+          if (!membersList.some(existing => (m.id && existing.id && existing.id === m.id) || (existing.ticketNumber && m.ticketNumber && String(existing.ticketNumber) === String(m.ticketNumber)))) {
             const custName = m.customerName || 'Customer';
             membersList.push({
               ...m,
@@ -288,7 +289,7 @@ export const ChitGroupDetail = () => {
           const cGName = String(chit.groupName || '').trim().toLowerCase();
           if (cGId === targetGroupId || cGName === targetGroupName || (targetGroupId && cGId.includes(targetGroupId))) {
             const custName = chit.customerName || cust.name || cust.fullName || 'Customer';
-            const existingIdx = membersList.findIndex(m => m.ticketNumber === String(chit.ticketNumber) || (m.customerId && m.customerId === cust.id));
+            const existingIdx = membersList.findIndex(m => (chit.id && m.id && m.id === chit.id) || (m.ticketNumber && chit.ticketNumber && String(m.ticketNumber) === String(chit.ticketNumber)));
             const memberData = {
               ...chit,
               customerName: custName,
@@ -385,6 +386,7 @@ export const ChitGroupDetail = () => {
     setActiveTab('members');
     setTicketNumberInput(nextTicketNumber);
     setSchemeInput(isAuction ? 'Auction' : group?.type?.includes('FIX') ? 'Fixed' : 'Regular');
+    setCustomChitValueInput(String(chitValue || 100000));
     setCustomInstallmentInput(String(installmentPerMember || 5000));
     setSelectedCustomer(null);
     setMemberSearchQuery('');
@@ -420,7 +422,8 @@ export const ChitGroupDetail = () => {
     const custName = selectedCustomer.name || selectedCustomer.fullName || 'Customer';
     const custId = selectedCustomer.id || selectedCustomer.customerCode || selectedCustomer._id;
     const custMobile = selectedCustomer.mobile || selectedCustomer.phone || '';
-    const finalInstallment = Number(customInstallmentInput) > 0 ? Number(customInstallmentInput) : installmentPerMember;
+    const finalChitValue = Number(customChitValueInput) > 0 ? Number(customChitValueInput) : chitValue;
+    const finalInstallment = Number(customInstallmentInput) > 0 ? Number(customInstallmentInput) : (duration > 0 ? Math.round(finalChitValue / duration) : installmentPerMember);
 
     // 1. Add to chitGroupMemberships in localStorage
     const existingMemberships = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
@@ -434,7 +437,7 @@ export const ChitGroupDetail = () => {
       ticketNumber: ticketNo,
       scheme: schemeInput,
       duration: duration,
-      chitValue: chitValue,
+      chitValue: finalChitValue,
       monthlyInstallment: finalInstallment,
       joiningDate: joiningDateInput,
       joinedAt: joiningDateInput,
@@ -448,7 +451,7 @@ export const ChitGroupDetail = () => {
       id: `CHIT-${Date.now()}`,
       groupId: group.id || group.code,
       groupName: group.name,
-      chitValue: chitValue,
+      chitValue: finalChitValue,
       monthlyInstallment: finalInstallment,
       ticketNumber: ticketNo,
       duration: duration,
@@ -1515,36 +1518,42 @@ export const ChitGroupDetail = () => {
                     ) : (
                       filteredAvailableCustomers.map((cust: any) => {
                         const isSelected = selectedCustomer?.id === cust.id;
-                        const isAlreadyEnrolled = groupMembers.some(m => m.customerId === cust.id);
+                        const enrolledTickets = groupMembers.filter(m => m.customerId === cust.id);
+                        const isAlreadyEnrolled = enrolledTickets.length > 0;
 
                         return (
                           <div
                             key={cust.id}
                             onClick={() => {
-                              if (!isAlreadyEnrolled) {
-                                setSelectedCustomer(cust);
-                              }
+                              setSelectedCustomer(cust);
                             }}
                             className={`p-2.5 flex items-center justify-between cursor-pointer transition-colors ${
                               isSelected
                                 ? 'bg-blue-50 border-l-4 border-l-blue-600'
-                                : isAlreadyEnrolled
-                                  ? 'opacity-50 cursor-not-allowed bg-slate-100'
-                                  : 'hover:bg-white'
+                                : 'hover:bg-white'
                             }`}
                           >
                             <div>
                               <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
                                 <span>{cust.name || cust.fullName}</span>
                                 {isAlreadyEnrolled && (
-                                  <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 rounded">Enrolled</span>
+                                  <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">
+                                    Enrolled ({enrolledTickets.length} {enrolledTickets.length === 1 ? 'Plan' : 'Plans'})
+                                  </span>
                                 )}
                               </div>
                               <div className="text-[11px] text-slate-500 font-mono">
                                 ID: {cust.id} • 📞 {cust.mobile || cust.phone || 'No phone'}
                               </div>
                             </div>
-                            {isSelected && <Check className="w-4 h-4 text-blue-600 shrink-0" />}
+                            <div className="flex items-center gap-1.5">
+                              {isAlreadyEnrolled && (
+                                <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                                  + Add Plan
+                                </span>
+                              )}
+                              {isSelected && <Check className="w-4 h-4 text-blue-600 shrink-0" />}
+                            </div>
                           </div>
                         );
                       })
@@ -1602,19 +1611,29 @@ export const ChitGroupDetail = () => {
                   </div>
                 </div>
 
-                {/* Joining Date & Monthly Installment */}
+                {/* Chit Value & Monthly Installment with Comma Reflection */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                      Joining Date *
+                      Chit Value (₹) *
                     </label>
                     <input
-                      type="date"
-                      value={joiningDateInput}
-                      onChange={(e) => setJoiningDateInput(e.target.value)}
-                      required
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                      type="number"
+                      value={customChitValueInput}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCustomChitValueInput(val);
+                        const numVal = Number(val) || 0;
+                        if (numVal > 0 && duration > 0) {
+                          setCustomInstallmentInput(String(Math.round(numVal / duration)));
+                        }
+                      }}
+                      placeholder={String(chitValue)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
                     />
+                    <p className="text-[11px] text-emerald-600 font-bold mt-1">
+                      ₹ {Number(customChitValueInput || chitValue || 0).toLocaleString('en-IN')}
+                    </p>
                   </div>
 
                   <div>
@@ -1628,8 +1647,24 @@ export const ChitGroupDetail = () => {
                       placeholder={String(installmentPerMember)}
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
                     />
-                    <p className="text-[10px] text-slate-400 mt-0.5">Group default: {formatCurrency(installmentPerMember)}</p>
+                    <p className="text-[11px] text-blue-600 font-bold mt-1">
+                      ₹ {Number(customInstallmentInput || installmentPerMember || 0).toLocaleString('en-IN')}
+                    </p>
                   </div>
+                </div>
+
+                {/* Joining Date */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Joining Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={joiningDateInput}
+                    onChange={(e) => setJoiningDateInput(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  />
                 </div>
 
                 {/* Submit Buttons */}

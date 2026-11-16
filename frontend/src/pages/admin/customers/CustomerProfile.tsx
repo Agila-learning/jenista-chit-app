@@ -196,6 +196,17 @@ export const CustomerProfile = () => {
     let chits: any[] = Array.isArray(custTarget?.chits) ? [...custTarget.chits] : [];
     const phone = (custTarget?.phone || custTarget?.mobile || '').replace(/\D/g, '');
 
+    const isSameChit = (existing: any, incoming: any) => {
+      if (incoming.id && existing.id && String(incoming.id) === String(existing.id)) return true;
+      const g1 = String(existing.groupId || existing.groupName || '').trim().toLowerCase();
+      const g2 = String(incoming.groupId || incoming.groupName || '').trim().toLowerCase();
+      if (g1 && g2 && g1 === g2) {
+        if (existing.ticketNumber && incoming.ticketNumber && String(existing.ticketNumber) === String(incoming.ticketNumber)) return true;
+        if (existing.scheme === incoming.scheme && Number(existing.chitValue) === Number(incoming.chitValue)) return true;
+      }
+      return false;
+    };
+
     // 1. Check local mockCustomers
     const saved = localStorage.getItem('mockCustomers');
     if (saved) {
@@ -206,7 +217,7 @@ export const CustomerProfile = () => {
       });
       if (local?.chits && Array.isArray(local.chits)) {
         local.chits.forEach((ch: any) => {
-          if (!chits.some(existing => existing.groupId === ch.groupId) && !isMockGroup({ id: ch.groupId, name: ch.groupName })) {
+          if (!chits.some(existing => isSameChit(existing, ch)) && !isMockGroup({ id: ch.groupId, name: ch.groupName })) {
             chits.push(ch);
           }
         });
@@ -224,7 +235,7 @@ export const CustomerProfile = () => {
         m.customerId === custTarget?.id ||
         (phone && mPhone === phone)
       ) {
-        if (!chits.some(existing => existing.groupId === m.groupId)) {
+        if (!chits.some(existing => isSameChit(existing, m))) {
           chits.push({
             groupId: m.groupId,
             groupName: m.groupName || m.groupId,
@@ -258,14 +269,17 @@ export const CustomerProfile = () => {
             (phone && mPhone === phone)
           ) {
             const grpCode = g.code || g.id;
-            if (!chits.some(existing => existing.groupId === grpCode)) {
+            const incomingChit = {
+              groupId: grpCode,
+              groupName: g.name || grpCode,
+              scheme: g.scheme || m.scheme || 'Chit Plan',
+              ticketNumber: m.ticketNumber || '1',
+              chitValue: g.chitValue || m.chitValue || 100000,
+              monthlyInstallment: g.monthlyInstallment || m.monthlyInstallment || 5000,
+            };
+            if (!chits.some(existing => isSameChit(existing, incomingChit))) {
               chits.push({
-                groupId: grpCode,
-                groupName: g.name || grpCode,
-                scheme: g.scheme || 'Chit Plan',
-                ticketNumber: m.ticketNumber || '1',
-                chitValue: g.chitValue || m.chitValue || 100000,
-                monthlyInstallment: g.monthlyInstallment || m.monthlyInstallment || 5000,
+                ...incomingChit,
                 dueDate: m.dueDate,
                 joiningDate: m.joiningDate || new Date().toISOString(),
                 paymentStatus: m.paymentStatus || 'PAID',
@@ -287,13 +301,16 @@ export const CustomerProfile = () => {
       if ((ref.includes(targetId) || (custTarget?.customerCode && ref.includes(custTarget.customerCode))) && ref.includes(' / ')) {
         const parts = ref.split(' / ');
         const grpCode = parts[1]?.trim();
-        if (grpCode && !chits.some(existing => existing.groupId === grpCode)) {
+        const incomingChit = {
+          groupId: grpCode,
+          groupName: grpCode,
+          scheme: grpCode.includes('FIXED') ? 'Fixed Chit Plan' : 'Auction Chit Plan',
+          ticketNumber: '1',
+          chitValue: 100000
+        };
+        if (grpCode && !chits.some(existing => isSameChit(existing, incomingChit))) {
           chits.push({
-            groupId: grpCode,
-            groupName: grpCode,
-            scheme: grpCode.includes('FIXED') ? 'Fixed Chit Plan' : 'Auction Chit Plan',
-            ticketNumber: '1',
-            chitValue: 100000,
+            ...incomingChit,
             monthlyInstallment: 5000,
             joiningDate: tx.date || new Date().toISOString(),
             paymentStatus: 'PAID',

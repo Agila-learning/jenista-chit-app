@@ -238,8 +238,8 @@ export class ChatController {
             ]
           }).lean();
           if (found) {
-            resolvedCustomerName = found.fullName || found.name || resolvedCustomerName;
-            resolvedCustomerPhone = found.phone || found.mobile || resolvedCustomerPhone;
+            resolvedCustomerName = found.fullName || (found as any).name || resolvedCustomerName;
+            resolvedCustomerPhone = found.phone || (found as any).mobile || resolvedCustomerPhone;
           }
         } catch {}
       }

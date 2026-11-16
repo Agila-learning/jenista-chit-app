@@ -8,6 +8,7 @@ import { fetchClient } from '../../../api/client';
 import { useAuth } from '../../../store/AuthContext';
 import { isMockCustomer } from '../../../utils/cleanMockData';
 import { addSystemNotification } from '../../../utils/notificationsData';
+import { useSmartEnterNavigation } from '../../../utils/smartEnter';
 
 export const AddModifyCustomer = () => {
   const { user } = useAuth();
@@ -25,6 +26,9 @@ export const AddModifyCustomer = () => {
     return [];
   });
   const [activeCustomer, setActiveCustomer] = useState<any>(null);
+
+  // Enable smart Enter key field progression (Enter moves to next input field sequentially)
+  useSmartEnterNavigation(true);
 
   useEffect(() => {
     const syncWithMongo = async () => {
@@ -103,7 +107,29 @@ export const AddModifyCustomer = () => {
     };
 
     return (
-      <form id="customer-form" data-smart-enter="true" className={`bg-white p-8 rounded-xl shadow-sm border border-neutral-200 ${disabled ? 'opacity-70 pointer-events-none' : ''}`}>
+      <form 
+        id="customer-form" 
+        data-smart-enter="true" 
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleConfirm();
+        }}
+        className={`bg-white p-8 rounded-xl shadow-sm border border-neutral-200 ${disabled ? 'opacity-70 pointer-events-none' : ''}`}
+      >
+        {/* Keyboard Shortcuts Hint Bar */}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2">
+          <div className="flex items-center gap-1.5 font-medium">
+            <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[11px] font-mono shadow-2xs font-bold text-slate-800">Enter</kbd>
+            <span>Next Field</span>
+            <span className="text-slate-300 mx-1">•</span>
+            <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[11px] font-mono shadow-2xs font-bold text-slate-800">Shift + Enter</kbd>
+            <span>Previous Field</span>
+          </div>
+          <div className="flex items-center gap-1.5 font-medium">
+            <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[11px] font-mono shadow-2xs font-bold text-slate-800">Ctrl + S</kbd>
+            <span className="font-semibold text-primary-900">Save & Proceed</span>
+          </div>
+        </div>
         <div className="space-y-8">
           
           {/* Personal Details */}
@@ -666,6 +692,18 @@ export const AddModifyCustomer = () => {
     handleClear();
     setActiveAction('ADD');
   };
+
+  // Keyboard shortcut: Ctrl + S (or Cmd + S) to save customer and proceed to next step
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleConfirm();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeAction, activeCustomer]);
 
   return (
     <ActionLayout 

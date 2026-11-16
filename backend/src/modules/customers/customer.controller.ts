@@ -615,29 +615,25 @@ export class CustomerController {
       }
 
       const existingChits = Array.isArray(customer.chits) ? customer.chits : [];
+      // Match only exact same chit ID or exact same group AND ticket number
       let foundIndex = existingChits.findIndex((c: any) => 
-        (chit.groupId && c.groupId === chit.groupId) || 
-        (chit.groupName && c.groupName === chit.groupName) ||
-        (chit.ticketNumber && c.ticketNumber === chit.ticketNumber) ||
-        c.groupId === 'PENDING'
+        (chit.id && c.id && String(c.id) === String(chit.id)) ||
+        (chit.groupId && c.groupId === chit.groupId && chit.ticketNumber && String(c.ticketNumber) === String(chit.ticketNumber)) ||
+        (c.groupId === 'PENDING' && existingChits.length === 1)
       );
-
-      // If updating primary chit (e.g. changing from Regular to Fixed)
-      if (foundIndex === -1 && existingChits.length <= 1) {
-        foundIndex = 0;
-      }
 
       if (foundIndex >= 0 && foundIndex < existingChits.length) {
         existingChits[foundIndex] = { ...existingChits[foundIndex], ...chit };
         customer.chits = existingChits;
       } else {
-        const filteredChits = existingChits.filter((c: any) => c.groupId !== chit.groupId && c.groupName !== chit.groupName);
-        customer.chits = [chit, ...filteredChits];
+        // Keep all existing chits and add the new plan/ticket for this customer
+        customer.chits = [chit, ...existingChits];
       }
 
       if (chit.monthlyInstallment && (!existingChits.length || foundIndex === -1)) {
         customer.pending = (Number(customer.pending) || 0) + Number(chit.monthlyInstallment);
       }
+      customer.activeChits = (customer.chits || []).length;
       customer.markModified('chits');
       await customer.save();
 

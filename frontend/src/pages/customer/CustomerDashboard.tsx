@@ -180,7 +180,18 @@ export const CustomerDashboard = () => {
 
         const allMemberChits = [...userMemberships, ...groupEnrolledChits];
         allMemberChits.forEach((m: any) => {
-          if (!finalChits.some((ch: any) => ch.groupId === m.groupId)) {
+          const isSameChit = (ch: any, candidate: any) => {
+            if (ch.id && candidate.id && String(ch.id) === String(candidate.id)) return true;
+            const g1 = String(ch.groupId || ch.groupName || '').trim().toLowerCase();
+            const g2 = String(candidate.groupId || candidate.groupName || '').trim().toLowerCase();
+            if (g1 && g2 && g1 === g2) {
+              if (ch.ticketNumber && candidate.ticketNumber && String(ch.ticketNumber) === String(candidate.ticketNumber)) return true;
+              if (ch.scheme === candidate.scheme && Number(ch.chitValue) === Number(candidate.chitValue)) return true;
+            }
+            return false;
+          };
+
+          if (!finalChits.some((ch: any) => isSameChit(ch, m))) {
             finalChits = [...finalChits, {
               groupId: m.groupId,
               groupName: m.groupName || m.groupId,

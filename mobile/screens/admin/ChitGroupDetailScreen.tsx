@@ -1000,14 +1000,18 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
                     keyboardType="numeric"
                     value={customValue}
                     onChangeText={(txt) => {
-                      setCustomValue(txt);
-                      const val = Number(txt) || 0;
+                      const clean = txt.replace(/\D/g, '');
+                      setCustomValue(clean);
+                      const val = Number(clean) || 0;
                       const m = Number(customDuration) || duration;
                       if (m > 0 && val > 0) {
                         setCustomerEnrollInstallment(Math.round(val / m).toString());
                       }
                     }}
                   />
+                  <Text style={{ fontSize: 11, color: '#16a34a', fontWeight: '700', marginTop: 3 }}>
+                    ₹ {Number(customValue || 0).toLocaleString('en-IN')}
+                  </Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.inputLabel}>INSTALLMENT (₹) *</Text>
@@ -1015,8 +1019,14 @@ export const ChitGroupDetailScreen: React.FC<{ route: any; navigation: any }> = 
                     style={styles.textInput}
                     keyboardType="numeric"
                     value={customerEnrollInstallment}
-                    onChangeText={setCustomerEnrollInstallment}
+                    onChangeText={(txt) => {
+                      const clean = txt.replace(/\D/g, '');
+                      setCustomerEnrollInstallment(clean);
+                    }}
                   />
+                  <Text style={{ fontSize: 11, color: '#2563eb', fontWeight: '700', marginTop: 3 }}>
+                    ₹ {Number(customerEnrollInstallment || 0).toLocaleString('en-IN')}
+                  </Text>
                 </View>
               </View>
             </ScrollView>

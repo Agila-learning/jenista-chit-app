@@ -774,7 +774,10 @@ export const DataSyncManager = {
 
     // 1. Sync directly to MongoDB customer record (both PATCH /customers/:id and POST /customers/:id/chits)
     const targetLookupId = targetCust?.mongoId || targetCust?.id || params.customerId;
-    const otherChits = existingChits.filter((ch: any) => ch.groupId !== params.groupId);
+    // Keep other chits, including other plans/tickets within the same group
+    const otherChits = existingChits.filter((ch: any) => 
+      !(ch.groupId === params.groupId && String(ch.ticketNumber) === String(nextTicket))
+    );
     try {
       const baseUrl = await getActiveBaseUrl();
       // Update customer scheme and interestedPlan in backend
