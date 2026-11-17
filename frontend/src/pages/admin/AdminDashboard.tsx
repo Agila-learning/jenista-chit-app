@@ -50,6 +50,7 @@ import {
   type PaymentRequest
 } from '../../utils/paymentRequestsData';
 import { purgeMockData, isMockGroup, isMockCustomer, isDeletedGroup } from '../../utils/cleanMockData';
+import { CurrencyInput } from '../../components/common/CurrencyInput';
 import { addSystemNotification } from '../../utils/notificationsData';
 import { cascadeDeleteCustomer, cascadeDeleteGroup, isGroupDeleted, isCustomerOrLeadDeleted } from '../../utils/cascadeDelete';
 import {
@@ -2465,7 +2466,7 @@ export const AdminDashboard = () => {
 
         {/* Modal: Add Customer into Selected Group */}
         {isAddCustomerModalOpen && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
+          <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
             <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-lg border border-slate-200 max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
                 <div>
@@ -2477,7 +2478,7 @@ export const AdminDashboard = () => {
                 </button>
               </div>
 
-              <div className="space-y-4">
+              <form onSubmit={(e) => { e.preventDefault(); handleEnrollCustomer(); }} data-smart-enter="true" className="space-y-4">
                 {/* Search Customer Input */}
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
@@ -2641,24 +2642,21 @@ export const AdminDashboard = () => {
                   </div>
                 </div>
 
-                {/* Chit Value & Installment */}
+                {/* Chit Value & Installment with Indian Currency Comma Reflection */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                       Chit Value (₹) *
                     </label>
-                    <input
-                      type="number"
-                      step="5000"
-                      placeholder="e.g. 100000"
-                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    <CurrencyInput
                       value={customChitValue}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setCustomChitValue(val);
+                      onChange={(raw) => {
+                        setCustomChitValue(String(raw));
                         const monthsNum = Number(customerEnrollMonths) || 20;
-                        setCustomerEnrollInstallment(val && monthsNum > 0 ? Math.round(Number(val) / monthsNum).toString() : '');
+                        setCustomerEnrollInstallment(raw > 0 && monthsNum > 0 ? String(Math.round(raw / monthsNum)) : '');
                       }}
+                      placeholder="1,00,000"
+                      required
                     />
                   </div>
 
@@ -2666,11 +2664,11 @@ export const AdminDashboard = () => {
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                       Monthly Installment (₹) *
                     </label>
-                    <input
-                      type="number"
-                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    <CurrencyInput
                       value={customerEnrollInstallment}
-                      onChange={(e) => setCustomerEnrollInstallment(e.target.value)}
+                      onChange={(raw) => setCustomerEnrollInstallment(String(raw))}
+                      placeholder="5,000"
+                      required
                     />
                   </div>
                 </div>
@@ -2684,15 +2682,14 @@ export const AdminDashboard = () => {
                     Cancel
                   </button>
                   <button
-                    type="button"
+                    type="submit"
                     className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition-colors disabled:opacity-50"
-                    onClick={handleEnrollCustomer}
                     disabled={!foundCustomer}
                   >
                     Enroll Customer ({customerEnrollScheme})
                   </button>
                 </div>
-              </div>
+              </form>
             </div>
           </div>
         )}

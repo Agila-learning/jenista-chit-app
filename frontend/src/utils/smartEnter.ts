@@ -2,14 +2,15 @@
  * Jenista Chits - Smart Enter Navigation Engine
  * 
  * Capabilities:
- * - Enter advances focus sequentially to the next editable field.
+ * - Enter advances focus sequentially to the next editable field (input, select, textarea).
  * - Shift + Enter navigates backward to the previous field.
  * - Skips disabled, hidden, readonly, and offscreen elements.
+ * - Automatically selects input contents for rapid data entry.
  * - Handles dropdowns (<select>) and autocomplete comboboxes cleanly.
  * - Preserves native multiline newline insertion inside <textarea>.
- * - Prevents unexpected premature form submissions.
- * - Submits only when the final field is reached and form passes validation.
- * - Supports modal dialogs, tab containers, and full data-entry forms.
+ * - Prevents inadvertent premature form submissions on intermediate inputs.
+ * - Submits or triggers primary action when the final field is reached.
+ * - Universal scope resolution: works seamlessly across forms, modal popups, and tabbed dialogs.
  */
 
 import { useEffect } from 'react';
@@ -18,8 +19,7 @@ export const FOCUSABLE_SELECTOR = [
   'input:not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([disabled]):not([readonly])',
   'select:not([disabled]):not([readonly])',
   'textarea:not([disabled]):not([readonly])',
-  '[contenteditable="true"]',
-  'button[type="submit"]:not([disabled])'
+  '[contenteditable="true"]'
 ].join(', ');
 
 /**
@@ -52,8 +52,6 @@ export const handleSmartEnterKeyDown = (
 
   // 1. Preserve native multiline text behavior in textarea
   if (target.tagName === 'TEXTAREA') {
-    // Normal Enter creates newline
-    // Ctrl+Enter or Cmd+Enter allows quick form submission
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       const form = target.closest('form');
@@ -70,27 +68,29 @@ export const handleSmartEnterKeyDown = (
     return;
   }
 
-  // 2. If user intentionally pressed Enter on a submit button or action button, let default behavior execute
-  if (target.tagName === 'BUTTON' && (target as HTMLButtonElement).type === 'submit') {
+  // 2. If user intentionally pressed Enter on a button or link, let native click execute
+  if (target.tagName === 'BUTTON' || target.tagName === 'A') {
     return;
   }
 
-  // 3. Determine scoping container (active modal dialog, enclosing form, or provided container)
+  // 3. Determine scoping container (prefer closest form, modal dialog, smart container, or body)
   const container = 
     containerElement || 
-    target.closest('[role="dialog"]') || 
-    target.closest('.modal-container') || 
     target.closest('form') || 
+    target.closest('[role="dialog"]') || 
+    target.closest('[data-smart-enter="true"]') ||
+    target.closest('.modal-container') || 
+    target.closest('.fixed') || 
     document.body;
 
-  // 4. Query all eligible focusable interactive elements
+  // 4. Query all eligible focusable interactive elements within this container
   const allCandidates = Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
   const focusables = allCandidates.filter(isElementVisibleAndInteractive);
 
   const currentIndex = focusables.indexOf(target);
   if (currentIndex === -1) return;
 
-  // Intercept default enter behavior to prevent inadvertent form submission
+  // Intercept default enter behavior
   e.preventDefault();
 
   // Shift + Enter: Move backward
@@ -98,73 +98,84 @@ export const handleSmartEnterKeyDown = (
     if (currentIndex > 0) {
       const prevElement = focusables[currentIndex - 1];
       prevElement.focus();
-      if (prevElement instanceof HTMLInputElement && (prevElement.type === 'text' || prevElement.type === 'number')) {
-        prevElement.select();
+      if (prevElement instanceof HTMLInputElement) {
+        prevElement.select?.();
       }
+      prevElement.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     }
     return;
   }
 
-  // Regular Enter: Move forward
-  const isLastField = currentIndex === focusables.length - 1;
-  const isBeforeSubmitButton = 
-    currentIndex === focusables.length - 2 && 
-    (focusables[focusables.length - 1].getAttribute('type') === 'submit' || focusables[focusables.length - 1].tagName === 'BUTTON');
-
-  if (!isLastField && !isBeforeSubmitButton) {
+  // Regular Enter: Move forward to next interactive element
+  if (currentIndex < focusables.length - 1) {
     const nextElement = focusables[currentIndex + 1];
     nextElement.focus();
-    if (nextElement instanceof HTMLInputElement && (nextElement.type === 'text' || nextElement.type === 'number')) {
-      nextElement.select();
+    if (nextElement instanceof HTMLInputElement) {
+      nextElement.select?.();
     }
-  } else {
-    // We are at the final field or right before the submit button
-    const form = target.closest('form');
-    if (form) {
-      if (form.checkValidity()) {
-        const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]') as HTMLElement;
-        if (submitBtn) {
-          submitBtn.click();
-        } else if (form.requestSubmit) {
-          form.requestSubmit();
-        }
-      } else {
-        form.reportValidity();
+    nextElement.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    return;
+  }
+
+  // Reached the final field: trigger form submit or primary modal action button
+  const form = target.closest('form');
+  if (form) {
+    if (form.checkValidity()) {
+      const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]') as HTMLElement;
+      if (submitBtn) {
+        submitBtn.click();
+      } else if (form.requestSubmit) {
+        form.requestSubmit();
       }
     } else {
-      // Non-form modal container: focus the primary action button if available
-      const actionBtn = container.querySelector('button.btn-primary, button[data-primary="true"]') as HTMLElement;
-      if (actionBtn) {
-        actionBtn.click();
-      }
+      form.reportValidity();
+    }
+  } else {
+    // Non-form modal container: find primary action or submit button in the modal
+    const actionBtn = container.querySelector(
+      'button[type="submit"], button.btn-primary, button[data-primary="true"], button.bg-blue-600, button.bg-emerald-600'
+    ) as HTMLElement;
+    if (actionBtn && actionBtn !== target) {
+      actionBtn.click();
     }
   }
 };
 
 /**
- * React hook to enable Smart Enter Navigation on a container or form ref
+ * React hook to enable Smart Enter Navigation globally or on a container
  */
 export const useSmartEnterNavigation = (enabled = true) => {
   useEffect(() => {
     if (!enabled) return;
 
     const listener = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter') return;
       const target = e.target as HTMLElement;
       if (!target) return;
 
-      // Only handle if inside a form, dialog, or container marked with data-smart-enter
-      const isSmartContainer = 
-        target.closest('[data-smart-enter="true"]') || 
-        target.closest('form') || 
-        target.closest('[role="dialog"]');
+      // Allow natural clicks on buttons
+      if (target.tagName === 'BUTTON' || target.tagName === 'A') return;
+      // Allow multiline enter in textarea unless with modifier
+      if (target.tagName === 'TEXTAREA' && !e.ctrlKey && !e.metaKey) return;
 
-      if (isSmartContainer) {
-        handleSmartEnterKeyDown(e, isSmartContainer as HTMLElement);
+      // Handle any input or select
+      if (['INPUT', 'SELECT'].includes(target.tagName) || target.getAttribute('contenteditable') === 'true') {
+        const container = 
+          target.closest('form') || 
+          target.closest('[role="dialog"]') || 
+          target.closest('[data-smart-enter="true"]') ||
+          target.closest('.modal-container') || 
+          target.closest('.fixed') || 
+          document.body;
+
+        if (container) {
+          handleSmartEnterKeyDown(e, container as HTMLElement);
+        }
       }
     };
 
-    window.addEventListener('keydown', listener);
-    return () => window.removeEventListener('keydown', listener);
+    window.addEventListener('keydown', listener, true);
+    return () => window.removeEventListener('keydown', listener, true);
   }, [enabled]);
 };
 

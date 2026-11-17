@@ -23,6 +23,7 @@ import { isMockGroup, isDeletedGroup, isMockCustomer } from '../../../utils/clea
 import { notifyPaymentSync } from '../../../utils/paymentRequestsData';
 import { useAuth } from '../../../store/AuthContext';
 import { fetchClient } from '../../../api/client';
+import { CurrencyInput } from '../../../components/common/CurrencyInput';
 
 export const ChitGroupDetail = () => {
   const { id } = useParams();
@@ -422,8 +423,10 @@ export const ChitGroupDetail = () => {
     const custName = selectedCustomer.name || selectedCustomer.fullName || 'Customer';
     const custId = selectedCustomer.id || selectedCustomer.customerCode || selectedCustomer._id;
     const custMobile = selectedCustomer.mobile || selectedCustomer.phone || '';
-    const finalChitValue = Number(customChitValueInput) > 0 ? Number(customChitValueInput) : chitValue;
-    const finalInstallment = Number(customInstallmentInput) > 0 ? Number(customInstallmentInput) : (duration > 0 ? Math.round(finalChitValue / duration) : installmentPerMember);
+    const cleanChitVal = Number(String(customChitValueInput).replace(/\D/g, ''));
+    const cleanInstVal = Number(String(customInstallmentInput).replace(/\D/g, ''));
+    const finalChitValue = cleanChitVal > 0 ? cleanChitVal : (Number(chitValue) || 100000);
+    const finalInstallment = cleanInstVal > 0 ? cleanInstVal : (duration > 0 ? Math.round(finalChitValue / duration) : (Number(installmentPerMember) || 5000));
 
     // 1. Add to chitGroupMemberships in localStorage
     const existingMemberships = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
@@ -1346,7 +1349,7 @@ export const ChitGroupDetail = () => {
       {/* MODAL 1: MANAGE MEMBERS DIRECTORY & ENROLLMENT MODAL       */}
       {/* ========================================================= */}
       {isAddMemberModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-white rounded-3xl max-w-xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
             {/* Modal Header */}
             <div className="px-6 py-4.5 bg-[#102B63] text-white flex items-center justify-between shrink-0">
@@ -1443,7 +1446,7 @@ export const ChitGroupDetail = () => {
                                   </span>
                                 </div>
                                 <div className="text-[11px] text-slate-400 font-mono truncate">
-                                  ID: {m.customerId} {m.mobile ? `• 📞 ${m.mobile}` : ''} • Scheme: {m.scheme || 'Regular'}
+                                  ID: {m.customerId} {m.mobile ? `• 📞 ${m.mobile}` : ''} • Scheme: {m.scheme || 'Regular'} • Value: ₹{Number(m.chitValue || chitValue || 0).toLocaleString('en-IN')} • Due: ₹{Number(m.monthlyInstallment || installmentPerMember || 0).toLocaleString('en-IN')}
                                 </div>
                               </div>
                             </div>
@@ -1611,45 +1614,35 @@ export const ChitGroupDetail = () => {
                   </div>
                 </div>
 
-                {/* Chit Value & Monthly Installment with Comma Reflection */}
+                {/* Chit Value & Monthly Installment with Live Indian Comma CurrencyInput */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                       Chit Value (₹) *
                     </label>
-                    <input
-                      type="number"
+                    <CurrencyInput
                       value={customChitValueInput}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setCustomChitValueInput(val);
-                        const numVal = Number(val) || 0;
-                        if (numVal > 0 && duration > 0) {
-                          setCustomInstallmentInput(String(Math.round(numVal / duration)));
+                      onChange={(raw) => {
+                        setCustomChitValueInput(String(raw));
+                        if (raw > 0 && duration > 0) {
+                          setCustomInstallmentInput(String(Math.round(raw / duration)));
                         }
                       }}
-                      placeholder={String(chitValue)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                      placeholder={Number(chitValue || 100000).toLocaleString('en-IN')}
+                      required
                     />
-                    <p className="text-[11px] text-emerald-600 font-bold mt-1">
-                      ₹ {Number(customChitValueInput || chitValue || 0).toLocaleString('en-IN')}
-                    </p>
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                       Monthly Installment (₹) *
                     </label>
-                    <input
-                      type="number"
+                    <CurrencyInput
                       value={customInstallmentInput}
-                      onChange={(e) => setCustomInstallmentInput(e.target.value)}
-                      placeholder={String(installmentPerMember)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                      onChange={(raw) => setCustomInstallmentInput(String(raw))}
+                      placeholder={Number(installmentPerMember || 5000).toLocaleString('en-IN')}
+                      required
                     />
-                    <p className="text-[11px] text-blue-600 font-bold mt-1">
-                      ₹ {Number(customInstallmentInput || installmentPerMember || 0).toLocaleString('en-IN')}
-                    </p>
                   </div>
                 </div>
 
@@ -1695,7 +1688,7 @@ export const ChitGroupDetail = () => {
       {/* MODAL 2: COLLECT INSTALLMENT RECEIPT ENTRY                 */}
       {/* ========================================================= */}
       {isCollectModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             {/* Modal Header */}
             <div className="px-6 py-4.5 bg-[#102B63] text-white flex items-center justify-between shrink-0">
@@ -1818,13 +1811,11 @@ export const ChitGroupDetail = () => {
                         </span>
                       )}
                     </div>
-                    <input
-                      type="number"
+                    <CurrencyInput
                       value={collectAmount}
-                      onChange={(e) => setCollectAmount(e.target.value)}
+                      onChange={(raw) => setCollectAmount(String(raw))}
                       required
                       placeholder={Number(collectMember?.monthlyInstallment || installmentPerMember || 5000).toLocaleString('en-IN')}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
                     />
                     {(() => {
                       const dueAmt = Number(collectMember?.monthlyInstallment || installmentPerMember || 5000);

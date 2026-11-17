@@ -31,6 +31,7 @@ import { StaffManagement } from './pages/admin/management/StaffManagement';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { purgeMockData } from './utils/cleanMockData';
+import { useSmartEnterNavigation } from './utils/smartEnter';
 
 // Purge any legacy mock customers and groups on startup
 purgeMockData();
@@ -38,6 +39,7 @@ purgeMockData();
 const queryClient = new QueryClient();
 
 function App() {
+  useSmartEnterNavigation(true);
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>

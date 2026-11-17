@@ -24,6 +24,11 @@ export const ChitGroupList = () => {
   const location = useLocation();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterValueRange, setFilterValueRange] = useState('');
+  const [filterDuration, setFilterDuration] = useState('');
+  const [sortBy, setSortBy] = useState('default');
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [groups, setGroups] = useState<ChitGroup[]>([]);
   
   // Create Modal State
@@ -259,17 +264,76 @@ export const ChitGroupList = () => {
     };
   };
 
-  const filteredGroups = groups.filter(g => {
-    const matchesSearch = g.id.toLowerCase().includes(searchTerm.toLowerCase()) || g.name.toLowerCase().includes(searchTerm.toLowerCase());
-    if (!matchesSearch) return false;
-    if (!filterType) return true;
-    const bd = getGroupBreakdown(g);
-    if (filterType === 'MULTI') return g.type === 'MULTI' || bd.isMulti;
-    if (filterType === 'REGULAR') return g.type === 'REGULAR' || bd.reg > 0;
-    if (filterType === 'FIXED') return g.type === 'FIXED' || bd.fix > 0;
-    if (filterType === 'AUCTION') return g.type === 'AUCTION' || bd.auc > 0;
-    return g.type === filterType;
-  });
+  const activeFiltersCount = 
+    (filterType ? 1 : 0) + 
+    (filterStatus ? 1 : 0) + 
+    (filterValueRange ? 1 : 0) + 
+    (filterDuration ? 1 : 0) + 
+    (sortBy !== 'default' ? 1 : 0);
+
+  const handleClearFilters = () => {
+    setSearchTerm('');
+    setFilterType('');
+    setFilterStatus('');
+    setFilterValueRange('');
+    setFilterDuration('');
+    setSortBy('default');
+  };
+
+  const filteredGroups = useMemo(() => {
+    const list = groups.filter(g => {
+      // 1. Search term (Group Name or ID)
+      const matchesSearch = !searchTerm || 
+        g.id.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        g.name.toLowerCase().includes(searchTerm.toLowerCase());
+      if (!matchesSearch) return false;
+
+      // 2. Scheme Type Filter
+      if (filterType) {
+        const bd = getGroupBreakdown(g);
+        if (filterType === 'MULTI' && !(g.type === 'MULTI' || bd.isMulti)) return false;
+        if (filterType === 'REGULAR' && !(g.type === 'REGULAR' || bd.reg > 0)) return false;
+        if (filterType === 'FIXED' && !(g.type === 'FIXED' || bd.fix > 0)) return false;
+        if (filterType === 'AUCTION' && !(g.type === 'AUCTION' || bd.auc > 0)) return false;
+      }
+
+      // 3. Status Filter
+      if (filterStatus && g.status !== filterStatus) {
+        return false;
+      }
+
+      // 4. Value Range Filter
+      if (filterValueRange) {
+        const val = g.value || 0;
+        if (filterValueRange === 'under-1l' && val >= 100000) return false;
+        if (filterValueRange === '1l-3l' && (val < 100000 || val > 300000)) return false;
+        if (filterValueRange === '3l-5l' && (val < 300000 || val > 500000)) return false;
+        if (filterValueRange === '5l-10l' && (val < 500000 || val > 1000000)) return false;
+        if (filterValueRange === 'above-10l' && val <= 1000000) return false;
+      }
+
+      // 5. Duration Filter
+      if (filterDuration) {
+        const dur = g.duration || 0;
+        if (filterDuration === 'short' && dur > 20) return false;
+        if (filterDuration === 'medium' && (dur <= 20 || dur > 30)) return false;
+        if (filterDuration === 'long' && dur <= 30) return false;
+      }
+
+      return true;
+    });
+
+    // Apply Sorting
+    return list.sort((a, b) => {
+      if (sortBy === 'value-desc') return (b.value || 0) - (a.value || 0);
+      if (sortBy === 'value-asc') return (a.value || 0) - (b.value || 0);
+      if (sortBy === 'duration-asc') return (a.duration || 0) - (b.duration || 0);
+      if (sortBy === 'duration-desc') return (b.duration || 0) - (a.duration || 0);
+      if (sortBy === 'members-desc') return (b.filled || 0) - (a.filled || 0);
+      if (sortBy === 'name-asc') return a.name.localeCompare(b.name);
+      return 0;
+    });
+  }, [groups, searchTerm, filterType, filterStatus, filterValueRange, filterDuration, sortBy, memberships]);
 
   // Calculate dynamic stats
   const totalGroups = groups.length;
@@ -430,9 +494,18 @@ export const ChitGroupList = () => {
           <p className="text-sm text-neutral-500">Manage formations, track active cycles, and monitor group health.</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary">
+          <Button 
+            variant={isFilterOpen || activeFiltersCount > 0 ? 'primary' : 'secondary'}
+            onClick={() => setIsFilterOpen(prev => !prev)}
+            className="relative"
+          >
             <Filter className="w-4 h-4 mr-2" />
             Filters
+            {activeFiltersCount > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.5 bg-amber-400 text-slate-900 rounded-full text-[10px] font-black leading-none">
+                {activeFiltersCount}
+              </span>
+            )}
           </Button>
           <Button variant="primary" onClick={() => setIsModalOpen(true)}>
             Create Group
@@ -462,31 +535,134 @@ export const ChitGroupList = () => {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1 max-w-md">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-4 w-4 text-slate-400" />
+        <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="relative flex-1 max-w-md w-full">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-4 w-4 text-slate-400" />
+              </div>
+              <Input 
+                className="pl-10 bg-white" 
+                placeholder="Search by group ID or name..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
             </div>
-            <Input 
-              className="pl-10 bg-white" 
-              placeholder="Search by group ID or name..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              <select 
+                className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none bg-white text-slate-700 shadow-2xs"
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+              >
+                <option value="">All Schemes</option>
+                <option value="MULTI">Multi-Scheme</option>
+                <option value="REGULAR">Regular</option>
+                <option value="FIXED">Fixed</option>
+                <option value="AUCTION">Auction</option>
+              </select>
+
+              <select 
+                className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none bg-white text-slate-700 shadow-2xs"
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+              >
+                <option value="">All Statuses</option>
+                <option value="ACTIVE">Active</option>
+                <option value="FORMATION">In Formation</option>
+                <option value="COMPLETED">Completed</option>
+              </select>
+
+              <select 
+                className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none bg-white text-slate-700 shadow-2xs"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+              >
+                <option value="default">Sort: Default</option>
+                <option value="value-desc">Chit Value (High &rarr; Low)</option>
+                <option value="value-asc">Chit Value (Low &rarr; High)</option>
+                <option value="duration-asc">Duration (Shortest)</option>
+                <option value="duration-desc">Duration (Longest)</option>
+                <option value="members-desc">Most Enrolled Members</option>
+                <option value="name-asc">Group Name (A-Z)</option>
+              </select>
+
+              {activeFiltersCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearFilters}
+                  className="px-2.5 py-1.5 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition border border-rose-200"
+                >
+                  Clear All ({activeFiltersCount})
+                </button>
+              )}
+            </div>
           </div>
-          <div className="flex gap-2">
-            <select 
-              className="border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none bg-white text-slate-600"
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-            >
-              <option value="">All Schemes</option>
-              <option value="MULTI">Multi-Scheme</option>
-              <option value="REGULAR">Regular</option>
-              <option value="FIXED">Fixed</option>
-              <option value="AUCTION">Auction</option>
-            </select>
-          </div>
+
+          {/* Collapsible Advanced Filters Bar */}
+          {isFilterOpen && (
+            <div className="pt-3 border-t border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white p-3 rounded-xl border border-slate-200 animate-in fade-in duration-150">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Chit Value Range
+                </label>
+                <select
+                  className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-slate-50/50"
+                  value={filterValueRange}
+                  onChange={(e) => setFilterValueRange(e.target.value)}
+                >
+                  <option value="">All Chit Values</option>
+                  <option value="under-1l">Under ₹1,00,000</option>
+                  <option value="1l-3l">₹1,00,000 - ₹3,00,000</option>
+                  <option value="3l-5l">₹3,00,000 - ₹5,00,000</option>
+                  <option value="5l-10l">₹5,00,000 - ₹10,00,000</option>
+                  <option value="above-10l">Above ₹10,00,000</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Duration (Months)
+                </label>
+                <select
+                  className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-slate-50/50"
+                  value={filterDuration}
+                  onChange={(e) => setFilterDuration(e.target.value)}
+                >
+                  <option value="">All Durations</option>
+                  <option value="short">Short (&le; 20 Months)</option>
+                  <option value="medium">Medium (21 - 30 Months)</option>
+                  <option value="long">Long (&gt; 30 Months)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Scheme Structure
+                </label>
+                <select
+                  className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-slate-50/50"
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value)}
+                >
+                  <option value="">All Structures</option>
+                  <option value="MULTI">Multi-Scheme (Hybrid)</option>
+                  <option value="REGULAR">Regular Dividend Only</option>
+                  <option value="FIXED">Fixed Chit Only</option>
+                  <option value="AUCTION">Auction Bidding Only</option>
+                </select>
+              </div>
+
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={handleClearFilters}
+                  className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg transition"
+                >
+                  Reset All Filters
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="overflow-x-auto">
