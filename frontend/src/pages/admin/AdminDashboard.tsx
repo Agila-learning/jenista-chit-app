@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users,
+  Phone,
   Layers,
   CheckCircle2,
   Plus,
@@ -1029,7 +1030,13 @@ export const AdminDashboard = () => {
         (cleanMobile && cMobile === cleanMobile);
       if (isMatch) {
         foundInLocal = true;
-        const existingChits = Array.isArray(c.chits) ? c.chits.filter((ch: any) => ch.groupId !== selectedGroup.id && ch.groupName !== selectedGroup.name) : [];
+        // Preserve all other plans/chits for this customer in this group:
+        const existingChits = Array.isArray(c.chits) 
+          ? c.chits.filter((ch: any) => !(
+              (ch.groupId === selectedGroup.id || ch.groupName === selectedGroup.name) &&
+              String(ch.ticketNumber) === String(newTicketNum)
+            )) 
+          : [];
         return {
           ...c,
           scheme: memberScheme,
@@ -1055,8 +1062,12 @@ export const AdminDashboard = () => {
     setCustomers(updatedLocal);
 
     // 2. Update enrolledMembers directly on selectedGroup & chitGroups
+    // Preserve previous tickets of this customer in this group (e.g. 1 Lakh plan + 2 Lakh plan):
     const updatedMembers = [
-      ...currentEnrolled.filter((m: any) => m.customerId !== memberRecord.customerId && m.mobile !== memberRecord.mobile),
+      ...currentEnrolled.filter((m: any) => !(
+        (m.customerId === memberRecord.customerId || m.mobile === memberRecord.mobile) &&
+        String(m.ticketNumber) === String(memberRecord.ticketNumber)
+      )),
       memberRecord
     ];
     const updatedGroup = {
@@ -1075,8 +1086,13 @@ export const AdminDashboard = () => {
 
     // 3. Save to persistent chitGroupMemberships table in localStorage
     const allMemberships = JSON.parse(localStorage.getItem('chitGroupMemberships') || '[]');
+    // Keep all existing memberships for this customer in this group, only replace if identical ticketNumber:
     const newMemberships = [
-      ...allMemberships.filter((m: any) => !((m.groupId === selectedGroup.id || m.groupName === selectedGroup.name) && (m.customerId === memberRecord.customerId || m.mobile === memberRecord.mobile))),
+      ...allMemberships.filter((m: any) => !(
+        (m.groupId === selectedGroup.id || m.groupName === selectedGroup.name) &&
+        (m.customerId === memberRecord.customerId || m.mobile === memberRecord.mobile) &&
+        String(m.ticketNumber) === String(memberRecord.ticketNumber)
+      )),
       {
         groupId: selectedGroup.id,
         groupName: selectedGroup.name,
@@ -1177,97 +1193,93 @@ export const AdminDashboard = () => {
       )
     );
 
-    // Merge into comprehensive customer map so no member is ever missing
-    const customerMap = new Map<string, any>();
+    // Merge every enrolled ticket into distinct roster entries (supports customers holding multiple plans in same group)
+    const ticketRosterMap = new Map<string, any>();
 
-    directMembers.forEach((m: any) => {
+    const addTicketEntry = (m: any) => {
       const cleanMPhone = (m.mobile || m.phone || '').replace(/\D/g, '');
-      const key = m.customerId || cleanMPhone || m.mobile || m.ticketNumber;
-      if (key) {
-        const fullCust = allCustomersFromDisk.find((c: any) =>
-          c.id === m.customerId || (cleanMPhone && (c.mobile || c.phone || '').replace(/\D/g, '') === cleanMPhone)
-        );
-        customerMap.set(key, {
-          id: m.customerId || cleanMPhone || 'CUST',
-          name: fullCust?.name || fullCust?.fullName || m.customerName || 'Customer',
-          mobile: m.mobile || m.phone || fullCust?.mobile || '—',
-          phone: m.mobile || m.phone || fullCust?.phone || '—',
-          pending: m.pending ?? fullCust?.pending ?? 0,
-          chits: [{
-            groupId: activeGroup.id,
-            groupName: activeGroup.name,
-            chitValue: m.chitValue || activeGroup.value,
-            monthlyInstallment: m.monthlyInstallment || (Number(activeGroup.value) * 0.05),
-            scheme: m.scheme || fullCust?.scheme || 'Regular',
-            months: m.months || m.duration || fullCust?.months || 20,
-            duration: m.duration || m.months || 20,
-            ticketNumber: m.ticketNumber,
-            paymentStatus: m.paymentStatus || 'DUE',
-            dueDate: m.dueDate
-          }]
-        });
-      }
-    });
+      const tNum = String(m.ticketNumber || '1').trim();
+      const cId = String(m.customerId || cleanMPhone || m.mobile || 'CUST').trim();
+      const seatKey = `${cId}_#${tNum}`;
 
-    groupMembersFromStore.forEach((m: any) => {
-      const cleanMPhone = (m.mobile || m.phone || '').replace(/\D/g, '');
-      const key = m.customerId || cleanMPhone || m.mobile || m.ticketNumber;
-      if (key && !customerMap.has(key)) {
-        const fullCust = allCustomersFromDisk.find((c: any) =>
-          c.id === m.customerId || (cleanMPhone && (c.mobile || c.phone || '').replace(/\D/g, '') === cleanMPhone)
-        );
-        customerMap.set(key, {
-          id: m.customerId || cleanMPhone || 'CUST',
-          name: fullCust?.name || fullCust?.fullName || m.customerName || 'Customer',
-          mobile: m.mobile || m.phone || fullCust?.mobile || '—',
-          phone: m.mobile || m.phone || fullCust?.phone || '—',
-          pending: m.pending ?? fullCust?.pending ?? 0,
-          totalPaid: m.totalPaid ?? fullCust?.totalPaid ?? 0,
-          scheme: m.scheme || fullCust?.scheme || 'Regular',
-          months: m.months || m.duration || fullCust?.months || 20,
-          chits: [{
-            groupId: activeGroup.id,
-            groupName: activeGroup.name,
-            chitValue: m.chitValue || activeGroup.value,
-            monthlyInstallment: m.monthlyInstallment || (Number(activeGroup.value) * 0.05),
-            scheme: m.scheme || fullCust?.scheme || 'Regular',
-            months: m.months || m.duration || fullCust?.months || 20,
-            duration: m.duration || m.months || 20,
-            ticketNumber: m.ticketNumber,
-            paymentStatus: m.paymentStatus || 'DUE',
-            dueDate: m.dueDate
-          }]
-        });
-      }
-    });
+      if (ticketRosterMap.has(seatKey)) return;
+
+      const fullCust = allCustomersFromDisk.find((c: any) =>
+        c.id === m.customerId || (cleanMPhone && (c.mobile || c.phone || '').replace(/\D/g, '') === cleanMPhone)
+      );
+
+      const tChitValue = Number(m.chitValue) || Number(activeGroup.value) || 100000;
+      const tDuration = Number(m.duration || m.months || activeGroup.duration || 20);
+      const tInstallment = Number(m.monthlyInstallment) || (tDuration > 0 ? Math.round(tChitValue / tDuration) : 5000);
+      const tScheme = m.scheme || fullCust?.scheme || 'Regular';
+
+      ticketRosterMap.set(seatKey, {
+        id: cId,
+        customerCode: fullCust?.customerCode || m.customerId,
+        mongoId: fullCust?.mongoId || fullCust?._id,
+        name: fullCust?.name || fullCust?.fullName || m.customerName || 'Customer',
+        mobile: m.mobile || m.phone || fullCust?.mobile || '—',
+        phone: m.mobile || m.phone || fullCust?.phone || '—',
+        pending: m.pending ?? fullCust?.pending ?? 0,
+        totalPaid: m.totalPaid ?? fullCust?.totalPaid ?? 0,
+        scheme: tScheme,
+        months: tDuration,
+        duration: tDuration,
+        chitValue: tChitValue,
+        monthlyInstallment: tInstallment,
+        ticketNumber: tNum,
+        paymentStatus: m.paymentStatus || 'DUE',
+        dueDate: m.dueDate,
+        joiningDate: m.joiningDate || m.joinedAt || fullCust?.createdAt,
+        monthJoined: m.monthJoined || fullCust?.monthJoined,
+        paymentStartsMonth: m.paymentStartsMonth || fullCust?.paymentStartsMonth,
+        chits: [{
+          groupId: activeGroup.id,
+          groupName: activeGroup.name,
+          chitValue: tChitValue,
+          monthlyInstallment: tInstallment,
+          scheme: tScheme,
+          months: tDuration,
+          duration: tDuration,
+          ticketNumber: tNum,
+          paymentStatus: m.paymentStatus || 'DUE',
+          dueDate: m.dueDate,
+          joiningDate: m.joiningDate || m.joinedAt
+        }]
+      });
+    };
+
+    directMembers.forEach(addTicketEntry);
+    groupMembersFromStore.forEach(addTicketEntry);
 
     enrolledFromCustomers.forEach((c: any) => {
-      const cleanCPhone = (c.mobile || c.phone || '').replace(/\D/g, '');
-      const key = c.id || cleanCPhone || c.mobile;
-      if (key) {
-        const matchedChit = c.chits?.find((ch: any) =>
-          ch.groupId === activeGroup.id ||
-          ch.groupId === activeGroup.code ||
-          ch.groupName === activeGroup.name ||
-          ch.groupId === activeGroup.name
-        ) || c.chits?.[0];
+      const matchedChits = c.chits?.filter((ch: any) =>
+        ch.groupId === activeGroup.id ||
+        ch.groupId === activeGroup.code ||
+        ch.groupName === activeGroup.name ||
+        ch.groupId === activeGroup.name
+      ) || [];
 
-        if (customerMap.has(key)) {
-          const existing = customerMap.get(key);
-          customerMap.set(key, {
-            ...existing,
-            chits: [matchedChit || existing.chits?.[0]]
-          });
-        } else {
-          customerMap.set(key, {
-            ...c,
-            chits: [matchedChit]
-          });
-        }
-      }
+      matchedChits.forEach((ch: any) => {
+        addTicketEntry({
+          customerId: c.id,
+          customerName: c.name || c.fullName,
+          mobile: c.mobile || c.phone,
+          phone: c.mobile || c.phone,
+          ticketNumber: ch.ticketNumber,
+          scheme: ch.scheme,
+          months: ch.months || ch.duration,
+          duration: ch.duration || ch.months,
+          chitValue: ch.chitValue,
+          monthlyInstallment: ch.monthlyInstallment,
+          paymentStatus: ch.paymentStatus,
+          dueDate: ch.dueDate,
+          joiningDate: ch.joiningDate
+        });
+      });
     });
 
-    const groupCustomers = Array.from(customerMap.values());
+    const groupCustomers = Array.from(ticketRosterMap.values());
 
     const totalGroupMembers = Number(activeGroup.members || 0);
     const groupDuration = Number(activeGroup.duration || 20);
@@ -2037,7 +2049,7 @@ export const AdminDashboard = () => {
                         const paymentStartsFrom = c.paymentStartsMonth || chit?.paymentStartsMonth || (!isNaN(nextMonthDate.getTime()) ? `${nextMonthDate.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}` : '—');
 
                         return (
-                          <tr key={c.id} className="hover:bg-slate-50/70 transition-colors">
+                          <tr key={`${c.id}_t${chit?.ticketNumber || c.ticketNumber}`} className="hover:bg-slate-50/70 transition-colors">
                             <td className="px-5 py-3">
                               <button
                                 onClick={() => navigate(`/admin/customers/${custTargetId}/schedule?group=${encodeURIComponent(groupIdentifier)}`)}
@@ -3769,6 +3781,17 @@ export const AdminDashboard = () => {
             <span>Staff Team</span>
           </button>
 
+          {/* Customer 360 Lookup Button */}
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('open-customer-360'))}
+            className="col-span-1 sm:col-auto px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs sm:text-sm shadow-xs transition-all flex items-center justify-center gap-1.5 active:scale-95 border border-amber-600/30 cursor-pointer"
+            title="Search customer complete profile, all registered groups & paid months by mobile number (F9)"
+          >
+            <Search className="w-4 h-4" />
+            <span>Customer 360</span>
+            <kbd className="hidden sm:inline-block px-1.5 py-0.2 bg-black/15 rounded text-[10px] font-mono">F9</kbd>
+          </button>
+
           {/* Primary Action: + Add Group */}
           <button
             onClick={() => {
@@ -3779,6 +3802,7 @@ export const AdminDashboard = () => {
           >
             <Plus className="w-4 h-4" />
             <span>Add Group</span>
+            <kbd className="hidden sm:inline-block px-1.5 py-0.2 bg-white/20 rounded text-[10px] font-mono">F3</kbd>
           </button>
 
           {/* Secondary Action: View All Groups */}
@@ -3793,6 +3817,58 @@ export const AdminDashboard = () => {
             <span className="text-xs">&rarr;</span>
           </button>
         </div>
+      </div>
+
+      {/* Customer 360 Quick Lookup Bar by Mobile Number */}
+      <div className="bg-gradient-to-r from-slate-900 via-[#102B63] to-slate-900 p-4 sm:p-5 rounded-2xl shadow-md border border-blue-900/40 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-2xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center text-amber-300 font-bold shrink-0">
+            <Search className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-extrabold text-sm sm:text-base text-white tracking-tight">Customer 360 Statement & History</h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-slate-950 uppercase tracking-wider">
+                F9 / Mobile Lookup
+              </span>
+            </div>
+            <p className="text-xs text-blue-200 mt-0.5">
+              Enter 10-digit mobile number to view all registered groups, plans chosen, paid months, and outstanding balances
+            </p>
+          </div>
+        </div>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const inputEl = (e.currentTarget.elements.namedItem('mobile') as HTMLInputElement);
+            const val = inputEl?.value?.trim();
+            if (val) {
+              window.dispatchEvent(new CustomEvent('open-customer-360', { detail: { mobile: val } }));
+              inputEl.value = '';
+            } else {
+              window.dispatchEvent(new CustomEvent('open-customer-360'));
+            }
+          }}
+          className="flex items-center gap-2 max-w-md w-full"
+        >
+          <div className="relative flex-1">
+            <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              name="mobile"
+              placeholder="Enter mobile number or ID (F9)..."
+              className="w-full pl-10 pr-3 py-2 bg-white text-slate-900 placeholder:text-slate-400 rounded-xl text-xs sm:text-sm font-bold font-mono focus:outline-none focus:ring-2 focus:ring-amber-400 shadow-inner"
+            />
+          </div>
+          <button
+            type="submit"
+            className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs sm:text-sm rounded-xl transition shadow-xs flex items-center gap-1.5 shrink-0 cursor-pointer active:scale-95"
+          >
+            <Search className="w-4 h-4" />
+            <span>Search</span>
+          </button>
+        </form>
       </div>
 
       {/* 2. Business KPI Cards (4 Column Grid) */}

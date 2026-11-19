@@ -4,6 +4,7 @@ import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { QuickActionsModal } from '../common/QuickActionsModal';
 import { ShortcutGuideModal } from '../common/ShortcutGuideModal';
+import { Customer360Modal } from '../common/Customer360Modal';
 import { useGlobalShortcuts } from '../../hooks/useGlobalShortcuts';
 import { useSmartEnterNavigation } from '../../utils/smartEnter';
 
@@ -16,6 +17,20 @@ export const AdminLayout = () => {
   // Keyboard Shortcuts & Quick Actions Modals State
   const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
   const [isShortcutGuideOpen, setIsShortcutGuideOpen] = useState(false);
+  const [isCustomer360Open, setIsCustomer360Open] = useState(false);
+  const [customer360Mobile, setCustomer360Mobile] = useState('');
+
+  // Global event listener to open Customer 360 from anywhere
+  useState(() => {
+    const handleOpen360 = (e: any) => {
+      if (e?.detail?.mobile) {
+        setCustomer360Mobile(e.detail.mobile);
+      }
+      setIsCustomer360Open(true);
+    };
+    window.addEventListener('open-customer-360', handleOpen360);
+    return () => window.removeEventListener('open-customer-360', handleOpen360);
+  });
 
   const toggleSidebar = () => {
     setIsSidebarCollapsed(prev => {
@@ -28,19 +43,27 @@ export const AdminLayout = () => {
   // Enable Smart Enter navigation globally across all form inputs and modals
   useSmartEnterNavigation(true);
 
-  // Enable Global Keyboard Shortcuts (Alt+G, Alt+C, Alt+M, Alt+P, Alt+O, Alt+T, Alt+R, Ctrl+K, Ctrl+S, Esc, Shift+?)
+  // Enable Global Keyboard Shortcuts (F2-F9, Ctrl+Shift, Ctrl+K, Ctrl+S, Esc, Shift+?)
   useGlobalShortcuts({
     onOpenQuickActions: () => {
       setIsShortcutGuideOpen(false);
+      setIsCustomer360Open(false);
       setIsQuickActionsOpen(prev => !prev);
     },
     onOpenShortcutGuide: () => {
       setIsQuickActionsOpen(false);
+      setIsCustomer360Open(false);
       setIsShortcutGuideOpen(prev => !prev);
+    },
+    onOpenCustomer360: () => {
+      setIsQuickActionsOpen(false);
+      setIsShortcutGuideOpen(false);
+      setIsCustomer360Open(prev => !prev);
     },
     onCloseModals: () => {
       setIsQuickActionsOpen(false);
       setIsShortcutGuideOpen(false);
+      setIsCustomer360Open(false);
     }
   });
 
@@ -90,6 +113,16 @@ export const AdminLayout = () => {
       <ShortcutGuideModal
         isOpen={isShortcutGuideOpen}
         onClose={() => setIsShortcutGuideOpen(false)}
+      />
+
+      {/* Global Customer 360 Statement & Mobile Lookup (F9 / Ctrl+Shift+F) */}
+      <Customer360Modal
+        isOpen={isCustomer360Open}
+        onClose={() => {
+          setIsCustomer360Open(false);
+          setCustomer360Mobile('');
+        }}
+        initialMobile={customer360Mobile}
       />
     </div>
   );

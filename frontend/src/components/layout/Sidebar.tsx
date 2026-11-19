@@ -163,11 +163,11 @@ export const Sidebar = ({
       href: '/admin/customers', 
       icon: Users,
       badge: pendingApprovalsCount,
-      shortcut: 'Alt+C',
+      shortcut: 'F2',
       subItems: [
         { name: 'Customer Directory', href: '/admin/customers' },
-        { name: 'Register Customer (Alt+C)', href: '/admin/customers/add' },
-        { name: 'Registration Approvals (Alt+M)', href: '/admin/customers/approvals' }
+        { name: 'Register Customer (F2)', href: '/admin/customers/add' },
+        { name: 'Registration Approvals (F6)', href: '/admin/customers/approvals' }
       ]
     },
   ];
@@ -178,10 +178,10 @@ export const Sidebar = ({
       name: 'Chit Groups', 
       href: '/admin/chit-groups', 
       icon: Layers,
-      shortcut: 'Alt+G',
+      shortcut: 'F3',
       subItems: [
         { name: 'All Chit Groups', href: '/admin/chit-groups' },
-        { name: '+ Create Group (Alt+G)', href: '/admin/chit-groups?action=create' },
+        { name: '+ Create Group (F3)', href: '/admin/chit-groups?action=create' },
         { name: 'Schemes & Plans', href: '/admin/manage-plans' }
       ]
     },
@@ -196,17 +196,17 @@ export const Sidebar = ({
       href: '/admin/payments', 
       icon: CreditCard,
       badge: pendingPaymentsCount,
-      shortcut: 'Alt+P'
+      shortcut: 'F4'
     },
     { name: 'Manage Bank', href: '/admin/banks', icon: Landmark },
-    { name: 'Ledger', href: '/admin/ledger', icon: FileText, shortcut: 'Alt+T' },
+    { name: 'Ledger', href: '/admin/ledger', icon: FileText, shortcut: 'F7' },
     { 
       name: 'Reports', 
       href: '/admin/reports/non-payers', 
       icon: BarChart3,
-      shortcut: 'Alt+O',
+      shortcut: 'F8',
       subItems: [
-        { name: 'Non Payers List (Alt+O)', href: '/admin/reports/non-payers' }
+        { name: 'Non Payers List (F8)', href: '/admin/reports/non-payers' }
       ]
     },
     { 
@@ -225,10 +225,10 @@ export const Sidebar = ({
 
   // 4. Management Section
   const adminManagementNav: NavItem[] = [
-    { name: 'Receipt Desk', href: '/admin/receipts', icon: Receipt, shortcut: 'Alt+P' },
+    { name: 'Receipt Desk', href: '/admin/receipts', icon: Receipt, shortcut: 'F4' },
     { name: 'Support Chat', href: '/admin/chat', icon: MessageSquare },
     { name: 'Staff & Team', href: '/admin/staff', icon: Users },
-    { name: 'User Management', href: '/admin/customers/approvals', icon: UserCheck, shortcut: 'Alt+M' },
+    { name: 'User Management', href: '/admin/customers/approvals', icon: UserCheck, shortcut: 'F6' },
     { name: 'Settings', href: '/admin/settings', icon: Settings },
   ];
 

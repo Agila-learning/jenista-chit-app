@@ -6,12 +6,14 @@ interface GlobalShortcutsOptions {
   onOpenQuickActions: () => void;
   onOpenShortcutGuide: () => void;
   onCloseModals: () => void;
+  onOpenCustomer360?: () => void;
 }
 
 export const useGlobalShortcuts = ({
   onOpenQuickActions,
   onOpenShortcutGuide,
-  onCloseModals
+  onCloseModals,
+  onOpenCustomer360
 }: GlobalShortcutsOptions) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -84,7 +86,93 @@ export const useGlobalShortcuts = ({
         }
       }
 
-      // 5. Alt + ... Navigation Shortcuts (Prevent triggering when typing in inputs/textareas)
+      // 5. FUNCTION KEYS (F2 - F9): 100% Reliable Single-Key Accelerators (Never blocked by Alt menus)
+      const fKey = e.key.toUpperCase();
+      if (fKey === 'F2') {
+        e.preventDefault();
+        navigate('/admin/customers/add');
+        return;
+      }
+      if (fKey === 'F3') {
+        e.preventDefault();
+        navigate('/admin/chit-groups?action=create');
+        return;
+      }
+      if (fKey === 'F4') {
+        e.preventDefault();
+        navigate('/admin/receipts');
+        return;
+      }
+      if (fKey === 'F6') {
+        e.preventDefault();
+        navigate('/admin/customers/approvals');
+        return;
+      }
+      if (fKey === 'F7') {
+        e.preventDefault();
+        navigate('/admin/ledger?filter=today');
+        return;
+      }
+      if (fKey === 'F8') {
+        e.preventDefault();
+        navigate('/admin/reports/non-payers');
+        return;
+      }
+      if (fKey === 'F9') {
+        e.preventDefault();
+        if (onOpenCustomer360) {
+          onOpenCustomer360();
+        } else {
+          window.dispatchEvent(new CustomEvent('open-customer-360'));
+        }
+        return;
+      }
+
+      // 6. Ctrl + Shift + <Key> / Cmd + Shift + <Key> (Web Standard Accelerators)
+      if (hasModifier && e.shiftKey) {
+        const k = e.key.toLowerCase();
+        if (k === 'c') {
+          e.preventDefault();
+          navigate('/admin/customers/add');
+          return;
+        }
+        if (k === 'g') {
+          e.preventDefault();
+          navigate('/admin/chit-groups?action=create');
+          return;
+        }
+        if (k === 'p') {
+          e.preventDefault();
+          navigate('/admin/receipts');
+          return;
+        }
+        if (k === 'm') {
+          e.preventDefault();
+          navigate('/admin/customers/approvals');
+          return;
+        }
+        if (k === 'l' || k === 't') {
+          e.preventDefault();
+          navigate('/admin/ledger?filter=today');
+          return;
+        }
+        if (k === 'o') {
+          e.preventDefault();
+          navigate('/admin/reports/non-payers');
+          return;
+        }
+        if (k === 'f') {
+          e.preventDefault();
+          if (onOpenCustomer360) {
+            onOpenCustomer360();
+          } else {
+            window.dispatchEvent(new CustomEvent('open-customer-360'));
+          }
+          return;
+        }
+      }
+
+      // 7. Alt + <Key> Navigation Shortcuts (Kept as secondary backwards-compatible keys)
       if (e.altKey && !hasModifier) {
         const key = e.key.toLowerCase();
 
@@ -129,6 +217,12 @@ export const useGlobalShortcuts = ({
             navigate('/admin/reports/non-payers');
             break;
 
+          case 'f': // Alt + F: Customer 360 Lookup
+            e.preventDefault();
+            if (onOpenCustomer360) onOpenCustomer360();
+            else window.dispatchEvent(new CustomEvent('open-customer-360'));
+            break;
+
           default:
             break;
         }
@@ -137,5 +231,5 @@ export const useGlobalShortcuts = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [navigate, location, onOpenQuickActions, onOpenShortcutGuide, onCloseModals, handleSaveActiveForm]);
+  }, [navigate, location, onOpenQuickActions, onOpenShortcutGuide, onCloseModals, onOpenCustomer360, handleSaveActiveForm]);
 };

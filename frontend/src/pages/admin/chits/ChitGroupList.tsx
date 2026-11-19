@@ -510,7 +510,7 @@ export const ChitGroupList = () => {
           <Button variant="primary" onClick={() => setIsModalOpen(true)}>
             Create Group
             <kbd className="ml-2 hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono bg-white/20 border border-white/30 rounded text-white font-bold">
-              Alt+G
+              F3
             </kbd>
           </Button>
         </div>

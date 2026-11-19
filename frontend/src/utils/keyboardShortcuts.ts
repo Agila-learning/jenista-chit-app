@@ -36,107 +36,120 @@ export const KEYBOARD_SHORTCUTS: ShortcutItem[] = [
   // 1. Group Management
   {
     id: 'create-group',
-    name: 'Create New Chit Group',
+    name: 'Create New Chit Group (F3)',
     description: 'Open the chit group creation dialog to register a new auction or fixed chit group',
     category: 'Group Management',
-    keys: ['Alt', 'G'],
-    macKeys: ['⌥', 'G'],
-    altKey: true,
-    key: 'g',
+    keys: ['F3', 'Ctrl+Shift+G'],
+    macKeys: ['F3', '⌘+⇧+G'],
+    altKey: false,
+    key: 'F3',
     route: '/admin/chit-groups?action=create',
     actionId: 'CREATE_GROUP',
     global: true,
-    allowInInput: false
+    allowInInput: true
   },
 
   // 2. Customer Management
   {
     id: 'register-customer',
-    name: 'Register Customer',
+    name: 'Register Customer (F2)',
     description: 'Open customer onboarding and registration screen to add a new client',
     category: 'Customer Management',
-    keys: ['Alt', 'C'],
-    macKeys: ['⌥', 'C'],
-    altKey: true,
-    key: 'c',
+    keys: ['F2', 'Ctrl+Shift+C'],
+    macKeys: ['F2', '⌘+⇧+C'],
+    altKey: false,
+    key: 'F2',
     route: '/admin/customers/add',
     actionId: 'REGISTER_CUSTOMER',
     global: true,
-    allowInInput: false
+    allowInInput: true
+  },
+  {
+    id: 'customer-360',
+    name: 'Customer 360 Statement & Mobile Lookup (F9)',
+    description: 'Look up complete customer details by mobile number: all registered groups, plans, paid months, and outstanding balances',
+    category: 'Customer Management',
+    keys: ['F9', 'Ctrl+Shift+F'],
+    macKeys: ['F9', '⌘+⇧+F'],
+    altKey: false,
+    key: 'F9',
+    actionId: 'CUSTOMER_360',
+    global: true,
+    allowInInput: true
   },
   {
     id: 'add-member',
-    name: 'Add Member / Chit Enrollment',
+    name: 'Add Member / Chit Enrollment (F6)',
     description: 'Open member enrollment interface to attach customers to chit groups',
     category: 'Customer Management',
-    keys: ['Alt', 'M'],
-    macKeys: ['⌥', 'M'],
-    altKey: true,
-    key: 'm',
+    keys: ['F6', 'Ctrl+Shift+M'],
+    macKeys: ['F6', '⌘+⇧+M'],
+    altKey: false,
+    key: 'F6',
     route: '/admin/customers/approvals',
     actionId: 'ADD_MEMBER',
     global: true,
-    allowInInput: false
+    allowInInput: true
   },
 
   // 3. Payments
   {
     id: 'add-payment',
-    name: 'Add / Record Payment',
+    name: 'Add / Record Payment (F4)',
     description: 'Open the receipt entry desk to record cash, UPI, or bank collections',
     category: 'Payments',
-    keys: ['Alt', 'P'],
-    macKeys: ['⌥', 'P'],
-    altKey: true,
-    key: 'p',
+    keys: ['F4', 'Ctrl+Shift+P'],
+    macKeys: ['F4', '⌘+⇧+P'],
+    altKey: false,
+    key: 'F4',
     route: '/admin/receipts',
     actionId: 'ADD_PAYMENT',
     global: true,
-    allowInInput: false
+    allowInInput: true
   },
 
   // 4. Overdue & Reports
   {
     id: 'view-overdue',
-    name: 'View Overdue Accounts',
+    name: 'View Overdue Accounts (F8)',
     description: 'Open the non-payers audit report to review outstanding balances and pending installments',
     category: 'Overdue & Reports',
-    keys: ['Alt', 'O'],
-    macKeys: ['⌥', 'O'],
-    altKey: true,
-    key: 'o',
+    keys: ['F8', 'Ctrl+Shift+O'],
+    macKeys: ['F8', '⌘+⇧+O'],
+    altKey: false,
+    key: 'F8',
     route: '/admin/reports/non-payers',
     actionId: 'VIEW_OVERDUE',
     global: true,
-    allowInInput: false
+    allowInInput: true
   },
   {
     id: 'today-collections',
-    name: "View Today's Collections",
+    name: "View Today's Ledger (F7)",
     description: "View day ledger summary and total collections recorded today",
     category: 'Overdue & Reports',
-    keys: ['Alt', 'T'],
-    macKeys: ['⌥', 'T'],
-    altKey: true,
-    key: 't',
+    keys: ['F7', 'Ctrl+Shift+L'],
+    macKeys: ['F7', '⌘+⇧+L'],
+    altKey: false,
+    key: 'F7',
     route: '/admin/ledger?filter=today',
     actionId: 'TODAY_COLLECTIONS',
     global: true,
-    allowInInput: false
+    allowInInput: true
   },
   {
     id: 'open-reports',
-    name: 'Open Reports Center',
+    name: 'Open Reports Center (F8)',
     description: 'Navigate to analytical reports, financial summaries, and collection audits',
     category: 'Overdue & Reports',
-    keys: ['Alt', 'R'],
-    macKeys: ['⌥', 'R'],
-    altKey: true,
-    key: 'r',
+    keys: ['F8'],
+    macKeys: ['F8'],
+    altKey: false,
+    key: 'F8',
     route: '/admin/reports/non-payers',
     actionId: 'OPEN_REPORTS',
     global: true,
-    allowInInput: false
+    allowInInput: true
   },
 
   // 5. Navigation & Forms
